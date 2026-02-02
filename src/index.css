@@ -531,6 +531,11 @@ tr:nth-child(even) td {
   }
 }
 
+/* Base styles for responsive text - hidden by default */
+.show-mobile {
+  display: none !important;
+}
+
 /* MOBILE LAYOUT (Phone Only - Sidebar Bottom) */
 @media (max-width: 768px) {
   /* 1. RESET LAYOUT & SCROLL */
