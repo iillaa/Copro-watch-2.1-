@@ -146,7 +146,7 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
         fontSize: '12px',
         fontWeight: 'bold'
       }}>
-        [DEBUG] Mobile Detection: {isMobile ? 'ENABLED ✓' : 'DISABLED ✗'} | Screen: {typeof window !== 'undefined' ? window.innerWidth : 'N/A'}px | Touch: {typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 'N/A'}
+        [DEBUG] Mobile Detection: {isMobile ? 'ENABLED ✓' : 'DISABLED ✗'} | Screen: {typeof window !== 'undefined' ? window.innerWidth : 'N/A'}px | Touch: {typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 'N/A'} | DueSoon: {stats?.dueSoon?.length || 0} | Retests: {stats?.retests?.length || 0}
       </div>
       
       {/* FIX: Reduced marginBottom to 0.75rem to pull charts UP */}
