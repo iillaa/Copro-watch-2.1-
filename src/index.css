@@ -567,6 +567,11 @@ tr:nth-child(even) td {
     display: none !important;
   }
 
+  /* Show mobile-only text */
+  .show-mobile {
+    display: inline !important;
+  }
+
   /* 3. MAIN CONTENT PADDING (Clear the Sidebar) */
   .main-content {
   width: 100% !important;
@@ -942,7 +947,6 @@ tr:nth-child(even) td {
   .sidebar .credit,
   .toggle-sidebar,
   .hide-mobile {
-    /* <--- ADDED THIS */
     display: none !important;
   }
 

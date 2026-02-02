@@ -851,16 +851,22 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                   Nom et prénom {getSortIcon('full_name')}
                 </div>
                 <div onClick={() => handleSort('national_id')} style={{ cursor: 'pointer' }}>
-                  Matricule {getSortIcon('national_id')}
+                  <span className="hide-mobile">Matricule</span>
+                  <span className="show-mobile">Mat</span>
+                  {getSortIcon('national_id')}
                 </div>
                 <div onClick={() => handleSort('department_id')} style={{ cursor: 'pointer' }}>
                   Service {getSortIcon('department_id')}
                 </div>
                 <div onClick={() => handleSort('last_exam_date')} style={{ cursor: 'pointer' }}>
-                  Dernier Exam {getSortIcon('last_exam_date')}
+                  <span className="hide-mobile">Dernier Exam</span>
+                  <span className="show-mobile">Last</span>
+                  {getSortIcon('last_exam_date')}
                 </div>
                 <div onClick={() => handleSort('next_exam_due')} style={{ cursor: 'pointer' }}>
-                  Prochain Dû {getSortIcon('next_exam_due')}
+                  <span className="hide-mobile">Prochain Dû</span>
+                  <span className="show-mobile">Next</span>
+                  {getSortIcon('next_exam_due')}
                 </div>
                 <div style={{ textAlign: 'right', paddingRight: '0.5rem' }}>Actions</div>
               </div>
