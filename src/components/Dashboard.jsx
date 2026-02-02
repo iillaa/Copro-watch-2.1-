@@ -13,18 +13,11 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // [SURGICAL] Expansion State
-  const [expandedSection, setExpandedSection] = useState(null); // 'due', 'retest' or null
+  // [SURGICAL] Expansion State - 'exam' for Examens à prévoir, 'retest' for Contre-visites
+  const [expandedSection, setExpandedSection] = useState(null); // 'exam' or 'retest'
   
-  // [DEBUG] Log state changes
-  useEffect(() => {
-    console.log('[Dashboard DEBUG] expandedSection changed to:', expandedSection);
-  }, [expandedSection]);
-  
-  const toggleExpand = (section) => {
-    console.log('[Dashboard DEBUG] toggleExpand called with:', section, 'current:', expandedSection);
+  const toggleExpand = (section) =>
     setExpandedSection(expandedSection === section ? null : section);
-  };
 
   // [FIX] IMPROVED MOBILE/TABLET DETECTION
   const checkMobile = () => {
@@ -48,30 +41,13 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
     // Logic: Mobile if UA matches OR (touch device AND small screen)
     const result = isMobileUA || (isTouchDevice && isSmallScreen) || isTabletUA;
     
-    console.log('[Dashboard] Mobile Detection - UA:', isMobileUA, 'Touch:', isTouchDevice, 'Screen:', isSmallScreen, 'Tablet:', isTabletUA, 'Result:', result);
-    
     return result;
   };
 
   const [isMobile, setIsMobile] = useState(checkMobile());
 
-  // [DEBUG] Log mobile detection
-  console.log('[Dashboard DEBUG] isMobile:', isMobile, 'stats.dueSoon.length:', stats?.dueSoon.length, 'stats.retests.length:', stats?.retests.length);
-  
-  // [DEBUG] Alert for mobile detection (remove after debugging)
-  if (typeof window !== 'undefined' && stats?.dueSoon?.length > 5) {
-    setTimeout(() => {
-      console.log('[Dashboard DEBUG] Mobile check - UA:', navigator.userAgent.substring(0, 50), '...');
-      console.log('[Dashboard DEBUG] Screen width:', window.innerWidth, 'Touch points:', navigator.maxTouchPoints);
-    }, 1000);
-  }
-
   useEffect(() => {
-    const handleResize = () => {
-      const newIsMobile = checkMobile();
-      console.log('[Dashboard DEBUG] Resize detected, isMobile:', newIsMobile);
-      setIsMobile(newIsMobile);
-    };
+    const handleResize = () => setIsMobile(checkMobile());
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -136,20 +112,7 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
 
   return (
     <div>
-      {/* [DEBUG] Visible Mobile Detection Status */}
-      <div style={{ 
-        background: isMobile ? '#4CAF50' : '#f44336', 
-        color: 'white', 
-        padding: '8px', 
-        marginBottom: '10px',
-        borderRadius: '4px',
-        fontSize: '12px',
-        fontWeight: 'bold'
-      }}>
-        [DEBUG] Mobile Detection: {isMobile ? 'ENABLED ✓' : 'DISABLED ✗'} | Screen: {typeof window !== 'undefined' ? window.innerWidth : 'N/A'}px | Touch: {typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 'N/A'} | DueSoon: {stats?.dueSoon?.length || 0} | Retests: {stats?.retests?.length || 0}
-      </div>
-      
-      {/* FIX: Reduced marginBottom to 0.75rem to pull charts UP */}
+      {/* --- TABLEAUX --- */}
       {/* --- HEADER (Hybrid) --- */}
       <header style={{ marginBottom: isMobile ? '0.75rem' : '1.5rem' }}>
         <h2
@@ -485,8 +448,11 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
                     <div style={{ textAlign: 'center' }}>Action</div>
                   </div>
 
-                  {/* 1. OVERDUE ROWS (Red) */}
-                  {(isMobile ? stats.overdue.slice(0, 5) : stats.overdue).map((w) => (
+                  {/* 1. OVERDUE ROWS (Red) - Always show overdue first, limited to 5 on mobile */}
+                  {(isMobile && expandedSection !== 'exam'
+                    ? stats.overdue.slice(0, 5)
+                    : stats.overdue
+                  ).map((w) => (
                     <div
                       key={w.id}
                       className="hybrid-row overdue-worker-row"
@@ -527,12 +493,13 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
                     </div>
                   ))}
 
-                  {/* [ACTION B] Limit 'Due Soon' to 5 items on mobile unless expanded */}
+                  {/* [ACTION] Limit Due Soon based on combined total (overdue + dueSoon = max 5) */}
                   {(() => {
-                    const shouldSlice = isMobile && expandedSection !== 'due';
-                    const itemsToShow = shouldSlice ? stats.dueSoon.slice(0, 5) : stats.dueSoon;
-                    console.log('[Dashboard DEBUG] Due Soon - shouldSlice:', shouldSlice, 'total:', stats.dueSoon.length, 'showing:', itemsToShow.length);
-                    return itemsToShow.map((w) => (
+                    const maxDueSoonToShow = isMobile && expandedSection !== 'exam'
+                      ? Math.max(0, 5 - stats.overdue.length)
+                      : stats.dueSoon.length;
+                    
+                    return stats.dueSoon.slice(0, maxDueSoonToShow).map((w) => (
                       <div
                         key={w.id}
                         className="hybrid-row"
@@ -556,27 +523,22 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
                 </div>
               </div>
 
-              {/* [ACTION B] The 'Show More' Button */}
-              {isMobile && stats.dueSoon.length > 5 && (
-                <>
-                  {console.log('[Dashboard DEBUG] Rendering Show More button for dueSoon')}
-                  <button
-                    onClick={() => toggleExpand('due')}
-                    className="btn btn-sm btn-outline"
-                    style={{
-                      width: '100%',
-                      marginTop: '0.5rem',
-                      border: '2px solid blue', // [DEBUG] Make very visible
-                      color: 'blue', // [DEBUG] Make very visible
-                      backgroundColor: 'lightyellow', // [DEBUG] Make very visible
-                      padding: '12px', // [DEBUG] Make larger
-                    }}
-                  >
-                    {expandedSection === 'due'
-                      ? 'Réduire ▲'
-                      : `Voir ${stats.dueSoon.length - 5} autres ▼`}
-                  </button>
-                </>
+              {/* [ACTION] Single 'Show More' button for combined overdue + dueSoon */}
+              {isMobile && (stats.overdue.length + stats.dueSoon.length) > 5 && (
+                <button
+                  onClick={() => toggleExpand('exam')}
+                  className="btn btn-sm btn-outline"
+                  style={{
+                    width: '100%',
+                    marginTop: '0.5rem',
+                    border: '1px dashed var(--primary)',
+                    color: 'var(--primary)',
+                  }}
+                >
+                  {expandedSection === 'exam'
+                    ? 'Réduire ▲'
+                    : `Voir ${stats.overdue.length + stats.dueSoon.length - 5} autres ▼`}
+                </button>
               )}
             </>
           )}
@@ -634,68 +596,61 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
                   </div>
 
                   {/* [ACTION C] Limit 'Retests' to 5 items on mobile */}
-                  {(() => {
-                    const shouldSlice = isMobile && expandedSection !== 'retest';
-                    const itemsToShow = shouldSlice ? stats.retests.slice(0, 5) : stats.retests;
-                    console.log('[Dashboard DEBUG] Retests - shouldSlice:', shouldSlice, 'total:', stats.retests.length, 'showing:', itemsToShow.length);
-                    return itemsToShow.map((item) => (
+                  {(isMobile && expandedSection !== 'retest'
+                    ? stats.retests.slice(0, 5)
+                    : stats.retests
+                  ).map((item) => (
+                    <div
+                      key={item.worker.id}
+                      className="hybrid-row"
+                      style={{ gridTemplateColumns: gridDashboard }}
+                    >
                       <div
-                        key={item.worker.id}
-                        className="hybrid-row"
-                        style={{ gridTemplateColumns: gridDashboard }}
+                        className="hybrid-cell"
+                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                       >
                         <div
-                          className="hybrid-cell"
-                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                          style={{
+                            background: 'var(--primary-light)',
+                            padding: '6px',
+                            borderRadius: '50%',
+                            display: 'flex',
+                          }}
                         >
-                          <div
-                            style={{
-                              background: 'var(--primary-light)',
-                              padding: '6px',
-                              borderRadius: '50%',
-                              display: 'flex',
-                            }}
-                          >
-                            <FaMicroscope size={10} color="var(--primary)" />
-                          </div>
-                          <span style={{ fontWeight: 700 }}>{item.worker.full_name}</span>
+                          <FaMicroscope size={10} color="var(--primary)" />
                         </div>
-                        <div className="hybrid-cell">{logic.formatDateDisplay(item.date)}</div>
-                        <div className="hybrid-actions" style={{ justifyContent: 'center' }}>
-                          <button
-                            className="btn btn-sm btn-outline"
-                            onClick={() => onNavigateWorker(item.worker.id)}
-                          >
-                            <FaEye />
-                          </button>
-                        </div>
+                        <span style={{ fontWeight: 700 }}>{item.worker.full_name}</span>
                       </div>
-                    ));
-                  })()}
+                      <div className="hybrid-cell">{logic.formatDateDisplay(item.date)}</div>
+                      <div className="hybrid-actions" style={{ justifyContent: 'center' }}>
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() => onNavigateWorker(item.worker.id)}
+                        >
+                          <FaEye />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
               {/* [ACTION C] The 'Show More' Button */}
               {isMobile && stats.retests.length > 5 && (
-                <>
-                  {console.log('[Dashboard DEBUG] Rendering Show More button for retests')}
-                  <button
-                    onClick={() => toggleExpand('retest')}
-                    className="btn btn-sm btn-outline"
-                    style={{
-                      width: '100%',
-                      marginTop: '0.5rem',
-                      border: '2px solid red', // [DEBUG] Make very visible
-                      color: 'red', // [DEBUG] Make very visible
-                      backgroundColor: 'yellow', // [DEBUG] Make very visible
-                      padding: '12px', // [DEBUG] Make larger
-                    }}
-                  >
-                    {expandedSection === 'retest'
-                      ? 'Réduire ▲'
-                      : `Voir ${stats.retests.length - 5} autres ▼`}
-                  </button>
-                </>
+                <button
+                  onClick={() => toggleExpand('retest')}
+                  className="btn btn-sm btn-outline"
+                  style={{
+                    width: '100%',
+                    marginTop: '0.5rem',
+                    border: '1px dashed var(--primary)',
+                    color: 'var(--primary)',
+                  }}
+                >
+                  {expandedSection === 'retest'
+                    ? 'Réduire ▲'
+                    : `Voir ${stats.retests.length - 5} autres ▼`}
+                </button>
               )}
             </>
           )}
