@@ -57,6 +57,14 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
 
   // [DEBUG] Log mobile detection
   console.log('[Dashboard DEBUG] isMobile:', isMobile, 'stats.dueSoon.length:', stats?.dueSoon.length, 'stats.retests.length:', stats?.retests.length);
+  
+  // [DEBUG] Alert for mobile detection (remove after debugging)
+  if (typeof window !== 'undefined' && stats?.dueSoon?.length > 5) {
+    setTimeout(() => {
+      console.log('[Dashboard DEBUG] Mobile check - UA:', navigator.userAgent.substring(0, 50), '...');
+      console.log('[Dashboard DEBUG] Screen width:', window.innerWidth, 'Touch points:', navigator.maxTouchPoints);
+    }, 1000);
+  }
 
   useEffect(() => {
     const handleResize = () => {
@@ -128,6 +136,19 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
 
   return (
     <div>
+      {/* [DEBUG] Visible Mobile Detection Status */}
+      <div style={{ 
+        background: isMobile ? '#4CAF50' : '#f44336', 
+        color: 'white', 
+        padding: '8px', 
+        marginBottom: '10px',
+        borderRadius: '4px',
+        fontSize: '12px',
+        fontWeight: 'bold'
+      }}>
+        [DEBUG] Mobile Detection: {isMobile ? 'ENABLED ✓' : 'DISABLED ✗'} | Screen: {typeof window !== 'undefined' ? window.innerWidth : 'N/A'}px | Touch: {typeof navigator !== 'undefined' ? navigator.maxTouchPoints : 'N/A'}
+      </div>
+      
       {/* FIX: Reduced marginBottom to 0.75rem to pull charts UP */}
       {/* --- HEADER (Hybrid) --- */}
       <header style={{ marginBottom: isMobile ? '0.75rem' : '1.5rem' }}>
