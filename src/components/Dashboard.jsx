@@ -14,9 +14,17 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
   const [loading, setLoading] = useState(true);
 
   // [SURGICAL] Expansion State
-  const [expandedSection, setExpandedSection] = useState(null); // 'due', 'retest', or null
-  const toggleExpand = (section) =>
+  const [expandedSection, setExpandedSection] = useState(null); // 'due', 'retest' or null
+  
+  // [DEBUG] Log state changes
+  useEffect(() => {
+    console.log('[Dashboard DEBUG] expandedSection changed to:', expandedSection);
+  }, [expandedSection]);
+  
+  const toggleExpand = (section) => {
+    console.log('[Dashboard DEBUG] toggleExpand called with:', section, 'current:', expandedSection);
     setExpandedSection(expandedSection === section ? null : section);
+  };
 
   // [FIX] IMPROVED MOBILE/TABLET DETECTION
   const checkMobile = () => {
@@ -47,8 +55,15 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
 
   const [isMobile, setIsMobile] = useState(checkMobile());
 
+  // [DEBUG] Log mobile detection
+  console.log('[Dashboard DEBUG] isMobile:', isMobile, 'stats.dueSoon.length:', stats?.dueSoon.length, 'stats.retests.length:', stats?.retests.length);
+
   useEffect(() => {
-    const handleResize = () => setIsMobile(checkMobile());
+    const handleResize = () => {
+      const newIsMobile = checkMobile();
+      console.log('[Dashboard DEBUG] Resize detected, isMobile:', newIsMobile);
+      setIsMobile(newIsMobile);
+    };
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
@@ -492,48 +507,55 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
                   ))}
 
                   {/* [ACTION B] Limit 'Due Soon' to 5 items on mobile unless expanded */}
-                  {(isMobile && expandedSection !== 'due'
-                    ? stats.dueSoon.slice(0, 5)
-                    : stats.dueSoon
-                  ).map((w) => (
-                    <div
-                      key={w.id}
-                      className="hybrid-row"
-                      style={{ gridTemplateColumns: gridDashboard }}
-                    >
-                      <div className="hybrid-cell" style={{ fontWeight: 600 }}>
-                        {w.full_name}
+                  {(() => {
+                    const shouldSlice = isMobile && expandedSection !== 'due';
+                    const itemsToShow = shouldSlice ? stats.dueSoon.slice(0, 5) : stats.dueSoon;
+                    console.log('[Dashboard DEBUG] Due Soon - shouldSlice:', shouldSlice, 'total:', stats.dueSoon.length, 'showing:', itemsToShow.length);
+                    return itemsToShow.map((w) => (
+                      <div
+                        key={w.id}
+                        className="hybrid-row"
+                        style={{ gridTemplateColumns: gridDashboard }}
+                      >
+                        <div className="hybrid-cell" style={{ fontWeight: 600 }}>
+                          {w.full_name}
+                        </div>
+                        <div className="hybrid-cell">{logic.formatDateDisplay(w.next_exam_due)}</div>
+                        <div className="hybrid-actions" style={{ justifyContent: 'center' }}>
+                          <button
+                            className="btn btn-sm btn-outline"
+                            onClick={() => onNavigateWorker(w.id)}
+                          >
+                            <FaEye />
+                          </button>
+                        </div>
                       </div>
-                      <div className="hybrid-cell">{logic.formatDateDisplay(w.next_exam_due)}</div>
-                      <div className="hybrid-actions" style={{ justifyContent: 'center' }}>
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={() => onNavigateWorker(w.id)}
-                        >
-                          <FaEye />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               </div>
 
               {/* [ACTION B] The 'Show More' Button */}
               {isMobile && stats.dueSoon.length > 5 && (
-                <button
-                  onClick={() => toggleExpand('due')}
-                  className="btn btn-sm btn-outline"
-                  style={{
-                    width: '100%',
-                    marginTop: '0.5rem',
-                    border: '1px dashed var(--primary)',
-                    color: 'var(--primary)',
-                  }}
-                >
-                  {expandedSection === 'due'
-                    ? 'Réduire ▲'
-                    : `Voir ${stats.dueSoon.length - 5} autres ▼`}
-                </button>
+                <>
+                  {console.log('[Dashboard DEBUG] Rendering Show More button for dueSoon')}
+                  <button
+                    onClick={() => toggleExpand('due')}
+                    className="btn btn-sm btn-outline"
+                    style={{
+                      width: '100%',
+                      marginTop: '0.5rem',
+                      border: '2px solid blue', // [DEBUG] Make very visible
+                      color: 'blue', // [DEBUG] Make very visible
+                      backgroundColor: 'lightyellow', // [DEBUG] Make very visible
+                      padding: '12px', // [DEBUG] Make larger
+                    }}
+                  >
+                    {expandedSection === 'due'
+                      ? 'Réduire ▲'
+                      : `Voir ${stats.dueSoon.length - 5} autres ▼`}
+                  </button>
+                </>
               )}
             </>
           )}
@@ -591,61 +613,68 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
                   </div>
 
                   {/* [ACTION C] Limit 'Retests' to 5 items on mobile */}
-                  {(isMobile && expandedSection !== 'retest'
-                    ? stats.retests.slice(0, 5)
-                    : stats.retests
-                  ).map((item) => (
-                    <div
-                      key={item.worker.id}
-                      className="hybrid-row"
-                      style={{ gridTemplateColumns: gridDashboard }}
-                    >
+                  {(() => {
+                    const shouldSlice = isMobile && expandedSection !== 'retest';
+                    const itemsToShow = shouldSlice ? stats.retests.slice(0, 5) : stats.retests;
+                    console.log('[Dashboard DEBUG] Retests - shouldSlice:', shouldSlice, 'total:', stats.retests.length, 'showing:', itemsToShow.length);
+                    return itemsToShow.map((item) => (
                       <div
-                        className="hybrid-cell"
-                        style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
+                        key={item.worker.id}
+                        className="hybrid-row"
+                        style={{ gridTemplateColumns: gridDashboard }}
                       >
                         <div
-                          style={{
-                            background: 'var(--primary-light)',
-                            padding: '6px',
-                            borderRadius: '50%',
-                            display: 'flex',
-                          }}
+                          className="hybrid-cell"
+                          style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}
                         >
-                          <FaMicroscope size={10} color="var(--primary)" />
+                          <div
+                            style={{
+                              background: 'var(--primary-light)',
+                              padding: '6px',
+                              borderRadius: '50%',
+                              display: 'flex',
+                            }}
+                          >
+                            <FaMicroscope size={10} color="var(--primary)" />
+                          </div>
+                          <span style={{ fontWeight: 700 }}>{item.worker.full_name}</span>
                         </div>
-                        <span style={{ fontWeight: 700 }}>{item.worker.full_name}</span>
+                        <div className="hybrid-cell">{logic.formatDateDisplay(item.date)}</div>
+                        <div className="hybrid-actions" style={{ justifyContent: 'center' }}>
+                          <button
+                            className="btn btn-sm btn-outline"
+                            onClick={() => onNavigateWorker(item.worker.id)}
+                          >
+                            <FaEye />
+                          </button>
+                        </div>
                       </div>
-                      <div className="hybrid-cell">{logic.formatDateDisplay(item.date)}</div>
-                      <div className="hybrid-actions" style={{ justifyContent: 'center' }}>
-                        <button
-                          className="btn btn-sm btn-outline"
-                          onClick={() => onNavigateWorker(item.worker.id)}
-                        >
-                          <FaEye />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               </div>
 
               {/* [ACTION C] The 'Show More' Button */}
               {isMobile && stats.retests.length > 5 && (
-                <button
-                  onClick={() => toggleExpand('retest')}
-                  className="btn btn-sm btn-outline"
-                  style={{
-                    width: '100%',
-                    marginTop: '0.5rem',
-                    border: '1px dashed var(--primary)',
-                    color: 'var(--primary)',
-                  }}
-                >
-                  {expandedSection === 'retest'
-                    ? 'Réduire ▲'
-                    : `Voir ${stats.retests.length - 5} autres ▼`}
-                </button>
+                <>
+                  {console.log('[Dashboard DEBUG] Rendering Show More button for retests')}
+                  <button
+                    onClick={() => toggleExpand('retest')}
+                    className="btn btn-sm btn-outline"
+                    style={{
+                      width: '100%',
+                      marginTop: '0.5rem',
+                      border: '2px solid red', // [DEBUG] Make very visible
+                      color: 'red', // [DEBUG] Make very visible
+                      backgroundColor: 'yellow', // [DEBUG] Make very visible
+                      padding: '12px', // [DEBUG] Make larger
+                    }}
+                  >
+                    {expandedSection === 'retest'
+                      ? 'Réduire ▲'
+                      : `Voir ${stats.retests.length - 5} autres ▼`}
+                  </button>
+                </>
               )}
             </>
           )}
