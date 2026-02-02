@@ -606,36 +606,39 @@ tr:nth-child(even) td {
   /* 6. 6-COLUMN GRID (Forces layout over Inline Styles) */
   .hybrid-header,
   .hybrid-row {
-    /* Check(25) | Name(Auto) | Mat(45) | Last(60) | Next(60) | Actions(85) */
-    grid-template-columns: 25px 1fr 45px 60px 60px 85px !important;
-    gap: 2px;
-    padding: 0.5rem 0.1rem !important;
+    /* Check(30) | Name(1.5fr) | Mat(65) | Last(75) | Next(75) | Actions(85) */
+    grid-template-columns: 30px 1.5fr 65px 75px 75px 85px !important;
+    gap: 4px;
+    padding: 0.5rem 0.25rem !important;
   }
 
-/* [FIX] HEADER ALIGNMENT */
-.hybrid-header > div {
-  display: flex !important;
-  flex-direction: row !important;
-  align-items: center !important; 
-  justify-content: flex-start !important; /* Default Left */
-  white-space: nowrap !important;
-  overflow: hidden !important;
-  gap: 4px !important;
-  height: 100%; 
-}
+  /* [FIX] HEADER ALIGNMENT - Allow text truncation with ellipsis */
+  .hybrid-header > div {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    gap: 4px !important;
+    height: 100%;
+    font-size: 0.65rem !important;
+  }
 
-/* [FIX] FORCE RIGHT ALIGNMENT FOR DATE HEADERS */
-.hybrid-header > div:nth-child(5),
-.hybrid-header > div:nth-child(6) {
-  justify-content: flex-end !important; /* Push text to right */
-  padding-right: 4px !important;
-}
+  /* [FIX] FORCE RIGHT ALIGNMENT FOR DATE HEADERS */
+  .hybrid-header > div:nth-child(5),
+  .hybrid-header > div:nth-child(6) {
+    justify-content: flex-end !important;
+    padding-right: 4px !important;
+  }
 
-/* Ensure Sort Icons/Chevrons stay inline */
-.hybrid-header svg {
-  flex-shrink: 0 !important;
-  margin-top: 0 !important;
-}
+  /* Ensure Sort Icons/Chevrons stay inline and do not shrink */
+  .hybrid-header svg {
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    margin-left: 2px !important;
+  }
 
   /* [FIX] RIGHT ALIGN DATE ROWS */
   .hybrid-row > div:nth-child(5), /* Last Exam */
