@@ -536,6 +536,13 @@ tr:nth-child(even) td {
   display: none !important;
 }
 
+/* TABLET LAYOUT (769px - 1024px) - Hide certain elements */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .hide-mobile {
+    display: none !important;
+  }
+}
+
 /* MOBILE LAYOUT (Phone Only - Sidebar Bottom) */
 @media (max-width: 768px) {
   /* 1. RESET LAYOUT & SCROLL */
@@ -567,8 +574,8 @@ tr:nth-child(even) td {
     z-index: 9999;
     background: var(--bg-app);
   }
-  /* Hide Desktop Elements */
-  .brand, .toggle-sidebar, .nav-text, .credit, .credit-version, .hide-mobile {
+  /* Hide Desktop Elements (but NOT hide-mobile - those should show on mobile) */
+  .brand, .toggle-sidebar, .nav-text, .credit, .credit-version {
     display: none !important;
   }
 
