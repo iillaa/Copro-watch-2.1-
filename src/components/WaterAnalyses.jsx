@@ -102,8 +102,12 @@ export default function WaterAnalyses({ compactMode }) {
       // 3. Find the LATEST analysis for this month
       // Sort descending (Newest date first)
       thisMonthAnalyses.sort((a, b) => {
-        const dateA = new Date(a.request_date || a.sample_date || 0);
-        const dateB = new Date(b.request_date || b.sample_date || 0);
+        const parseDate = (d) => {
+          const date = new Date(d.request_date || d.sample_date || 0);
+          return isNaN(date.getTime()) ? 0 : date.getTime();
+        };
+        const dateA = parseDate(a);
+        const dateB = parseDate(b);
         return dateB - dateA;
       });
 

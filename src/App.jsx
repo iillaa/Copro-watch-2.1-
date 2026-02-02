@@ -26,14 +26,19 @@ function App() {
   const initApp = async () => {
     try {
       setLoading(true);
+      console.log('[App] Starting initialization...');
 
       // 1. Start the Database
+      console.log('[App] Initializing database...');
       await db.init();
+      console.log('[App] Database initialized');
 
       // 2. Start Backup Service (Explicitly pass DB here to fix Race Condition)
+      console.log('[App] Initializing backup service...');
       await backupService.init(db); // [FIXED]
       try {
         await backupService.checkAndAutoImport(db);
+        console.log('[App] Auto-import check completed');
       } catch (e) {
         console.warn('Auto-import check failed:', e);
       }
@@ -46,6 +51,7 @@ function App() {
         // Migration: If no PIN in DB, use default "0011" hashed
         setPin('0000');
       }
+      console.log('[App] Initialization complete');
     } catch (error) {
       console.error('App Initialization Failed:', error);
     } finally {

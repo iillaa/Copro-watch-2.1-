@@ -24,6 +24,7 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
   const [exams, setExams] = useState([]);
   const [showExamForm, setShowExamForm] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
+  const [workerNotFound, setWorkerNotFound] = useState(false); // [NEW] Track not found state
 
   const [showPrintModal, setShowPrintModal] = useState(false); // [NEW] Pour le PDF Smart
   const [deptName, setDeptName] = useState('');
@@ -49,6 +50,14 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
       // Convert workerId to Number to ensure match
       const id = Number(workerId);
       const w = await db.getWorker(id);
+      
+      if (!w) {
+        console.warn('[WorkerDetail] Worker not found for ID:', id);
+        setWorkerNotFound(true);
+        return;
+      }
+      
+      setWorkerNotFound(false);
       setWorker(w);
 
       if (w) {
@@ -67,8 +76,10 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
       // Sort desc
       wExams.sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
       setExams(wExams);
+      console.log('[WorkerDetail] Data loaded - Worker:', w?.full_name, 'Exams:', wExams.length);
     } catch (e) {
-      console.error(e);
+      console.error('[WorkerDetail] Error loading data:', e);
+      setWorkerNotFound(true);
     }
   };
 
@@ -234,6 +245,21 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
     }
     return <span className={badgeClass}>{label}</span>;
   };
+
+  if (workerNotFound) {
+    return (
+      <div style={{ textAlign: 'center', padding: '3rem' }}>
+        <div style={{ fontSize: '4rem', marginBottom: '1rem' }}>🔍</div>
+        <h2>Travailleur non trouvé</h2>
+        <p style={{ color: 'var(--text-muted)' }}>
+          Ce travailleur a peut-être été supprimé ou l'ID est invalide.
+        </p>
+        <button className="btn btn-primary" onClick={onBack} style={{ marginTop: '1rem' }}>
+          <FaArrowLeft /> Retour à la liste
+        </button>
+      </div>
+    );
+  }
 
   if (!worker) return <div>Chargement...</div>;
   // [ACTIVATED] Logic to check if the worker is late

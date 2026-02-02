@@ -18,6 +18,12 @@ export const exportWorkersToExcel = async (workers, departments) => {
   try {
     console.log('[Excel] Starting Export...');
 
+    // [FIX] Memory limit check - warn if dataset is too large
+    const MEMORY_LIMIT = 2000; // Max workers before warning
+    if (workers.length > MEMORY_LIMIT) {
+      console.warn(`[Excel] Large dataset detected (${workers.length} workers). Export may be slow.`);
+    }
+
     // 1. DATA PREPARATION
     let allExams = [];
     let waterLogs = [];

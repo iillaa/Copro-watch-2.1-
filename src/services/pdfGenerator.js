@@ -1,7 +1,35 @@
 import { jsPDF } from 'jspdf';
 import { logic } from './logic';
-import { Filesystem, Directory } from '@capacitor/filesystem';
-import { Capacitor } from '@capacitor/core';
+
+// [FIX] Proper dynamic import handling for Capacitor
+let Filesystem, Directory;
+let Capacitor = { isNativePlatform: () => false };
+let capacitorReady = false;
+
+// Initialize Capacitor modules properly
+async function initCapacitor() {
+  if (capacitorReady) return;
+  
+  try {
+    const capModule = await import('@capacitor/core');
+    Capacitor = capModule.Capacitor;
+    
+    const fsModule = await import('@capacitor/filesystem');
+    Filesystem = fsModule.Filesystem;
+    Directory = fsModule.Directory;
+    
+    capacitorReady = true;
+    console.log('[PDF] Capacitor modules loaded successfully');
+  } catch (e) {
+    console.warn('[PDF] Capacitor not available:', e);
+    capacitorReady = true; // Mark as ready to avoid repeated attempts
+  }
+}
+
+// Call initialization immediately
+if (typeof window !== 'undefined') {
+  initCapacitor();
+}
 
 const MARGIN = 20;
 
@@ -48,6 +76,9 @@ export const pdfService = {
     const dateStr = new Date().toISOString().split('T')[0];
     const fileName = `CoproWatch_${docType}_${dateStr}.pdf`;
 
+    // Wait for Capacitor to be ready before checking platform
+    await initCapacitor();
+    
     if (Capacitor.isNativePlatform()) {
       // 📱 ANDROID: Write to Documents
       try {

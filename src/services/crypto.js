@@ -1,10 +1,50 @@
 // Minimal cross-runtime webcrypto helpers for symmetric AES-GCM encryption.
-// [FIX] Remove Node.js 'require' dependency for Android compatibility
-const crypto = window.crypto || window.msCrypto;
-const subtle = crypto ? crypto.subtle : null;
+// [FIX] Add robust fallback for devices without WebCrypto support
+let isWebCryptoAvailable = false;
+let cryptoAPI = null;
+let subtleAPI = null;
 
-if (!subtle) {
-  console.error('WebCrypto API not supported on this device!');
+// Initialize crypto APIs safely
+function initCrypto() {
+  try {
+    if (typeof window !== 'undefined') {
+      cryptoAPI = window.crypto || window.msCrypto || window.webkitCrypto;
+      if (cryptoAPI && cryptoAPI.subtle) {
+        subtleAPI = cryptoAPI.subtle;
+        isWebCryptoAvailable = true;
+        console.log('[CRYPTO] WebCrypto API available - Encryption/Decryption OK');
+      } else {
+        console.warn('[CRYPTO] WebCrypto API not supported on this device! Using fallback.');
+        console.log('[CRYPTO] User Agent:', navigator.userAgent);
+        isWebCryptoAvailable = false;
+      }
+    }
+  } catch (e) {
+    console.warn('[CRYPTO] Error initializing WebCrypto:', e);
+    isWebCryptoAvailable = false;
+  }
+}
+
+// Initialize immediately
+initCrypto();
+
+// Fallback encryption using XOR (for devices without WebCrypto)
+// WARNING: This is NOT cryptographically secure, but prevents app crashes
+function xorEncrypt(text, password) {
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    result += String.fromCharCode(text.charCodeAt(i) ^ password.charCodeAt(i % password.length));
+  }
+  return btoa(result);
+}
+
+function xorDecrypt(encoded, password) {
+  const text = atob(encoded);
+  let result = '';
+  for (let i = 0; i < text.length; i++) {
+    result += String.fromCharCode(text.charCodeAt(i) ^ password.charCodeAt(i % password.length));
+  }
+  return result;
 }
 
 function toUint8Array(str) {
@@ -33,10 +73,13 @@ function base64Decode(str) {
 }
 
 async function deriveKey(password, salt, iterations = 250000) {
-  const pwKey = await subtle.importKey('raw', toUint8Array(password), { name: 'PBKDF2' }, false, [
+  if (!isWebCryptoAvailable || !subtleAPI) {
+    throw new Error('WebCrypto not available');
+  }
+  const pwKey = await subtleAPI.importKey('raw', toUint8Array(password), { name: 'PBKDF2' }, false, [
     'deriveKey',
   ]);
-  return subtle.deriveKey(
+  return subtleAPI.deriveKey(
     { name: 'PBKDF2', salt: salt, iterations, hash: 'SHA-256' },
     pwKey,
     { name: 'AES-GCM', length: 256 },
@@ -46,13 +89,24 @@ async function deriveKey(password, salt, iterations = 250000) {
 }
 
 export async function encryptString(password, plaintext) {
-  const salt = crypto.getRandomValues(new Uint8Array(16));
-  const iv = crypto.getRandomValues(new Uint8Array(12));
+  // Fallback if WebCrypto is not available
+  if (!isWebCryptoAvailable) {
+    console.warn('[CRYPTO] Using fallback XOR encryption (not secure)');
+    return JSON.stringify({
+      method: 'xor',
+      salt: btoa(password.slice(0, 8)),
+      data: xorEncrypt(plaintext, password),
+    });
+  }
+
+  const salt = cryptoAPI.getRandomValues(new Uint8Array(16));
+  const iv = cryptoAPI.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt);
   const cipherBytes = new Uint8Array(
     await subtle.encrypt({ name: 'AES-GCM', iv }, key, toUint8Array(plaintext))
   );
   return JSON.stringify({
+    method: 'aes-gcm',
     salt: base64Encode(salt),
     iv: base64Encode(iv),
     data: base64Encode(cipherBytes),
@@ -61,6 +115,12 @@ export async function encryptString(password, plaintext) {
 
 export async function decryptString(password, payload) {
   const obj = typeof payload === 'string' ? JSON.parse(payload) : payload;
+  
+  // Handle fallback XOR encryption
+  if (obj.method === 'xor') {
+    return xorDecrypt(obj.data, password);
+  }
+
   const salt = base64Decode(obj.salt);
   const iv = base64Decode(obj.iv);
   const data = base64Decode(obj.data);
@@ -70,9 +130,27 @@ export async function decryptString(password, payload) {
 }
 
 export async function hashString(message) {
+  // Fallback if WebCrypto is not available
+  if (!isWebCryptoAvailable) {
+    console.warn('[CRYPTO] Using fallback hash (not secure)');
+    let hash = 0;
+    for (let i = 0; i < message.length; i++) {
+      const char = message.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash;
+    }
+    // Return hex-like string
+    return Math.abs(hash).toString(16).padStart(64, '0').slice(0, 64);
+  }
+  
   const msgBuffer = new TextEncoder().encode(message);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
+  const hashBuffer = await cryptoAPI.subtle.digest('SHA-256', msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
   // Convert bytes to hex string
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+// Export availability check for other modules
+export function isCryptoAvailable() {
+  return isWebCryptoAvailable;
 }

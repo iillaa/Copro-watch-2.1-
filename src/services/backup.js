@@ -1,16 +1,18 @@
 // src/services/backup.js
-// [FIX] REMOVED: import { db } from './db';
+// [FIX] Improved initialization with retry mechanism
 
 const BACKUP_STORE = 'backup_settings';
 
 // --- FILES ---
 const MANUAL_BACKUP_FILE_NAME = 'backup-manuel.json';
-const AUTO_BACKUP_COUNTER_FILE = 'backup-auto-compteur.json'; // [NEW]
-const AUTO_BACKUP_TIME_FILE = 'backup-auto-temps.json'; // [NEW]
+const AUTO_BACKUP_COUNTER_FILE = 'backup-auto-compteur.json';
+const AUTO_BACKUP_TIME_FILE = 'backup-auto-temps.json';
 
 // --- CONSTANTS ---
 const DEFAULT_THRESHOLD = 10;
 const DEFAULT_TIME_THRESHOLD = 4 * 60 * 60 * 1000; // 4 Hours
+const INIT_RETRY_DELAY = 100; // ms
+const MAX_INIT_RETRIES = 5;
 
 // --- STATE ---
 let counter = 0;
@@ -26,12 +28,27 @@ let isInitialized = false;
 let dbApi = null;
 
 // --- INITIALIZATION ---
-export async function init(providedDb) {
+// [FIX] Improved initialization with proper retry mechanism
+export async function init(providedDb, maxRetries = MAX_INIT_RETRIES) {
+  // If DB is already provided and initialized, skip
+  if (dbApi && isInitialized) {
+    return true;
+  }
+  
   if (providedDb) dbApi = providedDb;
 
+  // Retry mechanism for race conditions
+  let retries = 0;
+  while (!dbApi && retries < maxRetries) {
+    console.log(`[Backup] Waiting for DB (attempt ${retries + 1}/${maxRetries})...`);
+    await new Promise(r => setTimeout(r, INIT_RETRY_DELAY));
+    retries++;
+  }
+
   if (!dbApi) {
-    console.warn('[Backup] Init called without DB instance');
-    return;
+    console.error('[Backup] CRITICAL: Init failed - DB not available after retries');
+    // Don't throw - allow app to continue without backup
+    return false;
   }
 
   try {
@@ -48,11 +65,26 @@ export async function init(providedDb) {
     lastImported = settings.backup_lastImported || 0;
 
     isInitialized = true;
+    console.log('[BACKUP] Service initialized - Counter:', counter, 'Threshold:', threshold);
+    return true;
   } catch (e) {
-    console.warn('[Backup] Settings load error', e);
+    console.warn('[BACKUP] Settings load error, using defaults:', e);
     isInitialized = true;
     lastAutoBackup = Date.now();
+    return true;
   }
+}
+
+// Helper to ensure DB is available before operations
+async function ensureDb() {
+  if (!dbApi) {
+    console.warn('[Backup] DB not ready, attempting to re-init...');
+    await init(dbApi, 3);
+    if (!dbApi) {
+      throw new Error('Database not available for backup operation');
+    }
+  }
+  return dbApi;
 }
 
 async function saveMeta() {
@@ -297,13 +329,10 @@ async function readBackupJSONLegacy() {
 // [SURGICAL REPLACEMENT] src/services/backup.js
 
 export async function registerChange() {
-  if (!dbApi) {
-    console.warn('[Backup] Cannot register change: DB not initialized.');
-    return false;
-  }
+  // Ensure DB is available
+  await ensureDb();
 
   // [FIX] Debounce: If updates happen within 500ms, count them as ONE action.
-  // This prevents double-counting when "Save Exam" also triggers "Save Worker".
   const now = Date.now();
   if (now - lastRegisterTime < 500) {
     return false;
@@ -313,7 +342,6 @@ export async function registerChange() {
   counter++;
 
   // 1. Calc Time
-  // Safety: If lastAutoBackup is missing/zero, assume 'now'
   if (!lastAutoBackup) lastAutoBackup = now;
 
   const timeElapsed = now - lastAutoBackup;
