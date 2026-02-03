@@ -598,13 +598,13 @@ tr:nth-child(even) td {
     opacity: 1 !important;
   }
 
-  /* 7. GRID SYSTEM (7 Columns) */
+  /* 7. GRID SYSTEM (Compact for Mobile - 7 Columns) */
   .hybrid-header,
   .hybrid-row {
-    grid-template-columns: 30px 1.5fr 65px 75px 75px 75px 100px !important;
-    font-size: 0.8rem;
-    gap: 4px;
-    padding: 0.5rem 0.25rem !important;
+    grid-template-columns: 25px 1fr 50px 55px 55px 55px 65px !important;
+    font-size: 0.75rem;
+    gap: 3px;
+    padding: 0.4rem 0.2rem !important;
   }
 
   /* 8. HEADER ALIGNMENT */
