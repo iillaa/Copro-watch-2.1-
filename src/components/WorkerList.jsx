@@ -26,23 +26,13 @@ import {
   FaCheckSquare, // [NEW] Icon for Toggle
 } from 'react-icons/fa';
 
-// [MOBILE DETECTION]
-const checkMobile = () => {
-  if (typeof window === 'undefined') return false;
-  const w = window.innerWidth;
-  const h = window.innerHeight;
-  return w <= 900 || h <= 600;
-};
-
 // [SURGICAL ADDITION] Fix #5: Loading Skeleton
 // Place this BEFORE "export default function WorkerList"
 const LoadingSkeleton = ({ mode }) => {
-  // [FIX] Use mobile-aware grid templates
-  const isMobile = checkMobile();
-  // Mobile: Compact 7 columns | Desktop: Wide 7 columns
-  const gridTemplate = isMobile
-    ? (mode ? '30px 1fr 45px 50px 50px 50px 60px' : '0px 1fr 45px 50px 50px 50px 60px')
-    : (mode ? '50px 1.9fr 0.8fr 1fr 0.9fr 2.2fr 100px' : '0px 1.5fr 0.8fr 1fr 0.9fr 2.2fr 100px');
+  // Match the grid template of the main table
+  const gridTemplate = mode
+    ? '50px 1.9fr 0.8fr 1fr 0.9fr 2.2fr 100px'
+    : '0px 1.5fr 0.8fr 1fr 0.9fr 2.2fr 100px';
 
   return (
     <div className="scroll-wrapper" style={{ paddingBottom: '120px' }}>
@@ -670,11 +660,9 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
 
   // Columns: Check | Nom | Mat | Svc | Last | Next | Actions
   // [FIX] Updated Template: 2.2fr for Prochain Dû (Column 6) to stop squishing
-  // [FIX] Now mobile-aware: use compact columns on mobile
-  const isMobile = checkMobile();
-  const gridTemplate = isMobile
-    ? (isSelectionMode ? '30px 1fr 45px 50px 50px 50px 60px' : '0px 1fr 45px 50px 50px 50px 60px')
-    : (isSelectionMode ? '50px 1.9fr 0.8fr 1fr 0.9fr 2.2fr 100px' : '0px 1.5fr 0.8fr 1fr 0.9fr 2.2fr 100px');
+  const gridTemplate = isSelectionMode
+    ? '50px 1.9fr 0.8fr 1fr 0.9fr 2.2fr 100px'
+    : '0px 1.5fr 0.8fr 1fr 0.9fr 2.2fr 100px';
 
   return (
     <div>

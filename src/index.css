@@ -540,74 +540,96 @@ tr:nth-child(even) td {
   }
 }
 
-/* MOBILE LAYOUT (Phone Portrait & Landscape - <= 900px) */
-/* Uses LEFT sidebar for both orientations (sensorLandscape on Android) */
-@media (max-width: 900px) {
+/* MOBILE LAYOUT (Phone Only - <= 768px) - Show abbreviated text */
+@media (max-width: 768px) {
   /* 1. RESET LAYOUT & SCROLL */
   html, body {
     overflow-y: auto !important;
     height: auto !important;
-    min-height: 100vh;
+    min-height: 100dvh;
   }
   #root, .app-shell {
     height: auto !important;
-    min-height: 100vh;
+    min-height: 100dvh;
     overflow: visible !important;
+    display: flex;
+    flex-direction: column;
   }
 
-  /* 2. SIDEBAR FIXED LEFT (Same for Portrait & Landscape) */
+  /* 2. SIDEBAR FIXED BOTTOM */
   .sidebar {
-    position: fixed !important;
-    top: 0;
+    position: fixed;
+    bottom: 0;
     left: 0;
-    width: 60px !important;
-    height: 100% !important;
-    padding: 0.5rem 0 !important;
-    border-right: 3px solid var(--border-color);
-    border-top: none;
-    z-index: 5000;
+    width: 100% !important;
+    height: auto;
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 0.5rem;
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+    border-top: 3px solid var(--border-color);
+    z-index: 9999;
+    background: var(--bg-app);
   }
-
-  /* 3. MAIN CONTENT (Clear the Sidebar) */
-  .main-content {
-    margin-left: 60px !important;
-    width: calc(100% - 60px) !important;
-    padding: 0.5rem !important;
-  }
-
-  /* 4. Hide Desktop Elements */
-  .brand, .nav-text, .credit, .toggle-sidebar {
+  /* Hide Desktop Elements */
+  .brand, .toggle-sidebar, .nav-text, .credit, .credit-version {
     display: none !important;
   }
 
-  /* 5. Center Nav Icons */
-  .nav-item {
-    justify-content: center !important;
-    padding: 0.75rem 0.5rem !important;
-    width: 50px !important;
-    margin: 0 auto 0.5rem auto !important;
-  }
-
-  /* 6. TEXT SWAP */
+  /* CRITICAL: Hide long text on mobile, show short text */
   .hide-mobile { display: none !important; }
-  .show-mobile {
-    display: inline !important;
+  .show-mobile { 
+    display: inline !important; 
     font-weight: bold !important;
     color: var(--primary) !important;
     visibility: visible !important;
     opacity: 1 !important;
   }
 
-  /* 7. GRID SYSTEM (Compact for Mobile - 7 Columns) */
-  .hybrid-header,
-  .hybrid-row {
-    grid-template-columns: 25px 1fr 50px 55px 55px 55px 65px !important;
-    font-size: 0.75rem;
-    gap: 3px;
-    padding: 0.4rem 0.2rem !important;
+  /* 3. MAIN CONTENT PADDING (Clear the Sidebar) */
+  .main-content {
+    width: 100% !important;
+    padding: 0.25rem !important;
+    padding-bottom: calc(140px + env(safe-area-inset-bottom)) !important;
+    overflow-x: hidden !important;
   }
 
-  /* 8. HEADER ALIGNMENT */
+  /* 4. NAVIGATION ICONS */
+  .nav-item {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 48px !important; 
+    height: 48px !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    border-radius: 12px !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .nav-icon {
+    font-size: 1.5rem !important;
+    margin: 0 !important;
+  }
+
+  /* 5. MAGIC SCALING */
+  .hybrid-container {
+    zoom: 0.85; 
+    width: 100%;
+  }
+
+  /* 6. 6-COLUMN GRID - Updated to 7 columns to include Actions */
+  .hybrid-header,
+  .hybrid-row {
+    /* Check(30) | Name(1.5fr) | Mat(65) | Service(75) | Last(75) | Next(75) | Actions(50) */
+    grid-template-columns: 30px 1.5fr 65px 75px 75px 75px 50px !important;
+    gap: 4px;
+    padding: 0.5rem 0.25rem !important;
+  }
+
+  /* HEADER ALIGNMENT */
   .hybrid-header > div {
     display: flex !important;
     flex-direction: row !important;
@@ -621,21 +643,21 @@ tr:nth-child(even) td {
     font-size: 0.8rem !important;
   }
 
-  /* 9. RIGHT ALIGNMENT FOR DATE HEADERS */
+  /* RIGHT ALIGNMENT FOR DATE HEADERS */
   .hybrid-header > div:nth-child(5),
   .hybrid-header > div:nth-child(6) {
     justify-content: flex-end !important;
     padding-right: 4px !important;
   }
 
-  /* 10. SORT ICONS */
+  /* SORT ICONS */
   .hybrid-header svg {
     flex-shrink: 0 !important;
     flex-grow: 0 !important;
     margin-left: 2px !important;
   }
 
-  /* 11. RIGHT ALIGN DATE ROWS */
+  /* RIGHT ALIGN DATE ROWS */
   .hybrid-row > div:nth-child(5),
   .hybrid-row > div:nth-child(6) {
     text-align: right !important;
@@ -644,40 +666,8 @@ tr:nth-child(even) td {
     padding-right: 4px !important;
   }
 
-  /* 12. GENERAL SHRINKING */
-  .card { padding: 0.75rem !important; margin-bottom: 0.75rem !important; }
-  .btn { padding: 0.4rem 0.6rem !important; font-size: 0.8rem !important; }
-  .stat-card-value { font-size: 1.5rem !important; }
-
-  /* 13. UNLOCK SCROLL */
-  .scroll-wrapper {
-    max-height: none !important;
-    overflow: visible !important;
-    min-height: auto !important;
-  }
-
-  /* 14. Fix Modal/Keyboard */
+  /* Fix Modal/Keyboard */
   .modal { margin-bottom: 50vh !important; }
-
-  /* 15. Pin Lock & Modal Fixes (for all mobile) */
-  .pin-card {
-    flex-direction: row !important;
-    max-width: 600px !important;
-    padding: 1rem !important;
-  }
-  .pin-info {
-    flex: 1;
-    border-right: 2px solid #e2e8f0;
-    padding-right: 1rem;
-  }
-  .pin-pad {
-    flex: 1;
-    gap: 0.5rem;
-  }
-  .pin-btn {
-    height: 40px !important;
-    font-size: 1.1rem !important;
-  }
 }
 
 /* TABLET & MOBILE FIX: Unlock Lists so they never trap the finger */

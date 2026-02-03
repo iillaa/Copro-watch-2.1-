@@ -19,19 +19,29 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
   const toggleExpand = (section) =>
     setExpandedSection(expandedSection === section ? null : section);
 
-  // [ORGANIZED] Standard vs. Mobile Exception
+  // [FIX] IMPROVED MOBILE/TABLET DETECTION
   const checkMobile = () => {
-    if (typeof window === 'undefined') return false;
+    if (typeof window === 'undefined') {
+      return false;
+    }
     
-    // Get Dimensions
-    const w = window.innerWidth;
-    const h = window.innerHeight;
-
-    // Define the Exception (Must match CSS @media)
-    // "Is this screen smaller than a standard Tablet?"
-    // Your Phone (821px) < 900px -> Returns TRUE (Mobile Mode)
-    // iPad (1024px) > 900px -> Returns FALSE (Standard Mode)
-    return w <= 900 || h <= 600;
+    // 1. User Agent Detection for Mobile/Tablet
+    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    
+    // 2. Touch Detection (for tablets without mobile UA)
+    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    
+    // 3. Screen Width Detection
+    const isSmallScreen = window.innerWidth <= 1024;
+    
+    // 4. Check for tablet patterns in user agent
+    const isTabletUA = /tablet|ipad|playbook|silk|kindle/i.test(userAgent);
+    
+    // Logic: Mobile if UA matches OR (touch device AND small screen)
+    const result = isMobileUA || (isTouchDevice && isSmallScreen) || isTabletUA;
+    
+    return result;
   };
 
   const [isMobile, setIsMobile] = useState(checkMobile());

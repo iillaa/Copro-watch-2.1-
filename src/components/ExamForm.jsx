@@ -189,19 +189,11 @@ export default function ExamForm({
         <div className="card" style={{ borderLeft: '4px solid #3b82f6' }}>
           <h4>Laboratoire (Copro-parasitologie)</h4>
           {!formData.lab_result ? (
-            <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-success"
-                onClick={() => handleLabResult('negative')}
-                style={{ minWidth: '140px', flex: '1 1 auto' }}
-              >
+            <div style={{ display: 'flex', gap: '1rem' }}>
+              <button className="btn btn-success" onClick={() => handleLabResult('negative')}>
                 Résultat Négatif (-)
               </button>
-              <button
-                className="btn btn-danger"
-                onClick={() => handleLabResult('positive')}
-                style={{ minWidth: '140px', flex: '1 1 auto' }}
-              >
+              <button className="btn btn-danger" onClick={() => handleLabResult('positive')}>
                 Résultat Positif (+)
               </button>
             </div>
@@ -274,7 +266,7 @@ export default function ExamForm({
             </div>
             <div className="form-group">
               <label className="label">Contre-visite prévue le:</label>
-              <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
                 <button
                   className="btn btn-outline btn-sm"
                   type="button"
@@ -288,7 +280,6 @@ export default function ExamForm({
                       retest_date: date,
                     });
                   }}
-                  style={{ minWidth: '70px' }}
                 >
                   +7 Jours
                 </button>
@@ -305,14 +296,13 @@ export default function ExamForm({
                       retest_date: date,
                     });
                   }}
-                  style={{ minWidth: '70px' }}
                 >
                   +10 Jours
                 </button>
                 <input
                   type="date"
                   className="input"
-                  style={{ width: 'auto', minWidth: '120px', flex: '1 1 auto' }}
+                  style={{ width: 'auto' }}
                   value={formData.treatment?.retest_date || ''}
                   onChange={(e) =>
                     updateField('treatment', {
@@ -324,19 +314,11 @@ export default function ExamForm({
               </div>
             </div>
 
-            <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem', flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-danger"
-                onClick={() => handleDecision('inapte')}
-                style={{ minWidth: '150px', flex: '1 1 auto' }}
-              >
+            <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
+              <button className="btn btn-danger" onClick={() => handleDecision('inapte')}>
                 Marquer Inapte Temporaire
               </button>
-              <button
-                className="btn btn-warning"
-                onClick={() => handleDecision('apte_partielle')}
-                style={{ minWidth: '150px', flex: '1 1 auto' }}
-              >
+              <button className="btn btn-warning" onClick={() => handleDecision('apte_partielle')}>
                 Apte Partiel (Sous réserve)
               </button>
             </div>
@@ -366,12 +348,8 @@ export default function ExamForm({
               </small>
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem', flexWrap: 'wrap' }}>
-              <button
-                className="btn btn-success"
-                onClick={() => handleDecision('apte')}
-                style={{ minWidth: '160px', flex: '1 1 auto' }}
-              >
+            <div style={{ display: 'flex', gap: '1rem', marginTop: '1rem' }}>
+              <button className="btn btn-success" onClick={() => handleDecision('apte')}>
                 Valider APTE & Sauvegarder
               </button>
             </div>
@@ -380,12 +358,12 @@ export default function ExamForm({
 
         {/* Boutons de fermeture */}
         <div
-          style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', gap: '1rem', flexWrap: 'wrap' }}
+          style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem', gap: '1rem' }}
         >
-          <button className="btn btn-outline" onClick={onClose} style={{ minWidth: '100px', flex: '1 1 auto' }}>
+          <button className="btn btn-outline" onClick={onClose}>
             Fermer
           </button>
-          <button className="btn btn-primary" onClick={saveWithoutDecision} style={{ minWidth: '160px', flex: '1 1 auto' }}>
+          <button className="btn btn-primary" onClick={saveWithoutDecision}>
             Sauvegarder (Sans clôturer)
           </button>
         </div>
