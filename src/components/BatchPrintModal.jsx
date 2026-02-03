@@ -51,7 +51,7 @@ export default function BatchPrintModal({ count, onConfirm, onCancel }) {
         zIndex: 2000,
       }}
     >
-      <div className="card" style={{ width: '100%', maxWidth: '450px', padding: '1.5rem' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '450px', maxHeight: '90vh', overflowY: 'auto', padding: '1.5rem' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
             <FaPrint /> Impression {count > 1 ? `Groupée (${count})` : 'Individuelle'}

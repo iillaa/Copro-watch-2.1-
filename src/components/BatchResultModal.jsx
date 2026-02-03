@@ -31,7 +31,7 @@ export default function BatchResultModal({ count, onConfirm, onCancel }) {
 
   return (
     <div className="modal-overlay">
-      <div className="card" style={{ width: '100%', maxWidth: '500px', padding: '1.5rem' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '500px', maxHeight: '90vh', overflowY: 'auto', padding: '1.5rem' }}>
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
