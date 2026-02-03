@@ -522,6 +522,31 @@ tr:nth-child(even) td {
    RESPONSIVE LAYOUT & FIXES
    ========================================= */
 
+/* MOBILE TEXT VISIBILITY - These classes control text visibility on mobile vs desktop */
+/* .show-mobile = Short text shown ONLY on mobile (Mat, Last, Next) */
+/* .hide-mobile = Long text shown ONLY on desktop (Matricule, Dernier, Prochain) */
+
+/* Base: Hide .show-mobile everywhere (desktop-first approach) */
+.show-mobile { display: none !important; }
+
+/* TABLET LAYOUT (769px - 1024px) */
+@media (min-width: 769px) and (max-width: 1024px) {
+  .hide-mobile { display: none !important; }
+}
+
+/* MOBILE LAYOUT (Phone Only - <= 768px) - Show abbreviated text */
+@media (max-width: 768px) {
+  /* CRITICAL: Show abbreviated headers on mobile */
+  .show-mobile { 
+    display: inline-block !important; 
+    min-width: 35px;
+    font-weight: bold !important;
+    color: var(--primary) !important;
+    padding: 0 2px;
+    font-size: 0.85rem !important;
+  }
+}
+
 /* TABLET & MOBILE FIX: Unlock Lists so they never trap the finger */
 @media (max-width: 1024px) {
   .scroll-wrapper {
@@ -529,227 +554,6 @@ tr:nth-child(even) td {
     overflow: visible !important;
     min-height: auto !important;
   }
-}
-
-/* Base styles for responsive text - hidden by default */
-.show-mobile {
-  display: none !important;
-}
-
-/* TABLET LAYOUT (769px - 1024px) - Hide certain elements */
-@media (min-width: 769px) and (max-width: 1024px) {
-  .hide-mobile {
-    display: none !important;
-  }
-}
-
-/* MOBILE LAYOUT (Phone Only - Sidebar Bottom) */
-@media (max-width: 768px) {
-  /* 1. RESET LAYOUT & SCROLL */
-  html, body {
-    overflow-y: auto !important;
-    height: auto !important;
-    min-height: 100dvh;
-  }
-  #root, .app-shell {
-    height: auto !important;
-    min-height: 100dvh;
-    overflow: visible !important;
-    display: flex;
-    flex-direction: column;
-  }
-
-  /* 2. SIDEBAR FIXED BOTTOM */
-  .sidebar {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    width: 100% !important;
-    height: auto;
-    flex-direction: row;
-    justify-content: space-around;
-    padding: 0.5rem;
-    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
-    border-top: 3px solid var(--border-color);
-    z-index: 9999;
-    background: var(--bg-app);
-  }
-  /* Hide Desktop Elements (but NOT hide-mobile - those should show on mobile) */
-  .brand, .toggle-sidebar, .nav-text, .credit, .credit-version {
-    display: none !important;
-  }
-
-  /* Show mobile-only text - DEBUG VERSION */
-  .show-mobile {
-    display: inline-block !important;
-    min-width: 35px;
-    font-weight: bold !important;
-    color: #6366f1 !important; /* Force primary color */
-    background: yellow !important; /* DEBUG: temporary background to see if element renders */
-    padding: 2px 4px !important;
-    font-size: 0.85rem !important;
-    border: 1px solid red !important; /* DEBUG: border to see element bounds */
-  }
-  
-  /* Ensure text is never hidden in header columns */
-  .hybrid-header .show-mobile {
-    overflow: visible !important;
-    text-overflow: clip !important;
-  }
-
-  /* 3. MAIN CONTENT PADDING (Clear the Sidebar) */
-  .main-content {
-  width: 100% !important;
-  padding: 0.25rem !important;
-  padding-bottom: calc(140px + env(safe-area-inset-bottom)) !important;
-  overflow-x: hidden !important;
-}
-
-
-
-  /* 4. NAVIGATION ICONS */
-  .nav-item {
-  display: flex !important;
-  justify-content: center !important; /* Center left-to-right */
-  align-items: center !important;     /* Center top-to-bottom */
-  width: 48px !important; 
-  height: 48px !important;
-  padding: 0 !important;
-  margin: 0 auto !important;
-  border-radius: 12px !important;
-  background: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-}
-
-.nav-icon {
-  font-size: 1.5rem !important;
-  margin: 0 !important; /* Remove any legacy margins */
-}
-
- /* 5. MAGIC SCALING (Replaces Transform to fix Sticky Header) */
-  .hybrid-container {
-    zoom: 0.85; 
-    width: 100%;
-  }
-
-  /* 6. 6-COLUMN GRID (Forces layout over Inline Styles) */
-  .hybrid-header,
-  .hybrid-row {
-    /* Check(30) | Name(1.5fr) | Mat(65) | Last(75) | Next(75) | Actions(85) */
-    grid-template-columns: 30px 1.5fr 65px 75px 75px 85px !important;
-    gap: 4px;
-    padding: 0.5rem 0.25rem !important;
-  }
-
-  /* [FIX] HEADER ALIGNMENT - Allow text truncation with ellipsis */
-  .hybrid-header > div {
-    display: flex !important;
-    flex-direction: row !important;
-    align-items: center !important;
-    justify-content: flex-start !important;
-    white-space: nowrap !important;
-    overflow: hidden !important;
-    text-overflow: ellipsis !important;
-    gap: 4px !important;
-    height: 100%;
-    font-size: 0.8rem !important; /* Increased from 0.65rem for better readability */
-  }
-
-  /* [FIX] FORCE RIGHT ALIGNMENT FOR DATE HEADERS */
-  .hybrid-header > div:nth-child(5),
-  .hybrid-header > div:nth-child(6) {
-    justify-content: flex-end !important;
-    padding-right: 4px !important;
-  }
-
-  /* Ensure Sort Icons/Chevrons stay inline and do not shrink */
-  .hybrid-header svg {
-    flex-shrink: 0 !important;
-    flex-grow: 0 !important;
-    margin-left: 2px !important;
-  }
-
-  /* [FIX] RIGHT ALIGN DATE ROWS */
-  .hybrid-row > div:nth-child(5), /* Last Exam */
-  .hybrid-row > div:nth-child(6) { /* Next Exam */
-    text-align: right !important;
-    justify-content: flex-end !important; /* If they behave as flex */
-    font-size: 0.75rem !important;
-    padding-right: 4px !important; /* Match Header Padding */
-  }
-
-  /* Fix Modal/Keyboard */
-  .modal { margin-bottom: 50vh !important; }
-}
-
-/* Grid Stability */
-.hybrid-container {
-  width: 100%;
-  overflow-x: hidden;
-}
-.hybrid-header,
-.hybrid-row {
-  max-width: 100%;
-  overflow: hidden;
-}
-.hybrid-cell {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-  min-width: 0;
-}
-
-/* Hybrid Row/Header Styles */
-.hybrid-header {
-  display: grid;
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  background-color: var(--primary-light);
-  color: var(--primary);
-  padding: 1rem 1.25rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  border: 2px solid #000000;
-  border-radius: 12px;
-  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.1);
-  margin-bottom: 0.75rem;
-  margin-top: 0.25rem;
-}
-.hybrid-row {
-  display: grid;
-  background: var(--bg-card);
-  padding: 1rem 1.25rem;
-  margin-bottom: 0.6rem;
-  border-radius: 12px;
-  border: 1.5px solid var(--row-border);
-  box-shadow: 1px 1px 0px var(--row-shadow);
-  align-items: center;
-  transition: all 0.15s ease;
-  cursor: pointer;
-  /* [PERFORMANCE FIX] Only render what is on screen */
-  content-visibility: auto;
-  contain-intrinsic-size: 60px; /* Tells browser the row is approx 60px tall */
-}
-@media (hover: hover) {
-  .hybrid-row:hover {
-    transform: translateY(-2px);
-    box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.15);
-    border-color: var(--primary);
-    z-index: 10;
-  }
-}
-.hybrid-row:active {
-  transform: scale(0.98);
-  background-color: var(--primary-light);
-}
-.hybrid-row.selected {
-  background-color: #e0e7ff;
-  border-color: var(--primary);
 }
 
 /* Loading */
