@@ -77,8 +77,8 @@ body {
   overflow: hidden; /* Desktop: Layout holds the scrollbars */
 }
 
-/* On Desktop, we still want the sidebar to be sticky */
-@media (min-width: 769px) {
+/* Desktop/Tablet Layout (>= 769px and portrait, or landscape but wide enough) */
+@media (min-width: 769px) and (orientation: portrait) {
   .app-shell {
     flex-direction: row;
     height: 100vh !important;
@@ -174,7 +174,7 @@ body {
   transform: translate(-1px, -1px);
   box-shadow: var(--shadow-hover);
 }
-@media (min-width: 821px) {
+@media (min-width: 821px) and (orientation: portrait) {
   .toggle-sidebar {
     opacity: 1;
   }
@@ -522,26 +522,15 @@ tr:nth-child(even) td {
    RESPONSIVE LAYOUT & FIXES
    ========================================= */
 
-/* MOBILE TEXT VISIBILITY - These classes control text visibility on mobile vs desktop */
+/* MOBILE TEXT VISIBILITY - Mobile/Landscape both use mobile layout */
 /* .show-mobile = Short text shown ONLY on mobile (Mat, Last, Next) */
-/* .hide-mobile = Long text shown ONLY on desktop (Matricule, Dernier, Prochain) */
+/* .hide-mobile = Long text shown ONLY on desktop/tablet */
 
 /* Base: Hide .show-mobile everywhere (desktop-first approach) */
 .show-mobile { display: none !important; }
 
-/* TABLET LAYOUT (769px - 1024px) */
-@media (min-width: 769px) and (max-width: 1024px) {
-  .hide-mobile { display: none !important; }
-  /* [FIX] Show abbreviations so columns aren't empty */
-  .show-mobile { 
-    display: inline !important; 
-    color: var(--primary) !important; 
-    font-weight: bold !important;
-  }
-}
-
-/* MOBILE LAYOUT (Phone Only - <= 768px) - Show abbreviated text */
-@media (max-width: 768px) {
+/* MOBILE LAYOUT (Phone - Portrait or Landscape <= 768px) - Show abbreviated text */
+@media (max-width: 768px), (orientation: landscape) and (max-width: 1024px) {
   /* 1. RESET LAYOUT & SCROLL */
   html, body {
     overflow-y: auto !important;
@@ -670,8 +659,8 @@ tr:nth-child(even) td {
   .modal { margin-bottom: 50vh !important; }
 }
 
-/* TABLET & MOBILE FIX: Unlock Lists so they never trap the finger */
-@media (max-width: 1024px) {
+/* TABLET PORTRAIT & MOBILE FIX: Unlock Lists so they never trap the finger */
+@media (max-width: 1024px), (orientation: landscape) and (max-width: 1024px) {
   .scroll-wrapper {
     max-height: none !important;
     overflow: visible !important;
@@ -815,8 +804,8 @@ tr:nth-child(even) td {
   display: inline-block;
 }
 
-/* Water Dashboard */
-@media (min-width: 769px) {
+/* Water Dashboard - Desktop/Tablet Portrait */
+@media (min-width: 769px) and (orientation: portrait) {
   .water-dashboard-layout {
     height: calc(100vh - 100px);
     display: flex;
@@ -927,8 +916,8 @@ tr:nth-child(even) td {
   }
 }
 
-/* Landscape Mobile Fix (Poco F6 / Gaming Phones) */
-@media (max-height: 600px) and (orientation: landscape) {
+/* Landscape Mobile Fix (All phones in landscape - Poco F6, gaming phones, regular phones) */
+@media (orientation: landscape) and (max-width: 1024px) {
   html,
   body {
     height: auto !important;
