@@ -19,31 +19,27 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
   const toggleExpand = (section) =>
     setExpandedSection(expandedSection === section ? null : section);
 
-  // [SIMPLIFIED] MOBILE/LANDSCAPE DETECTION (Tablet = Desktop)
+  // [FIX] IMPROVED MOBILE/TABLET DETECTION
   const checkMobile = () => {
     if (typeof window === 'undefined') {
       return false;
     }
     
+    // 1. User Agent Detection for Mobile/Tablet
     const userAgent = navigator.userAgent || navigator.vendor || window.opera;
+    const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
     
-    // 1. Mobile Phone UA Detection (iPhone, Android phones, etc.)
-    const isMobileUA = /android|webos|iphone|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-    
-    // 2. Small Screen Detection (phones in any orientation, including landscape)
-    const isSmallScreen = window.innerWidth <= 768;
-    
-    // 3. Check for tablet patterns (should NOT trigger mobile layout)
-    const isTabletUA = /tablet|ipad|playbook|silk|kindle/i.test(userAgent);
-    
-    // 4. Touch Detection (for larger touch devices - tablets)
+    // 2. Touch Detection (for tablets without mobile UA)
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     
-    // Logic: Mobile if UA is mobile phone OR (small screen AND NOT tablet)
-    // Tablets use desktop layout (isTouchDevice && !isTabletUA = touch laptop/tablet with desktop UI)
-    const result = isMobileUA || (isSmallScreen && !isTabletUA);
+    // 3. Screen Width Detection
+    const isSmallScreen = window.innerWidth <= 1024;
     
-    console.log('[checkMobile]', { isMobileUA, isSmallScreen, isTabletUA, isTouchDevice, result });
+    // 4. Check for tablet patterns in user agent
+    const isTabletUA = /tablet|ipad|playbook|silk|kindle/i.test(userAgent);
+    
+    // Logic: Mobile if UA matches OR (touch device AND small screen)
+    const result = isMobileUA || (isTouchDevice && isSmallScreen) || isTabletUA;
     
     return result;
   };
