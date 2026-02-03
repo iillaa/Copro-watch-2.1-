@@ -532,6 +532,12 @@ tr:nth-child(even) td {
 /* TABLET LAYOUT (769px - 1024px) */
 @media (min-width: 769px) and (max-width: 1024px) {
   .hide-mobile { display: none !important; }
+  /* [FIX] Show abbreviations so columns aren't empty */
+  .show-mobile { 
+    display: inline !important; 
+    color: var(--primary) !important; 
+    font-weight: bold !important;
+  }
 }
 
 /* MOBILE LAYOUT (Phone Only - <= 768px) - Show abbreviated text */
@@ -576,6 +582,8 @@ tr:nth-child(even) td {
     display: inline !important; 
     font-weight: bold !important;
     color: var(--primary) !important;
+    visibility: visible !important;
+    opacity: 1 !important;
   }
 
   /* 3. MAIN CONTENT PADDING (Clear the Sidebar) */
@@ -612,10 +620,11 @@ tr:nth-child(even) td {
     width: 100%;
   }
 
-  /* 6. 6-COLUMN GRID */
+  /* 6. 6-COLUMN GRID - Updated to 7 columns to include Actions */
   .hybrid-header,
   .hybrid-row {
-    grid-template-columns: 30px 1.5fr 65px 75px 75px 85px !important;
+    /* Check(30) | Name(1.5fr) | Mat(65) | Service(75) | Last(75) | Next(75) | Actions(50) */
+    grid-template-columns: 30px 1.5fr 65px 75px 75px 75px 50px !important;
     gap: 4px;
     padding: 0.5rem 0.25rem !important;
   }
@@ -959,6 +968,13 @@ tr:nth-child(even) td {
   .toggle-sidebar,
   .hide-mobile {
     display: none !important;
+  }
+
+  /* [FIX] Ensure abbreviations are visible in landscape too */
+  .show-mobile { 
+    display: inline !important;
+    font-weight: bold !important;
+    color: var(--primary) !important;
   }
 
   /* Shrink Nav Items */
