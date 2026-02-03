@@ -581,7 +581,15 @@ tr:nth-child(even) td {
 
   /* Show mobile-only text */
   .show-mobile {
-    display: inline !important;
+    display: inline-block !important;
+    min-width: 30px; /* Ensure minimum width for text */
+    font-weight: bold !important;
+  }
+  
+  /* Ensure text is never hidden in header columns */
+  .hybrid-header .show-mobile {
+    overflow: visible !important;
+    text-overflow: clip !important;
   }
 
   /* 3. MAIN CONTENT PADDING (Clear the Sidebar) */
@@ -640,7 +648,7 @@ tr:nth-child(even) td {
     text-overflow: ellipsis !important;
     gap: 4px !important;
     height: 100%;
-    font-size: 0.65rem !important;
+    font-size: 0.8rem !important; /* Increased from 0.65rem for better readability */
   }
 
   /* [FIX] FORCE RIGHT ALIGNMENT FOR DATE HEADERS */
