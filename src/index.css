@@ -536,15 +536,129 @@ tr:nth-child(even) td {
 
 /* MOBILE LAYOUT (Phone Only - <= 768px) - Show abbreviated text */
 @media (max-width: 768px) {
-  /* CRITICAL: Show abbreviated headers on mobile */
+  /* 1. RESET LAYOUT & SCROLL */
+  html, body {
+    overflow-y: auto !important;
+    height: auto !important;
+    min-height: 100dvh;
+  }
+  #root, .app-shell {
+    height: auto !important;
+    min-height: 100dvh;
+    overflow: visible !important;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* 2. SIDEBAR FIXED BOTTOM */
+  .sidebar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100% !important;
+    height: auto;
+    flex-direction: row;
+    justify-content: space-around;
+    padding: 0.5rem;
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+    border-top: 3px solid var(--border-color);
+    z-index: 9999;
+    background: var(--bg-app);
+  }
+  /* Hide Desktop Elements */
+  .brand, .toggle-sidebar, .nav-text, .credit, .credit-version {
+    display: none !important;
+  }
+
+  /* CRITICAL: Hide long text on mobile, show short text */
+  .hide-mobile { display: none !important; }
   .show-mobile { 
-    display: inline-block !important; 
-    min-width: 35px;
+    display: inline !important; 
     font-weight: bold !important;
     color: var(--primary) !important;
-    padding: 0 2px;
-    font-size: 0.85rem !important;
   }
+
+  /* 3. MAIN CONTENT PADDING (Clear the Sidebar) */
+  .main-content {
+    width: 100% !important;
+    padding: 0.25rem !important;
+    padding-bottom: calc(140px + env(safe-area-inset-bottom)) !important;
+    overflow-x: hidden !important;
+  }
+
+  /* 4. NAVIGATION ICONS */
+  .nav-item {
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    width: 48px !important; 
+    height: 48px !important;
+    padding: 0 !important;
+    margin: 0 auto !important;
+    border-radius: 12px !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  .nav-icon {
+    font-size: 1.5rem !important;
+    margin: 0 !important;
+  }
+
+  /* 5. MAGIC SCALING */
+  .hybrid-container {
+    zoom: 0.85; 
+    width: 100%;
+  }
+
+  /* 6. 6-COLUMN GRID */
+  .hybrid-header,
+  .hybrid-row {
+    grid-template-columns: 30px 1.5fr 65px 75px 75px 85px !important;
+    gap: 4px;
+    padding: 0.5rem 0.25rem !important;
+  }
+
+  /* HEADER ALIGNMENT */
+  .hybrid-header > div {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    gap: 4px !important;
+    height: 100%;
+    font-size: 0.8rem !important;
+  }
+
+  /* RIGHT ALIGNMENT FOR DATE HEADERS */
+  .hybrid-header > div:nth-child(5),
+  .hybrid-header > div:nth-child(6) {
+    justify-content: flex-end !important;
+    padding-right: 4px !important;
+  }
+
+  /* SORT ICONS */
+  .hybrid-header svg {
+    flex-shrink: 0 !important;
+    flex-grow: 0 !important;
+    margin-left: 2px !important;
+  }
+
+  /* RIGHT ALIGN DATE ROWS */
+  .hybrid-row > div:nth-child(5),
+  .hybrid-row > div:nth-child(6) {
+    text-align: right !important;
+    justify-content: flex-end !important;
+    font-size: 0.75rem !important;
+    padding-right: 4px !important;
+  }
+
+  /* Fix Modal/Keyboard */
+  .modal { margin-bottom: 50vh !important; }
 }
 
 /* TABLET & MOBILE FIX: Unlock Lists so they never trap the finger */
@@ -554,6 +668,74 @@ tr:nth-child(even) td {
     overflow: visible !important;
     min-height: auto !important;
   }
+}
+
+/* Grid Stability */
+.hybrid-container {
+  width: 100%;
+  overflow-x: hidden;
+}
+.hybrid-header,
+.hybrid-row {
+  max-width: 100%;
+  overflow: hidden;
+}
+.hybrid-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Hybrid Row/Header Styles */
+.hybrid-header {
+  display: grid;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: var(--primary-light);
+  color: var(--primary);
+  padding: 1rem 1.25rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.75rem;
+  margin-top: 0.25rem;
+}
+.hybrid-row {
+  display: grid;
+  background: var(--bg-card);
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.6rem;
+  border-radius: 12px;
+  border: 1.5px solid var(--row-border);
+  box-shadow: 1px 1px 0px var(--row-shadow);
+  align-items: center;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  content-visibility: auto;
+  contain-intrinsic-size: 60px;
+}
+@media (hover: hover) {
+  .hybrid-row:hover {
+    transform: translateY(-2px);
+    box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.15);
+    border-color: var(--primary);
+    z-index: 10;
+  }
+}
+.hybrid-row:active {
+  transform: scale(0.98);
+  background-color: var(--primary-light);
+}
+.hybrid-row.selected {
+  background-color: #e0e7ff;
+  border-color: var(--primary);
 }
 
 /* Loading */
