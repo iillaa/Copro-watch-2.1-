@@ -79,7 +79,7 @@ export default function BatchPrintModal({ count, onConfirm, onCancel }) {
                   onChange={(e) => setDocType(e.target.value)}
                 />
                 <FaListUl style={{ color: '#4F46E5' }} />
-                <span>Liste d'émargement (Par Service)</span>
+                <span>Liste de convocation (Par Service)</span>
               </label>
             )}
 
