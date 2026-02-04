@@ -743,7 +743,7 @@ export default function Settings({
             {/* New Input for Certificate Text */}
             <input 
               type="text"
-              placeholder="Texte certificat (ex: A travailler dans la CUISINE)"
+              placeholder="Texte certificat (ex: la CUISINE)"
               value={newWorkplaceCertText}
               onChange={(e) => setNewWorkplaceCertText(e.target.value)}
               className="input"
