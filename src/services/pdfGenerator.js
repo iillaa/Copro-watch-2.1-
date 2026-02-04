@@ -1,5 +1,6 @@
 import { jsPDF } from 'jspdf';
 import { logic } from './logic';
+import { db } from './db';
 
 // [FIX] Proper dynamic import handling for Capacitor
 let Filesystem, Directory;
@@ -37,6 +38,21 @@ export const pdfService = {
   generateBatchDoc: async (workers, docType, options = {}) => {
     const doc = new jsPDF('p', 'mm', 'a4');
 
+    // Fetch workplaces for custom certificate text
+    const workplaceMap = new Map();
+    if (docType === 'aptitude') {
+      try {
+        const allWorkplaces = await db.getWorkplaces();
+        allWorkplaces.forEach(wp => {
+          if (wp.name && wp.certificate_text) {
+            workplaceMap.set(wp.name.toLowerCase().trim(), wp.certificate_text);
+          }
+        });
+      } catch (e) {
+        console.error("Failed to load workplaces for PDF", e);
+      }
+    }
+
     if (docType === 'list_manager') {
       generateGroupedList(doc, workers, options);
     } else if (docType === 'aptitude') {
@@ -49,7 +65,7 @@ export const pdfService = {
         // Haut (0) ou Bas (148.5)
         const yOffset = i % 2 === 0 ? 0 : 148.5;
         
-        drawAptitudeCertificate(doc, workers[i], options, yOffset);
+        drawAptitudeCertificate(doc, workers[i], options, yOffset, workplaceMap);
         
         // Ligne de coupe
         if (i % 2 === 0 && i < workers.length - 1) {
@@ -105,7 +121,7 @@ export const pdfService = {
 // ==========================================
 // CERTIFICAT APTITUDE (Format Police - 2/page)
 // ==========================================
-function drawAptitudeCertificate(doc, worker, options, offset) {
+function drawAptitudeCertificate(doc, worker, options, offset, workplaceMap) {
   const y = (val) => offset + val; 
   const centerX = 105;
 
@@ -131,7 +147,7 @@ function drawAptitudeCertificate(doc, worker, options, offset) {
   doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', centerX, y(18), { align: 'center' });
   doc.text("SURETE DE WILAYA D'IN-SALAH", centerX, y(23), { align: 'center' });
   doc.text('SERVICE DE WILAYA DE SANTE', centerX, y(28), { align: 'center' });
-  doc.text("DE L'ACTION SOCIAL ET DES SPORTS", centerX, y(33), { align: 'center' });
+  doc.text("DE L'ACTION SOCIAL ET DES ACTIVITES SPORTIVES", centerX, y(33), { align: 'center' });
 
   // Date
   doc.setFont('helvetica', 'normal');
@@ -196,7 +212,7 @@ function drawAptitudeCertificate(doc, worker, options, offset) {
 
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Je soussigné Dr ........................ certifie avoir examiné ce jour :`, MARGIN, y(62));
+    doc.text(`Je soussigné Dr ........................................................ certifie avoir examiné ce jour :`, MARGIN, y(62));
     
     // [FIX] NOM / PRENOM DYNAMIQUE
     // Largeur dispo = 170mm. 
@@ -270,15 +286,27 @@ function drawAptitudeCertificate(doc, worker, options, offset) {
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
     
-    const workplace = (worker.workplaceName || '').toLowerCase();
-    let textLieu = "A travailler dans : " + (worker.workplaceName || '________________');
-
-    if (workplace.includes('cuisine')) {
-      textLieu = "A travailler dans la CUISINE";
-    } else if (workplace.includes('foyer')) {
-      textLieu = "A travailler dans le FOYER";
-    } else if (workplace.includes('coiffure')) {
-        textLieu = "A travailler dans le SALON DE COIFFURE";
+    const wpName = (worker.workplaceName || '').trim();
+    const wpLower = wpName.toLowerCase();
+    
+    // 1. Try to find custom text in Settings
+    let customText = workplaceMap ? workplaceMap.get(wpLower) : null;
+    
+    let textLieu;
+    if (customText) {
+      // Add prefix for custom text from Settings
+      textLieu = "A travailler dans " + customText;
+    } else {
+        // Fallback if no custom text found
+        if (wpLower.includes('cuisine')) {
+          textLieu = "A travailler dans la CUISINE";
+        } else if (wpLower.includes('foyer')) {
+          textLieu = "A travailler dans le FOYER";
+        } else if (wpLower.includes('coiffure')) {
+            textLieu = "A travailler dans le SALON DE COIFFURE";
+        } else {
+            textLieu = "A travailler dans : " + (wpName || '________________');
+        }
     }
 
     doc.text(textLieu, centerX, y(110), { align: 'center' });

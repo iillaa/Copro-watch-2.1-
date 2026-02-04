@@ -51,6 +51,7 @@ export default function Settings({
   // Workplaces State
   const [workplaces, setWorkplaces] = useState([]);
   const [newWorkplaceName, setNewWorkplaceName] = useState('');
+  const [newWorkplaceCertText, setNewWorkplaceCertText] = useState('');
   const [newDepartmentName, setNewDepartmentName] = useState('');
   const [departmentsLoading, setDepartmentsLoading] = useState(false);
 
@@ -321,8 +322,14 @@ export default function Settings({
   const addWorkplace = async () => {
     if (!newWorkplaceName.trim()) return;
     try {
-      await db.saveWorkplace({ name: newWorkplaceName.trim() });
+      // Save both name and certificate text
+      await db.saveWorkplace({ 
+        name: newWorkplaceName.trim(),
+        certificate_text: newWorkplaceCertText.trim() 
+      });
+      
       setNewWorkplaceName('');
+      setNewWorkplaceCertText(''); // Reset the new input
       await loadWorkplaces();
       showToast('Lieu de travail ajouté !', 'success');
     } catch (e) {
@@ -716,7 +723,7 @@ export default function Settings({
             >
               <FaBriefcase /> Lieux de Travail
             </h3>
-            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.5rem' }}>
               <input
                 type="text"
                 placeholder="Nouveau lieu..."
@@ -733,6 +740,15 @@ export default function Settings({
                 <FaPlus />
               </button>
             </div>
+            {/* New Input for Certificate Text */}
+            <input 
+              type="text"
+              placeholder="Texte certificat (ex: A travailler dans la CUISINE)"
+              value={newWorkplaceCertText}
+              onChange={(e) => setNewWorkplaceCertText(e.target.value)}
+              className="input"
+              style={{ fontSize: '0.9rem', marginBottom: '1rem' }}
+            />
 
             <div
               style={{
@@ -762,7 +778,10 @@ export default function Settings({
                       borderRadius: '4px',
                     }}
                   >
-                    <span style={{ fontWeight: 500 }}>{w.name}</span>
+                    <div>
+                      <div style={{ fontWeight: 500 }}>{w.name}</div>
+                      {w.certificate_text && <div style={{ fontSize: '0.75rem', color: '#666' }}>"{w.certificate_text}"</div>}
+                    </div>
                     <button
                       className="btn btn-sm btn-outline"
                       onClick={() => deleteWorkplace(w.id)}

@@ -212,9 +212,12 @@ export const db = {
     return await dbInstance.workplaces.toArray();
   },
   async saveWorkplace(workplace) {
-    const id = await dbInstance.workplaces.put(workplace);
-    await triggerBackupCheck(); // [FIX] Awaited
-    return { ...workplace, id };
+    // Allows passing either a string (old way) or an object (new way)
+    const item = typeof workplace === 'string'
+      ? { name: workplace, certificate_text: '' }
+      : workplace;
+
+    return dbInstance.workplaces.add(item);
   },
   async deleteWorkplace(id) {
     await dbInstance.workplaces.delete(id);
