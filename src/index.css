@@ -561,7 +561,6 @@ tr:nth-child(even) td {
 /* TABLET LAYOUT (769px - 1024px) */
 @media (min-width: 769px) and (max-width: 1024px) {
   .hide-mobile { display: none !important; }
-  /* [FIX] Show abbreviations so columns aren't empty */
   .show-mobile {
     display: inline !important;
     color: var(--primary) !important;
@@ -569,8 +568,14 @@ tr:nth-child(even) td {
   }
 }
 
+/* LARGE TABLET & DESKTOP (>= 1025px) - Full desktop layout */
+@media (min-width: 1025px) {
+  .hide-mobile { display: inline !important; }
+  .show-mobile { display: none !important; }
+}
+
 /* TABLET & MOBILE FIX: Unlock Lists so they never trap the finger */
-@media (max-width: 1024px) {
+@media (max-width: 768px) {
   .scroll-wrapper {
     max-height: none !important;
     overflow: visible !important;
@@ -717,8 +722,8 @@ tr:nth-child(even) td {
    (max-height: 600px + orientation: landscape)
    ========================================= */
 
-/* Landscape Mobile Fix (Poco F6 / Gaming Phones) */
-@media (max-height: 600px) and (orientation: landscape) {
+/* Landscape Mobile Fix (Phones in landscape only - exclude tablets) */
+@media (max-height: 600px) and (orientation: landscape) and (max-width: 768px) {
   html,
   body {
     height: auto !important;

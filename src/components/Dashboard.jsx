@@ -19,18 +19,17 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
   const toggleExpand = (section) =>
     setExpandedSection(expandedSection === section ? null : section);
 
-  // [FIX] IMPROVED MOBILE/TABLET DETECTION
+  // [FIX] PROPER MOBILE/TABLET/DESKTOP DETECTION
   const checkMobile = () => {
     if (typeof window === 'undefined') {
       return false;
     }
     
-    // Debug logging for diagnosis
     const userAgent = navigator.userAgent || navigator.vendor || window.opera;
     const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     const screenWidth = window.innerWidth;
-    const isSmallScreen = screenWidth <= 1024;
+    const screenHeight = window.innerHeight;
     const isTabletUA = /tablet|ipad|playbook|silk|kindle/i.test(userAgent);
     
     // DIAGNOSIS: Log detection values
@@ -39,14 +38,25 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
     console.log('isMobileUA:', isMobileUA);
     console.log('isTouchDevice:', isTouchDevice);
     console.log('screenWidth:', screenWidth);
-    console.log('isSmallScreen (<=1024):', isSmallScreen);
+    console.log('screenHeight:', screenHeight);
     console.log('isTabletUA:', isTabletUA);
     console.log('=========================');
     
-    // Logic: Mobile if UA matches OR (touch device AND small screen)
-    const result = isMobileUA || (isTouchDevice && isSmallScreen) || isTabletUA;
+    // Proper device classification:
+    // - Mobile (phone): width < 768px (portrait phones)
+    // - Tablet: width >= 768px AND width < 1200px (includes most tablets in landscape)
+    // - Desktop: width >= 1200px
+    // Note: We treat tablets as DESKTOP layout, not mobile
     
-    return result;
+    const isPhone = screenWidth < 768;
+    const isTablet = screenWidth >= 768 && screenWidth < 1200;
+    const isDesktop = screenWidth >= 1200;
+    
+    console.log('Classification:', { isPhone, isTablet, isDesktop, shouldUseMobileLayout: isPhone });
+    
+    // Return true ONLY for phones, NOT tablets
+    // Tablets should use desktop/tablet layout
+    return isPhone;
   };
 
   const [isMobile, setIsMobile] = useState(checkMobile());
