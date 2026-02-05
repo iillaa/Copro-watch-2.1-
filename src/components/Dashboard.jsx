@@ -25,18 +25,23 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
       return false;
     }
     
-    // 1. User Agent Detection for Mobile/Tablet
+    // Debug logging for diagnosis
     const userAgent = navigator.userAgent || navigator.vendor || window.opera;
     const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
-    
-    // 2. Touch Detection (for tablets without mobile UA)
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-    
-    // 3. Screen Width Detection
-    const isSmallScreen = window.innerWidth <= 1024;
-    
-    // 4. Check for tablet patterns in user agent
+    const screenWidth = window.innerWidth;
+    const isSmallScreen = screenWidth <= 1024;
     const isTabletUA = /tablet|ipad|playbook|silk|kindle/i.test(userAgent);
+    
+    // DIAGNOSIS: Log detection values
+    console.log('=== LAYOUT DIAGNOSIS ===');
+    console.log('User Agent:', userAgent);
+    console.log('isMobileUA:', isMobileUA);
+    console.log('isTouchDevice:', isTouchDevice);
+    console.log('screenWidth:', screenWidth);
+    console.log('isSmallScreen (<=1024):', isSmallScreen);
+    console.log('isTabletUA:', isTabletUA);
+    console.log('=========================');
     
     // Logic: Mobile if UA matches OR (touch device AND small screen)
     const result = isMobileUA || (isTouchDevice && isSmallScreen) || isTabletUA;
