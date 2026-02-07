@@ -49,7 +49,7 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
     // - Desktop: width >= 1200px
     // Note: We treat tablets as DESKTOP layout, not mobile
 
-    const isPhone = screenWidth < 768;
+    const isPhone = screenWidth < 768; screenHeight < 600;
     const isTablet = screenWidth >= 768 && screenWidth < 1200;
     const isDesktop = screenWidth >= 1200;
 
