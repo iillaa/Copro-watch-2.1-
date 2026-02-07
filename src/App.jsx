@@ -221,7 +221,11 @@ function App() {
           </button>
 
           {view === 'dashboard' && (
-            <Dashboard onNavigateWorker={navigateToWorker} compactMode={compactMode} />
+            <Dashboard
+              onNavigateWorker={navigateToWorker}
+              compactMode={compactMode}
+              forceMobile={forceMobile} // <--- [ADD THIS LINE]
+            />
           )}
           {view === 'workers' && (
             <WorkerList
@@ -248,6 +252,8 @@ function App() {
               onPinChange={setPin}
               compactMode={compactMode}
               setCompactMode={setCompactMode}
+              forceMobile={forceMobile}       // <--- [ADD THIS LINE]
+              setForceMobile={setForceMobile} // <--- [ADD THIS LINE]
             />
           )}
         </div>

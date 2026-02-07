@@ -9,7 +9,7 @@ import {
   FaEye,
 } from 'react-icons/fa';
 
-export default function Dashboard({ onNavigateWorker, compactMode }) {
+export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }) {
   const [loading, setLoading] = useState(true);
 
   // [SURGICAL] Expansion State - 'exam' for Examens à prévoir, 'retest' for Contre-visites

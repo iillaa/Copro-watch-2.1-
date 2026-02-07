@@ -1100,3 +1100,92 @@ html {
   outline-offset: 4px;
   border-radius: 4px;
 }
+/* =========================================
+   FORCE MOBILE MODE (Manual Override)
+   ========================================= */
+
+/* 1. Layout Reset */
+body.force-mobile html,
+body.force-mobile body,
+body.force-mobile #root,
+body.force-mobile .app-shell {
+  height: auto !important;
+  min-height: 100vh;
+  overflow: visible !important;
+}
+
+/* 2. Compact Sidebar (Fixed Left) */
+body.force-mobile .sidebar {
+  position: fixed !important;
+  top: 0;
+  left: 0;
+  width: 60px !important;
+  height: 100% !important;
+  padding: 0.5rem 0 !important;
+  overflow-y: auto;
+  border-right: 3px solid var(--border-color);
+  z-index: 5000;
+  flex-direction: column !important;
+  background: var(--surface) !important;
+}
+
+/* 3. Main Content Shift */
+body.force-mobile .main-content {
+  margin-left: 60px !important;
+  padding: 0.75rem !important;
+  width: calc(100% - 60px) !important;
+  overflow-y: visible !important;
+}
+
+/* 4. Hide Desktop Elements */
+body.force-mobile .sidebar .brand-text,
+body.force-mobile .sidebar .nav-text,
+body.force-mobile .sidebar .credit,
+body.force-mobile .toggle-sidebar,
+body.force-mobile .hide-mobile {
+  display: none !important;
+}
+
+/* 5. Show Mobile Abbreviations */
+body.force-mobile .show-mobile {
+  display: inline !important;
+  font-weight: bold !important;
+  color: var(--primary) !important;
+}
+
+/* 6. Component Adjustments */
+body.force-mobile .nav-item {
+  width: 50px !important;
+  justify-content: center !important;
+  padding: 0.75rem 0.5rem !important;
+}
+
+body.force-mobile .card {
+  padding: 0.75rem !important;
+  margin-bottom: 0.75rem !important;
+}
+
+body.force-mobile .stat-card-value {
+  font-size: 1.5rem !important;
+}
+
+body.force-mobile .btn {
+  padding: 0.4rem 0.6rem !important;
+  font-size: 0.8rem !important;
+}
+
+/* 7. Pin Lock Fix */
+body.force-mobile .pin-card {
+  flex-direction: row !important;
+  max-width: 600px !important;
+  padding: 1rem !important;
+}
+body.force-mobile .pin-info {
+  flex: 1;
+  border-right: 2px solid #e2e8f0;
+  padding-right: 1rem;
+}
+body.force-mobile .pin-pad {
+  flex: 1;
+  gap: 0.5rem;
+}

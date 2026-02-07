@@ -25,6 +25,8 @@ export default function Settings({
   setCompactMode,
   currentPin,
   onPinChange,
+  forceMobile,
+  setForceMobile,
 }) {
   // --- NAVIGATION STATE ---
   const [activeTab, setActiveTab] = useState('general');
@@ -566,6 +568,25 @@ export default function Settings({
                 {compactMode ? 'Activé' : 'Désactivé'}
               </button>
             </div>
+
+            {/* [INSERT THIS BLOCK START] */}
+            {/* Force Mobile Toggle */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+              <div>
+                <div style={{ fontWeight: 'bold' }}>Forcer "Mode Mobile"</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Optimisé pour Poco F3 / Paysage
+                </div>
+              </div>
+              <button
+                className={`btn ${forceMobile ? 'btn-primary' : 'btn-outline'}`}
+                onClick={() => setForceMobile(!forceMobile)}
+              >
+                {forceMobile ? 'ON' : 'OFF'}
+              </button>
+            </div>
+            {/* [INSERT THIS BLOCK END] */}
+
           </div>
 
           {/* Section: Sécurité */}
