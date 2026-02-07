@@ -558,8 +558,9 @@ tr:nth-child(even) td {
    TABLET MEDIA QUERIES (769px - 1024px)
    ========================================= */
 
-/* TABLET LAYOUT (769px - 1024px) */
-@media (min-width: 769px) and (max-width: 1024px) {
+/* TABLET LAYOUT (769px - 1024px)
+   [FIX] Added min-height to exclude Landscape Phones */
+@media (min-width: 769px) and (max-width: 1024px) and (min-height: 601px) {
   .hide-mobile { display: none !important; }
   .show-mobile {
     display: inline !important;
@@ -719,11 +720,12 @@ tr:nth-child(even) td {
 
 /* =========================================
    LANDSCAPE MOBILE MEDIA QUERIES
-   (max-height: 600px + orientation: landscape)
+   (Short screens = Landscape Phones)
    ========================================= */
 
-/* Landscape Mobile Fix (Phones in landscape only - exclude tablets) */
-@media (max-height: 600px) and (orientation: landscape) and (max-width: 768px) {
+/* Landscape Mobile Fix (Poco F3 / F6 / Gaming Phones)
+   [FIX] Removed orientation check to be more robust based on height */
+@media (max-height: 600px) {
   html,
   body {
     height: auto !important;
