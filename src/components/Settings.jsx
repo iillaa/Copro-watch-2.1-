@@ -269,23 +269,22 @@ export default function Settings({
     try {
       // 1. Try Automatic Import
       const backupData = await backupService.readBackupJSON();
-      
+
       if (!backupData || !backupData.text) {
-        throw new Error("Aucun fichier trouvé"); // Trigger fallback
+        throw new Error('Aucun fichier trouvé'); // Trigger fallback
       }
 
       const ok = await db.importData(backupData.text);
       setBackupStatus(ok ? 'Succès ! Backup restauré.' : 'Échec de la restauration.');
-      if(ok) showToast('Backup restauré avec succès', 'success');
+      if (ok) showToast('Backup restauré avec succès', 'success');
       setTimeout(() => setBackupStatus(''), 3000);
-
     } catch (e) {
-      console.warn("Auto-import failed, switching to manual:", e);
-      
+      console.warn('Auto-import failed, switching to manual:', e);
+
       // 2. Smart Fallback: Open File Picker automatically
       setBackupStatus('Ouverture du sélecteur de fichier...');
       showToast('Sécurité Android: Veuillez sélectionner le fichier manuellement.', 'info');
-      
+
       // Small delay to ensure the Toast is visible before the picker opens
       setTimeout(() => {
         if (fileRef.current) {
@@ -586,11 +585,19 @@ export default function Settings({
 
             {/* [INSERT THIS BLOCK START] */}
             {/* Force Mobile Toggle */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderTop: '1px solid #eee', paddingTop: '1rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderTop: '1px solid #eee',
+                paddingTop: '1rem',
+              }}
+            >
               <div>
                 <div style={{ fontWeight: 'bold' }}>Forcer "Mode Mobile"</div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Optimisé pour Poco F3 / Paysage
+                  Optimisé pour mobile / Paysage
                 </div>
               </div>
               <button
@@ -601,7 +608,6 @@ export default function Settings({
               </button>
             </div>
             {/* [INSERT THIS BLOCK END] */}
-
           </div>
 
           {/* Section: Sécurité */}

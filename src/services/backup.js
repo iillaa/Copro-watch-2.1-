@@ -255,7 +255,11 @@ export async function readBackupJSON() {
       try {
         // [FIX] Request permissions explicitly before reading
         // This ensures access is granted even after a "Clear Data"
-        try { await Filesystem.requestPermissions(); } catch (e) { /* Ignore if already granted */ }
+        try {
+          await Filesystem.requestPermissions();
+        } catch (e) {
+          /* Ignore if already granted */
+        }
 
         const result = await Filesystem.readdir({
           path: 'copro-watch',

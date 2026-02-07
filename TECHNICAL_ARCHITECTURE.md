@@ -29,6 +29,7 @@ Data export and sensitive operations utilize the **Web Crypto API** for standard
 - **Implementation:** `src/components/PinLock.jsx` (UI) and `src/App.jsx` (Timer Logic).
 
 ### 2.3 Cryptography Fallback
+
 - **Primary:** WebCrypto API (AES-GCM / SHA-256).
 - **Fallback:** Custom bitwise XOR/Hash implementation for legacy WebViews.
   - **Security Note:** Uses a hardcoded salt (`CoproWatch-v2...`) to prevent rainbow table attacks, though less secure than SHA-256. Intended for crash prevention on Android < 7.
@@ -101,14 +102,14 @@ The project utilizes automated pipelines for consistent build delivery via GitHu
 
 ### 7.1 Core Tables (Updated v2 Schema)
 
-| Table | Fields | Indexes |
-| :--- | :--- | :--- |
-| `workers` | id, firstName, lastName, departmentId, workplaceId, pin, status, nextExamDue | status, departmentId |
-| `departments` | id, name | name |
-| `workplaces` | id, name, certificate_text | name |
-| `exams` | id, workerId, date, weight, result, treatment, decision, nextExamDue | workerId, date |
-| `water_departments` | id, name | name |
-| `water_analyses` | id, sample_date, department_id, structure_id, chlorine, ph, temperature... | department_id, structure_id |
+| Table               | Fields                                                                       | Indexes                     |
+| :------------------ | :--------------------------------------------------------------------------- | :-------------------------- |
+| `workers`           | id, firstName, lastName, departmentId, workplaceId, pin, status, nextExamDue | status, departmentId        |
+| `departments`       | id, name                                                                     | name                        |
+| `workplaces`        | id, name, certificate_text                                                   | name                        |
+| `exams`             | id, workerId, date, weight, result, treatment, decision, nextExamDue         | workerId, date              |
+| `water_departments` | id, name                                                                     | name                        |
+| `water_analyses`    | id, sample_date, department_id, structure_id, chlorine, ph, temperature...   | department_id, structure_id |
 
 ### 7.2 Settings Table
 

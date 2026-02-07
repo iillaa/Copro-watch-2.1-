@@ -19,7 +19,7 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
     setExpandedSection(expandedSection === section ? null : section);
 
   // [FIX] PROPER MOBILE/TABLET/DESKTOP DETECTION
-  
+
   const checkMobile = () => {
     // 1. If button is ON, force Mobile immediately
     if (forceMobile) return true;
@@ -41,10 +41,10 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
   useEffect(() => {
     const handleResize = () => setIsMobile(checkMobile());
     window.addEventListener('resize', handleResize);
-    
+
     // Check immediately in case the button was just clicked
     handleResize();
-    
+
     return () => window.removeEventListener('resize', handleResize);
   }, [forceMobile]); // [CRITICAL] Re-run this when the button changes!
 

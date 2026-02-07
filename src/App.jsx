@@ -268,7 +268,7 @@ function App() {
               onPinChange={setPin}
               compactMode={compactMode}
               setCompactMode={setCompactMode}
-              forceMobile={forceMobile}       // <--- [ADD THIS LINE]
+              forceMobile={forceMobile} // <--- [ADD THIS LINE]
               setForceMobile={setForceMobile} // <--- [ADD THIS LINE]
             />
           )}

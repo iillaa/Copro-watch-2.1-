@@ -87,8 +87,8 @@ Si vous souhaitez héberger l'application sur un réseau local.
 
 ### 🔧 Paramètres & Maintenance
 
-- **Mode Compact** : Dans l'onglet *Général*, activez cette option pour réduire la hauteur des lignes dans les tableaux (utile pour les écrans de 13 pouces).
-- **Nettoyage Base de Données** : Dans l'onglet *Sauvegardes*, le bouton "Maintenance" permet de supprimer les examens "orphelins" (liés à des travailleurs qui ont été mal supprimés). À utiliser si l'application ralentit.
+- **Mode Compact** : Dans l'onglet _Général_, activez cette option pour réduire la hauteur des lignes dans les tableaux (utile pour les écrans de 13 pouces).
+- **Nettoyage Base de Données** : Dans l'onglet _Sauvegardes_, le bouton "Maintenance" permet de supprimer les examens "orphelins" (liés à des travailleurs qui ont été mal supprimés). À utiliser si l'application ralentit.
 
 ---
 
