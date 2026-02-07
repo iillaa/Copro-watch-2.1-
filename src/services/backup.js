@@ -253,6 +253,10 @@ export async function readBackupJSON() {
     if (Capacitor.isNativePlatform()) {
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
       try {
+        // [FIX] Request permissions explicitly before reading
+        // This ensures access is granted even after a "Clear Data"
+        try { await Filesystem.requestPermissions(); } catch (e) { /* Ignore if already granted */ }
+
         const result = await Filesystem.readdir({
           path: 'copro-watch',
           directory: Directory.Documents,
