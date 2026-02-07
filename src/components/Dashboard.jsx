@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { db } from '../services/db';
 import { logic } from '../services/logic';
 import {
@@ -10,7 +10,6 @@ import {
 } from 'react-icons/fa';
 
 export default function Dashboard({ onNavigateWorker, compactMode }) {
-  const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
 
   // [SURGICAL] Expansion State - 'exam' for Examens à prévoir, 'retest' for Contre-visites
@@ -70,45 +69,52 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
   // [GRID CONFIG] Name(1.5) | Date(1) | Action(80)
   const gridDashboard = '1.5fr 1fr 80px';
 
-  const loadStats = async () => {
+  // Load data and compute stats with useMemo for optimization
+  const [workers, setWorkers] = useState([]);
+  const [exams, setExams] = useState([]);
+
+  const loadData = async () => {
     try {
       setLoading(true);
-      // Safety check for DB
       if (!db) throw new Error('DB not ready');
-
-      const [workers, exams] = await Promise.all([db.getWorkers(), db.getExams()]);
-
-      // 1. Filtrer les archivés
-      const activeWorkers = (workers || []).filter((w) => !w.archived);
-
-      // 2. Calculer les stats
-      const computed = logic.getDashboardStats(activeWorkers, exams || []);
-
-      // 3. TRI AUTOMATIQUE
-      // ISO strings (yyyy-mm-dd) sort correctly alphabetically!
-      if (computed.dueSoon)
-        computed.dueSoon.sort((a, b) =>
-          (a.next_exam_due || '').localeCompare(b.next_exam_due || '')
-        );
-      if (computed.overdue)
-        computed.overdue.sort((a, b) =>
-          (a.next_exam_due || '').localeCompare(b.next_exam_due || '')
-        );
-      if (computed.retests)
-        computed.retests.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
-
-      setStats(computed);
+      const [w, e] = await Promise.all([db.getWorkers(), db.getExams()]);
+      setWorkers(w || []);
+      setExams(e || []);
     } catch (e) {
       console.error('Dashboard error:', e);
     } finally {
-      setLoading(false); // CRITICAL: This forces the screen to show, even if empty
+      setLoading(false);
     }
   };
+
+  // [FIX] useMemo for expensive stats computation
+  const stats = useMemo(() => {
+    // 1. Filtrer les archivés
+    const activeWorkers = (workers || []).filter((w) => !w.archived);
+
+    // 2. Calculer les stats
+    const computed = logic.getDashboardStats(activeWorkers, exams || []);
+
+    // 3. TRI AUTOMATIQUE
+    if (computed.dueSoon)
+      computed.dueSoon.sort((a, b) =>
+        (a.next_exam_due || '').localeCompare(b.next_exam_due || '')
+      );
+    if (computed.overdue)
+      computed.overdue.sort((a, b) =>
+        (a.next_exam_due || '').localeCompare(b.next_exam_due || '')
+      );
+    if (computed.retests)
+      computed.retests.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    return computed;
+  }, [workers, exams]);
+
   useEffect(() => {
-    loadStats();
+    loadData();
   }, []);
 
-  if (loading)
+  if (loading) {
     return (
       <div
         style={{
@@ -124,6 +130,7 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
         <div style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Chargement des données...</div>
       </div>
     );
+  }
 
   return (
     <div>

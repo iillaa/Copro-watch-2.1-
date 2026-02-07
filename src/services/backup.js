@@ -11,7 +11,7 @@ const AUTO_BACKUP_PREFIX = 'backup-auto-';
 const DEFAULT_THRESHOLD = 10;
 const DEFAULT_TIME_THRESHOLD = 4 * 60 * 60 * 1000; // 4 Hours
 const INIT_RETRY_DELAY = 100; // ms
-const MAX_INIT_RETRIES = 5;
+const MAX_INIT_RETRIES = 50;
 
 // --- STATE ---
 let counter = 0;

@@ -22,11 +22,16 @@ Data export and sensitive operations utilize the **Web Crypto API** for standard
   - **Salt/IV:** Randomly generated (`crypto.getRandomValues`) for every encryption operation.
   - **Transport:** Encrypted payloads are Base64 encoded for safe JSON transport.
 
-### 2.2 Access Control
+### 2.2 Access Control & Security
 
-- **Application Lock:** Implemented in `src/components/PinLock.jsx`.
-- **Mechanism:** UI-level overlay blocking interaction until a validated PIN is entered.
-- **Default State:** Locked on load.
+- **Dual-PIN System:** Supports legacy 4-digit PINs and robust SHA-256 hashed PINs (64 chars).
+- **Auto-Lock Protocol:** Application automatically locks after 5 minutes of inactivity (no mouse/keyboard events).
+- **Implementation:** `src/components/PinLock.jsx` (UI) and `src/App.jsx` (Timer Logic).
+
+### 2.3 Cryptography Fallback
+
+- **Primary:** WebCrypto API (AES-GCM / SHA-256).
+- **Fallback:** Custom bitwise XOR/Hash implementation for legacy WebViews (Note: Non-cryptographically secure, intended for crash prevention only).
 
 ## 3. Data Integrity & Automated Backups
 
@@ -42,6 +47,14 @@ Logic resides in `src/services/backup.js`.
     - `backup-auto.json`: System-generated, frequent snapshots.
     - `backup-manuel.json`: User-initiated, permanent snapshots.
 4.  **Conflict Resolution:** During import (`readBackupJSON`), the system compares timestamps of both files and loads the most recent one automatically, preventing stale data overwrites.
+
+### 3.2 Backup Service Logic
+
+- **Debounce:** Writes are registered with a 500ms debounce to prevent freezing the UI during rapid typing.
+- **Race Condition Handling:** Service waits up to 5 seconds for DB initialization before failing.
+- **Storage Strategy:** 
+  - **Android:** Uses `Capacitor Filesystem` (Documents/copro-watch).
+  - **Web:** Uses `window.showDirectoryPicker` API (Chromium) or Blob Download fallback.
 
 ## 4. Export Engines
 
@@ -86,16 +99,20 @@ The project utilizes automated pipelines for consistent build delivery via GitHu
 
 ## 7. Database Schema
 
-### 7.1 Core Tables
+### 7.1 Core Tables (Updated v2 Schema)
 
-| Table               | Fields                                                                       | Indexes              |
-| :------------------ | :--------------------------------------------------------------------------- | :------------------- |
-| `workers`           | id, firstName, lastName, departmentId, workplaceId, pin, status, nextExamDue | status, departmentId |
-| `departments`       | id, name                                                                     | name                 |
-| `workplaces`        | id, name                                                                     | name                 |
-| `exams`             | id, workerId, date, weight, result, treatment, decision, nextExamDue         | workerId, date       |
-| `water_departments` | id, name                                                                     | name                 |
-| `water_analyses`    | id, waterDeptId, date, chlorine, ph, temperature, coliformes, notes          | waterDeptId, date    |
+| Table | Fields | Indexes |
+| :--- | :--- | :--- |
+| `water_analyses` | id, sample_date, department_id, structure_id, chlorine, ph, temperature... | department_id, structure_id |
+
+| Table | Fields | Indexes |
+| :--- | :--- | :--- |
+| `workers` | id, firstName, lastName, departmentId, workplaceId, pin, status, nextExamDue | status, departmentId |
+| `departments` | id, name | name |
+| `workplaces` | id, name | name |
+| `exams` | id, workerId, date, weight, result, treatment, decision, nextExamDue | workerId, date |
+| `water_departments` | id, name | name |
+| `water_analyses` | id, sample_date, department_id, structure_id, chlorine, ph, temperature, coliformes, notes | department_id, date |
 
 ### 7.2 Settings Table
 

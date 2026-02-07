@@ -43,6 +43,12 @@
 
 ### 🔒 Sécurité & Technique
 
+- [x] **Concept : Auto-Lock (Verrouillage Auto)**
+  - _État :_ ✅ Terminé (v2.1)
+  - _Détail :_ Verrouillage automatique après 5 minutes d'inactivité pour protéger les données médicales.
+- [x] **Concept : Hashed PINs**
+  - _État :_ ✅ Terminé (v2.1)
+  - _Détail :_ Migration vers le hachage SHA-256 pour le stockage du code PIN.
 - [ ] **Concept : Authentification Biométrique**
   - _Idée :_ Utiliser les API natives Android.
   - _But :_ Connexion par empreinte digitale ou FaceID (remplace le PIN).

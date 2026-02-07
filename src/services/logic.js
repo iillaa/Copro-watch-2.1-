@@ -172,10 +172,12 @@ export const logic = {
 
     const deptAnalyses = this.getDepartmentWaterHistory(departmentId, allAnalyses);
     const lastActivity = deptAnalyses[0];
-    const lastDate = lastActivity ? lastActivity.sample_date || lastActivity.request_date : null;
+    // [ROBUST] Handle missing dates safely: prefer request_date, fallback to sample_date
+    const lastDate = lastActivity ? (lastActivity.request_date || lastActivity.sample_date || null) : null;
 
     const currentMonthAnalysis = deptAnalyses.find((analysis) => {
-      const dateToCheck = analysis.request_date || analysis.sample_date;
+      // [ROBUST] Handle missing dates safely: prefer request_date, fallback to sample_date
+      const dateToCheck = analysis.request_date || analysis.sample_date || '';
       if (!dateToCheck) return false;
       return dateToCheck.startsWith(currentMonthStr);
     });

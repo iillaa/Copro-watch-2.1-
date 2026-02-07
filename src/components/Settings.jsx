@@ -32,6 +32,10 @@ export default function Settings({
   // --- EXISTING STATE & LOGIC ---
   // Initialize empty. We only set it if the user types a NEW pin.
   const [pin, setPin] = useState('');
+
+  // PIN Migration Check: Detect legacy PINs (4-digit) vs hashed (SHA-256)
+  const isLegacyPin = currentPin && currentPin.length === 4 && /^[0-9]+$/.test(currentPin);
+  const [showPinMigrationPrompt, setShowPinMigrationPrompt] = useState(isLegacyPin);
   const [doctorName, setDoctorName] = useState('');
   const { showToast, ToastContainer } = useToast();
   const fileRef = useRef();
@@ -92,7 +96,11 @@ export default function Settings({
   const handleExportEncrypted = async () => {
     try {
       const pw = prompt("Entrez un mot de passe pour chiffrer l'export:");
-      if (!pw) return;
+      if (pw === null) return; // User pressed Cancel
+      if (!pw.trim()) {
+        showToast('Mot de passe requis', 'error');
+        return;
+      }
 
       console.log('Starting encrypted export...');
       showToast("Génération de l'export chiffré...", 'info');
@@ -128,7 +136,11 @@ export default function Settings({
     const file = e.target.files[0];
     if (!file) return;
     const pw = prompt("Entrez le mot de passe pour déchiffrer l'import:");
-    if (!pw) return;
+    if (pw === null) return; // User pressed Cancel
+    if (!pw.trim()) {
+      showToast('Mot de passe requis', 'error');
+      return;
+    }
     const text = await file.text();
     const ok = await db.importDataEncrypted(text, pw);
     showToast(
@@ -577,6 +589,33 @@ export default function Settings({
             </div>
 
             {/* PIN Code */}
+            {showPinMigrationPrompt && (
+              <div
+                style={{
+                  marginBottom: '1rem',
+                  padding: '1rem',
+                  background: '#fef3c7',
+                  border: '2px solid #f59e0b',
+                  borderRadius: '8px',
+                }}
+              >
+                <div style={{ fontWeight: 'bold', color: '#92400e', marginBottom: '0.5rem' }}>
+                  🔐 Mise à jour de sécurité requise
+                </div>
+                <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#78350f' }}>
+                  Votre code PIN utilise l'ancien format vulnérable. Pour protéger les données médicales, 
+                  veuillez saisir un nouveau code PIN ci-dessous.
+                </p>
+                <button
+                  className="btn btn-sm"
+                  onClick={() => setShowPinMigrationPrompt(false)}
+                  style={{ background: '#f59e0b', color: 'white', border: 'none' }}
+                >
+                  Compris, je vais changer mon PIN
+                </button>
+              </div>
+            )}
+
             <div style={{ marginBottom: '1rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
                 Changer le Code PIN (4 chiffres)
