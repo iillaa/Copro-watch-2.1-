@@ -4,9 +4,8 @@
 const BACKUP_STORE = 'backup_settings';
 
 // --- FILES ---
-const MANUAL_BACKUP_FILE_NAME = 'backup-manuel.json';
-const AUTO_BACKUP_COUNTER_FILE = 'backup-auto-compteur.json';
-const AUTO_BACKUP_TIME_FILE = 'backup-auto-temps.json';
+const MANUAL_BACKUP_FILE = 'backup-manuel';
+const AUTO_BACKUP_PREFIX = 'backup-auto-';
 
 // --- CONSTANTS ---
 const DEFAULT_THRESHOLD = 10;
@@ -152,35 +151,45 @@ export async function saveBackupJSON(jsonString, filename) {
         return true;
       } catch (e) {
         console.error('[Backup] Native write failed:', e);
-        throw new Error('Échec Android: ' + e.message);
+        return false; // Return false instead of throwing
       }
     }
 
     // 2. WEB
     if (typeof window !== 'undefined' && backupDir) {
-      const fileHandle = await backupDir.getFileHandle(filename, { create: true });
-      const writable = await fileHandle.createWritable();
-      await writable.write(jsonString);
-      await writable.close();
-      return true;
+      try {
+        const fileHandle = await backupDir.getFileHandle(filename, { create: true });
+        const writable = await fileHandle.createWritable();
+        await writable.write(jsonString);
+        await writable.close();
+        return true;
+      } catch (e) {
+        console.error('[Backup] Web write failed:', e);
+        return false;
+      }
     }
 
     // 3. FALLBACK Download
-    const blob = new Blob([jsonString], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => {
-      document.body.removeChild(a);
-      window.URL.revokeObjectURL(url);
-    }, 0);
-    return true;
+    try {
+      const blob = new Blob([jsonString], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 0);
+      return true;
+    } catch (e) {
+      console.error('[Backup] Fallback download failed:', e);
+      return false;
+    }
   } catch (e) {
     console.error('[Backup] Critical failure:', e);
-    throw e;
+    return false;
   }
 }
 
@@ -309,19 +318,67 @@ export async function readBackupJSON() {
 // [HELPER] Legacy fallback in case 'readdir' is denied permission
 async function readBackupJSONLegacy() {
   console.log('[Backup] Scanning failed, using legacy fallback...');
-  const files = ['backup-manuel.json', 'backup-auto-compteur.json', 'backup-auto-temps.json'];
+  
+  // Search for any backup file (manual or auto with timestamps)
+  const patterns = [
+    'backup-manuel_',        // Manual backup with timestamp
+    'backup-counter_',       // Auto counter backup with timestamp
+    'backup-time_',          // Auto time backup with timestamp
+  ];
+  
+  // Also check old fixed-name files for compatibility
+  const oldFiles = ['backup-manuel.json', 'backup-auto-compteur.json', 'backup-auto-temps.json'];
+  
   let best = null;
   let maxDate = 0;
-
-  for (const f of files) {
-    const content = await getFileContent(f);
-    if (content) {
-      if (content.lastModified > maxDate) {
-        maxDate = content.lastModified;
-        best = content;
+  
+  // Import Filesystem for legacy fallback
+  const { Capacitor } = await import('@capacitor/core');
+  if (Capacitor.isNativePlatform()) {
+    const { Filesystem, Directory } = await import('@capacitor/filesystem');
+    
+    // Check new timestamped files first
+    for (const pattern of patterns) {
+      try {
+        const result = await Filesystem.readdir({
+          path: 'copro-watch',
+          directory: Directory.Documents,
+        });
+        
+        for (const file of result.files) {
+          if (file.name.startsWith(pattern) && file.name.endsWith('.json')) {
+            try {
+              const content = await getFileContent(file.name);
+              if (content && content.lastModified > maxDate) {
+                maxDate = content.lastModified;
+                best = content;
+              }
+            } catch (e) {
+              // Skip this file
+            }
+          }
+        }
+      } catch (e) {
+        // Continue to next pattern
+      }
+    }
+    
+    // If no timestamped files found, check old fixed-name files
+    if (!best) {
+      for (const filename of oldFiles) {
+        try {
+          const content = await getFileContent(filename);
+          if (content && content.lastModified > maxDate) {
+            maxDate = content.lastModified;
+            best = content;
+          }
+        } catch (e) {
+          // Skip this file
+        }
       }
     }
   }
+  
   if (best) return best;
   throw new Error('Aucune sauvegarde trouvée.');
 }
@@ -377,24 +434,47 @@ export async function registerWaterAnalysisChange() {
   return registerChange();
 }
 
+// Helper function to generate unique filename with timestamp
+export function generateBackupFilename(prefix = 'backup') {
+  const now = new Date();
+  const dateStr =
+    now.getFullYear() +
+    '-' +
+    String(now.getMonth() + 1).padStart(2, '0') +
+    '-' +
+    String(now.getDate()).padStart(2, '0') +
+    '_' +
+    String(now.getHours()).padStart(2, '0') +
+    '-' +
+    String(now.getMinutes()).padStart(2, '0') +
+    '-' +
+    String(now.getSeconds()).padStart(2, '0');
+  return `${prefix}_${dateStr}.json`;
+}
+
 // [UPDATED] Export now takes a specific filename based on type
 export async function performAutoExport(getJsonCallback, type = 'COUNTER') {
   try {
     const json = await getJsonCallback();
 
-    // Choose file based on trigger type
-    let targetFile = AUTO_BACKUP_COUNTER_FILE;
-    if (type === 'TIME') targetFile = AUTO_BACKUP_TIME_FILE;
+    // Generate unique filename with timestamp (like manual backup)
+    const prefix = type === 'TIME' ? 'backup-time' : 'backup-counter';
+    const filename = generateBackupFilename(prefix);
 
-    const success = await saveBackupJSON(json, targetFile);
+    const success = await saveBackupJSON(json, filename);
 
     if (success) {
-      await resetCounter(); // Resets everything on success
+      await resetCounter(); // Reset on success
+      console.log(`[Backup] Auto backup saved: ${filename}`);
       return true;
+    } else {
+      // Backup failed - DO NOT reset counter so user knows there's a problem
+      console.warn(`[Backup] Auto backup FAILED: ${filename} - Counter kept for retry`);
+      return false;
     }
-    return false;
   } catch (e) {
-    console.error('[Backup] Auto export failed:', e);
+    console.error('[Backup] Auto export error:', e);
+    // DO NOT reset counter on error - user should know there's a problem
     return false;
   }
 }
@@ -540,4 +620,5 @@ export default {
   checkAndAutoImport,
   isDirectoryAvailable,
   getCurrentStorageInfo,
+  generateBackupFilename,
 };

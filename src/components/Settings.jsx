@@ -218,20 +218,8 @@ export default function Settings({
 
       const json = await db.exportData();
 
-      // Generate a unique filename with DATE and TIME
-      const now = new Date();
-      const dateStr =
-        now.getFullYear() +
-        '-' +
-        String(now.getMonth() + 1).padStart(2, '0') +
-        '-' +
-        String(now.getDate()).padStart(2, '0') +
-        '_' +
-        String(now.getHours()).padStart(2, '0') +
-        '-' +
-        String(now.getMinutes()).padStart(2, '0');
-
-      const filename = `backup_manuel_${dateStr}.json`;
+      // Use helper function from backup service for consistent filename format
+      const filename = backupService.generateBackupFilename('backup-manuel');
 
       const success = await backupService.saveBackupJSON(json, filename);
 
