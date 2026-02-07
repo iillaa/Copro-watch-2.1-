@@ -263,22 +263,37 @@ export default function Settings({
     }
   };
 
+  // [FIX] Smart Import: Tries Auto, falls back to Manual Picker if Android blocks it
   const handleImportFromBackup = async () => {
-    setBackupStatus('Importing...');
+    setBackupStatus('Recherche de sauvegarde...');
     try {
+      // 1. Try Automatic Import
       const backupData = await backupService.readBackupJSON();
+      
       if (!backupData || !backupData.text) {
-        setBackupStatus('No backup file found in directory.');
-        return;
+        throw new Error("Aucun fichier trouvé"); // Trigger fallback
       }
+
       const ok = await db.importData(backupData.text);
-      setBackupStatus(ok ? 'Imported from backup folder.' : 'Import failed.');
+      setBackupStatus(ok ? 'Succès ! Backup restauré.' : 'Échec de la restauration.');
+      if(ok) showToast('Backup restauré avec succès', 'success');
       setTimeout(() => setBackupStatus(''), 3000);
+
     } catch (e) {
-      setBackupStatus('Import failed: ' + (e.message || e));
+      console.warn("Auto-import failed, switching to manual:", e);
+      
+      // 2. Smart Fallback: Open File Picker automatically
+      setBackupStatus('Ouverture du sélecteur de fichier...');
+      showToast('Sécurité Android: Veuillez sélectionner le fichier manuellement.', 'info');
+      
+      // Small delay to ensure the Toast is visible before the picker opens
+      setTimeout(() => {
+        if (fileRef.current) {
+          fileRef.current.click();
+        }
+      }, 500);
     }
   };
-
   const handleClearBackupDir = async () => {
     try {
       await backupService.clearDirectory();
