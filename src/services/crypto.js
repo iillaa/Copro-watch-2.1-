@@ -4,6 +4,9 @@ let isWebCryptoAvailable = false;
 let cryptoAPI = null;
 let subtleAPI = null;
 
+// [FIX] Salt for fallback hash (not cryptographically secure, but adds obscurity)
+const FALLBACK_SALT = 'CoproWatch-v2-SecureHashSalt-2024';
+
 // Initialize crypto APIs safely
 function initCrypto() {
   try {
@@ -133,9 +136,11 @@ export async function hashString(message) {
   // Fallback if WebCrypto is not available
   if (!isWebCryptoAvailable) {
     console.warn('[CRYPTO] Using fallback hash (not secure)');
+    // Add salt to make brute-forcing harder
+    const saltedMessage = message + FALLBACK_SALT;
     let hash = 0;
-    for (let i = 0; i < message.length; i++) {
-      const char = message.charCodeAt(i);
+    for (let i = 0; i < saltedMessage.length; i++) {
+      const char = saltedMessage.charCodeAt(i);
       hash = ((hash << 5) - hash) + char;
       hash = hash & hash;
     }
