@@ -34,6 +34,9 @@
 - [x] **Concept : Actions en Masse (Bulk Actions)**
   - _État :_ ✅ Terminé (v2.1)
   - _Détail :_ Suppression, Planification, Résultats, Archivage et Impression en masse.
+- [x] **Concept : Mode Compact**
+  - _État :_ ✅ Terminé (v2.1)
+  - _Détail :_ Option d'affichage dense pour les listes longues.
 - [ ] **Concept : Recherche Avancée**
   - _Idée :_ Filtres combinés dans la barre de recherche.
   - _But :_ Trouver "Cuisiniers" + "En Retard" + "Dep: SWAG" en une seule requête.

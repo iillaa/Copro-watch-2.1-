@@ -85,6 +85,11 @@ Si vous souhaitez héberger l'application sur un réseau local.
     - Cliquez sur **"Sauvegarder les données (Export)"**.
     - Stockez le fichier JSON généré sur un support externe (Clé USB ou Drive) par sécurité.
 
+### 🔧 Paramètres & Maintenance
+
+- **Mode Compact** : Dans l'onglet *Général*, activez cette option pour réduire la hauteur des lignes dans les tableaux (utile pour les écrans de 13 pouces).
+- **Nettoyage Base de Données** : Dans l'onglet *Sauvegardes*, le bouton "Maintenance" permet de supprimer les examens "orphelins" (liés à des travailleurs qui ont été mal supprimés). À utiliser si l'application ralentit.
+
 ---
 
 ## 🛠️ Développement & Technique
