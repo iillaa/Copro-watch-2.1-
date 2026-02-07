@@ -21,7 +21,21 @@ function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [waterResetKey, setWaterResetKey] = useState(0);
   const [compactMode, setCompactMode] = useState(true);
-  const [forceMobile, setForceMobile] = useState(false);
+  // [FIX] Initialize from Memory (so it stays ON after reload)
+  const [forceMobile, setForceMobile] = useState(
+    () => localStorage.getItem('copro_force_mobile') === 'true'
+  );
+
+  // [FIX] Apply CSS & Save to Memory whenever it changes
+  useEffect(() => {
+    if (forceMobile) {
+      document.body.classList.add('force-mobile');
+    } else {
+      document.body.classList.remove('force-mobile');
+    }
+    localStorage.setItem('copro_force_mobile', forceMobile);
+  }, [forceMobile]);
+  
   const [pin, setPin] = useState('0000');
   // --- ENGINE STARTUP (The Only Change) ---
   const initApp = async () => {

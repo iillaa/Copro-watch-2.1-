@@ -19,49 +19,20 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
     setExpandedSection(expandedSection === section ? null : section);
 
   // [FIX] PROPER MOBILE/TABLET/DESKTOP DETECTION
+  
   const checkMobile = () => {
-    if (typeof window === 'undefined') {
-      return false;
-    }
+    // 1. If button is ON, force Mobile immediately
+    if (forceMobile) return true;
 
-    const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
-      userAgent
-    );
-    const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+    if (typeof window === 'undefined') return false;
+
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
-    const isTabletUA = /tablet|ipad|playbook|silk|kindle/i.test(userAgent);
 
-    // DIAGNOSIS: Log detection values
-    console.log('=== LAYOUT DIAGNOSIS ===');
-    console.log('User Agent:', userAgent);
-    console.log('isMobileUA:', isMobileUA);
-    console.log('isTouchDevice:', isTouchDevice);
-    console.log('screenWidth:', screenWidth);
-    console.log('screenHeight:', screenHeight);
-    console.log('isTabletUA:', isTabletUA);
-    console.log('=========================');
+    // 2. [FIXED] Correct Logic: Width OR Height (Landscape Phone)
+    // The previous version had a syntax error (;) here
+    const isPhone = screenWidth < 768 || screenHeight < 600;
 
-    // Proper device classification:
-    // - Mobile (phone): width < 768px (portrait phones)
-    // - Tablet: width >= 768px AND width < 1200px (includes most tablets in landscape)
-    // - Desktop: width >= 1200px
-    // Note: We treat tablets as DESKTOP layout, not mobile
-
-    const isPhone = screenWidth < 768; screenHeight < 600;
-    const isTablet = screenWidth >= 768 && screenWidth < 1200;
-    const isDesktop = screenWidth >= 1200;
-
-    console.log('Classification:', {
-      isPhone,
-      isTablet,
-      isDesktop,
-      shouldUseMobileLayout: isPhone,
-    });
-
-    // Return true ONLY for phones, NOT tablets
-    // Tablets should use desktop/tablet layout
     return isPhone;
   };
 
@@ -70,8 +41,12 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
   useEffect(() => {
     const handleResize = () => setIsMobile(checkMobile());
     window.addEventListener('resize', handleResize);
+    
+    // Check immediately in case the button was just clicked
+    handleResize();
+    
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [forceMobile]); // [CRITICAL] Re-run this when the button changes!
 
   // [GRID CONFIG] Name(1.5) | Date(1) | Action(80)
   const gridDashboard = '1.5fr 1fr 80px';
