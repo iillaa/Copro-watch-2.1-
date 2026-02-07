@@ -27,15 +27,16 @@ function App() {
   );
 
   // [FIX] Apply CSS & Save to Memory whenever it changes
+  // [FIX] Apply CSS class to <HTML> tag to override global scroll lock
   useEffect(() => {
     if (forceMobile) {
-      document.body.classList.add('force-mobile');
+      document.documentElement.classList.add('force-mobile');
     } else {
-      document.body.classList.remove('force-mobile');
+      document.documentElement.classList.remove('force-mobile');
     }
     localStorage.setItem('copro_force_mobile', forceMobile);
   }, [forceMobile]);
-  
+
   const [pin, setPin] = useState('0000');
   // --- ENGINE STARTUP (The Only Change) ---
   const initApp = async () => {
