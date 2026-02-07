@@ -213,9 +213,8 @@ export const db = {
   },
   async saveWorkplace(workplace) {
     // Allows passing either a string (old way) or an object (new way)
-    const item = typeof workplace === 'string'
-      ? { name: workplace, certificate_text: '' }
-      : workplace;
+    const item =
+      typeof workplace === 'string' ? { name: workplace, certificate_text: '' } : workplace;
 
     return dbInstance.workplaces.add(item);
   },

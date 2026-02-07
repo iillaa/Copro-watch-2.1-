@@ -33,14 +33,14 @@ export async function init(providedDb, maxRetries = MAX_INIT_RETRIES) {
   if (dbApi && isInitialized) {
     return true;
   }
-  
+
   if (providedDb) dbApi = providedDb;
 
   // Retry mechanism for race conditions
   let retries = 0;
   while (!dbApi && retries < maxRetries) {
     console.log(`[Backup] Waiting for DB (attempt ${retries + 1}/${maxRetries})...`);
-    await new Promise(r => setTimeout(r, INIT_RETRY_DELAY));
+    await new Promise((r) => setTimeout(r, INIT_RETRY_DELAY));
     retries++;
   }
 
@@ -318,25 +318,25 @@ export async function readBackupJSON() {
 // [HELPER] Legacy fallback in case 'readdir' is denied permission
 async function readBackupJSONLegacy() {
   console.log('[Backup] Scanning failed, using legacy fallback...');
-  
+
   // Search for any backup file (manual or auto with timestamps)
   const patterns = [
-    'backup-manuel_',        // Manual backup with timestamp
-    'backup-counter_',       // Auto counter backup with timestamp
-    'backup-time_',          // Auto time backup with timestamp
+    'backup-manuel_', // Manual backup with timestamp
+    'backup-counter_', // Auto counter backup with timestamp
+    'backup-time_', // Auto time backup with timestamp
   ];
-  
+
   // Also check old fixed-name files for compatibility
   const oldFiles = ['backup-manuel.json', 'backup-auto-compteur.json', 'backup-auto-temps.json'];
-  
+
   let best = null;
   let maxDate = 0;
-  
+
   // Import Filesystem for legacy fallback
   const { Capacitor } = await import('@capacitor/core');
   if (Capacitor.isNativePlatform()) {
     const { Filesystem, Directory } = await import('@capacitor/filesystem');
-    
+
     // Check new timestamped files first
     for (const pattern of patterns) {
       try {
@@ -344,7 +344,7 @@ async function readBackupJSONLegacy() {
           path: 'copro-watch',
           directory: Directory.Documents,
         });
-        
+
         for (const file of result.files) {
           if (file.name.startsWith(pattern) && file.name.endsWith('.json')) {
             try {
@@ -362,7 +362,7 @@ async function readBackupJSONLegacy() {
         // Continue to next pattern
       }
     }
-    
+
     // If no timestamped files found, check old fixed-name files
     if (!best) {
       for (const filename of oldFiles) {
@@ -378,7 +378,7 @@ async function readBackupJSONLegacy() {
       }
     }
   }
-  
+
   if (best) return best;
   throw new Error('Aucune sauvegarde trouvée.');
 }

@@ -477,7 +477,6 @@ tr:nth-child(even) td {
   padding: 1.5rem;
   /* [FIX] Stop scroll from chaining to background */
   overscroll-behavior: contain;
-
 }
 @keyframes modalOverlayFadeIn {
   0% {
@@ -515,7 +514,9 @@ tr:nth-child(even) td {
 /* .hide-mobile = Long text shown ONLY on desktop (Matricule, Dernier, Prochain) */
 
 /* Base: Hide .show-mobile everywhere (desktop-first approach) */
-.show-mobile { display: none !important; }
+.show-mobile {
+  display: none !important;
+}
 
 /* =========================================
    DESKTOP MEDIA QUERIES (min-width: 769px)
@@ -561,7 +562,9 @@ tr:nth-child(even) td {
 /* TABLET LAYOUT (769px - 1024px)
    [FIX] Added min-height to exclude Landscape Phones */
 @media (min-width: 769px) and (max-width: 1024px) and (min-height: 601px) {
-  .hide-mobile { display: none !important; }
+  .hide-mobile {
+    display: none !important;
+  }
   .show-mobile {
     display: inline !important;
     color: var(--primary) !important;
@@ -571,8 +574,12 @@ tr:nth-child(even) td {
 
 /* LARGE TABLET & DESKTOP (>= 1025px) - Full desktop layout */
 @media (min-width: 1025px) {
-  .hide-mobile { display: inline !important; }
-  .show-mobile { display: none !important; }
+  .hide-mobile {
+    display: inline !important;
+  }
+  .show-mobile {
+    display: none !important;
+  }
 }
 
 /* TABLET & MOBILE FIX: Unlock Lists so they never trap the finger */
@@ -591,12 +598,14 @@ tr:nth-child(even) td {
 /* MOBILE LAYOUT (Phone Only - <= 768px) - Show abbreviated text */
 @media (max-width: 768px) {
   /* 1. RESET LAYOUT & SCROLL */
-  html, body {
+  html,
+  body {
     overflow-y: auto !important;
     height: auto !important;
     min-height: 100dvh;
   }
-  #root, .app-shell {
+  #root,
+  .app-shell {
     height: auto !important;
     min-height: 100dvh;
     overflow: visible !important;
@@ -620,12 +629,18 @@ tr:nth-child(even) td {
     background: var(--bg-app);
   }
   /* Hide Desktop Elements */
-  .brand, .toggle-sidebar, .nav-text, .credit, .credit-version {
+  .brand,
+  .toggle-sidebar,
+  .nav-text,
+  .credit,
+  .credit-version {
     display: none !important;
   }
 
   /* CRITICAL: Hide long text on mobile, show short text */
-  .hide-mobile { display: none !important; }
+  .hide-mobile {
+    display: none !important;
+  }
   .show-mobile {
     display: inline !important;
     font-weight: bold !important;
@@ -715,7 +730,9 @@ tr:nth-child(even) td {
   }
 
   /* Fix Modal/Keyboard */
-  .modal { margin-bottom: 50vh !important; }
+  .modal {
+    margin-bottom: 50vh !important;
+  }
 }
 
 /* =========================================

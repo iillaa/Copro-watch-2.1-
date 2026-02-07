@@ -52,7 +52,7 @@ Logic resides in `src/services/backup.js`.
 
 - **Debounce:** Writes are registered with a 500ms debounce to prevent freezing the UI during rapid typing.
 - **Race Condition Handling:** Service waits up to 5 seconds for DB initialization before failing.
-- **Storage Strategy:** 
+- **Storage Strategy:**
   - **Android:** Uses `Capacitor Filesystem` (Documents/copro-watch).
   - **Web:** Uses `window.showDirectoryPicker` API (Chromium) or Blob Download fallback.
 
@@ -101,18 +101,18 @@ The project utilizes automated pipelines for consistent build delivery via GitHu
 
 ### 7.1 Core Tables (Updated v2 Schema)
 
-| Table | Fields | Indexes |
-| :--- | :--- | :--- |
+| Table            | Fields                                                                     | Indexes                     |
+| :--------------- | :------------------------------------------------------------------------- | :-------------------------- |
 | `water_analyses` | id, sample_date, department_id, structure_id, chlorine, ph, temperature... | department_id, structure_id |
 
-| Table | Fields | Indexes |
-| :--- | :--- | :--- |
-| `workers` | id, firstName, lastName, departmentId, workplaceId, pin, status, nextExamDue | status, departmentId |
-| `departments` | id, name | name |
-| `workplaces` | id, name | name |
-| `exams` | id, workerId, date, weight, result, treatment, decision, nextExamDue | workerId, date |
-| `water_departments` | id, name | name |
-| `water_analyses` | id, sample_date, department_id, structure_id, chlorine, ph, temperature, coliformes, notes | department_id, date |
+| Table               | Fields                                                                                     | Indexes              |
+| :------------------ | :----------------------------------------------------------------------------------------- | :------------------- |
+| `workers`           | id, firstName, lastName, departmentId, workplaceId, pin, status, nextExamDue               | status, departmentId |
+| `departments`       | id, name                                                                                   | name                 |
+| `workplaces`        | id, name                                                                                   | name                 |
+| `exams`             | id, workerId, date, weight, result, treatment, decision, nextExamDue                       | workerId, date       |
+| `water_departments` | id, name                                                                                   | name                 |
+| `water_analyses`    | id, sample_date, department_id, structure_id, chlorine, ph, temperature, coliformes, notes | department_id, date  |
 
 ### 7.2 Settings Table
 

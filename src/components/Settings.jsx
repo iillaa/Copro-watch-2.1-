@@ -323,11 +323,11 @@ export default function Settings({
     if (!newWorkplaceName.trim()) return;
     try {
       // Save both name and certificate text
-      await db.saveWorkplace({ 
+      await db.saveWorkplace({
         name: newWorkplaceName.trim(),
-        certificate_text: newWorkplaceCertText.trim() 
+        certificate_text: newWorkplaceCertText.trim(),
       });
-      
+
       setNewWorkplaceName('');
       setNewWorkplaceCertText(''); // Reset the new input
       await loadWorkplaces();
@@ -603,8 +603,8 @@ export default function Settings({
                   🔐 Mise à jour de sécurité requise
                 </div>
                 <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#78350f' }}>
-                  Votre code PIN utilise l'ancien format vulnérable. Pour protéger les données médicales, 
-                  veuillez saisir un nouveau code PIN ci-dessous.
+                  Votre code PIN utilise l'ancien format vulnérable. Pour protéger les données
+                  médicales, veuillez saisir un nouveau code PIN ci-dessous.
                 </p>
                 <button
                   className="btn btn-sm"
@@ -768,7 +768,7 @@ export default function Settings({
               </button>
             </div>
             {/* New Input for Certificate Text */}
-            <input 
+            <input
               type="text"
               placeholder="Texte certificat (ex: la CUISINE)"
               value={newWorkplaceCertText}
@@ -807,7 +807,11 @@ export default function Settings({
                   >
                     <div>
                       <div style={{ fontWeight: 500 }}>{w.name}</div>
-                      {w.certificate_text && <div style={{ fontSize: '0.75rem', color: '#666' }}>"{w.certificate_text}"</div>}
+                      {w.certificate_text && (
+                        <div style={{ fontSize: '0.75rem', color: '#666' }}>
+                          "{w.certificate_text}"
+                        </div>
+                      )}
                     </div>
                     <button
                       className="btn btn-sm btn-outline"

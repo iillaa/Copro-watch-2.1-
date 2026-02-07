@@ -79,9 +79,13 @@ async function deriveKey(password, salt, iterations = 250000) {
   if (!isWebCryptoAvailable || !subtleAPI) {
     throw new Error('WebCrypto not available');
   }
-  const pwKey = await subtleAPI.importKey('raw', toUint8Array(password), { name: 'PBKDF2' }, false, [
-    'deriveKey',
-  ]);
+  const pwKey = await subtleAPI.importKey(
+    'raw',
+    toUint8Array(password),
+    { name: 'PBKDF2' },
+    false,
+    ['deriveKey']
+  );
   return subtleAPI.deriveKey(
     { name: 'PBKDF2', salt: salt, iterations, hash: 'SHA-256' },
     pwKey,
@@ -118,7 +122,7 @@ export async function encryptString(password, plaintext) {
 
 export async function decryptString(password, payload) {
   const obj = typeof payload === 'string' ? JSON.parse(payload) : payload;
-  
+
   // Handle fallback XOR encryption
   if (obj.method === 'xor') {
     return xorDecrypt(obj.data, password);
@@ -141,13 +145,13 @@ export async function hashString(message) {
     let hash = 0;
     for (let i = 0; i < saltedMessage.length; i++) {
       const char = saltedMessage.charCodeAt(i);
-      hash = ((hash << 5) - hash) + char;
+      hash = (hash << 5) - hash + char;
       hash = hash & hash;
     }
     // Return hex-like string
     return Math.abs(hash).toString(16).padStart(64, '0').slice(0, 64);
   }
-  
+
   const msgBuffer = new TextEncoder().encode(message);
   const hashBuffer = await cryptoAPI.subtle.digest('SHA-256', msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));

@@ -173,7 +173,9 @@ export const logic = {
     const deptAnalyses = this.getDepartmentWaterHistory(departmentId, allAnalyses);
     const lastActivity = deptAnalyses[0];
     // [ROBUST] Handle missing dates safely: prefer request_date, fallback to sample_date
-    const lastDate = lastActivity ? (lastActivity.request_date || lastActivity.sample_date || null) : null;
+    const lastDate = lastActivity
+      ? lastActivity.request_date || lastActivity.sample_date || null
+      : null;
 
     const currentMonthAnalysis = deptAnalyses.find((analysis) => {
       // [ROBUST] Handle missing dates safely: prefer request_date, fallback to sample_date

@@ -18,7 +18,7 @@ async function initCapacitor() {
     capacitorReady = true;
   } catch (e) {
     console.warn('[PDF] Capacitor not available:', e);
-    capacitorReady = true; 
+    capacitorReady = true;
   }
 }
 
@@ -40,57 +40,54 @@ export const pdfService = {
     if (docType === 'aptitude') {
       try {
         const allWorkplaces = await db.getWorkplaces();
-        allWorkplaces.forEach(wp => {
+        allWorkplaces.forEach((wp) => {
           if (wp.name && wp.certificate_text) {
             workplaceMap.set(wp.name.toLowerCase().trim(), wp.certificate_text);
           }
         });
       } catch (e) {
-        console.error("Failed to load workplaces", e);
+        console.error('Failed to load workplaces', e);
       }
     }
 
     if (docType === 'list_manager') {
       generateGroupedList(doc, workers, options);
-    
     } else if (docType === 'aptitude') {
       // APTITUDE (Portrait 2/page)
       for (let i = 0; i < workers.length; i++) {
         if (i > 0 && i % 2 === 0) doc.addPage();
         const yOffset = i % 2 === 0 ? 0 : 148.5;
         drawAptitudeCertificate(doc, workers[i], options, yOffset, workplaceMap);
-        
+
         if (i % 2 === 0 && i < workers.length - 1) {
-             doc.setLineDash([2, 2], 0);
-             doc.setDrawColor(150);
-             doc.line(10, 148.5, 200, 148.5);
-             doc.setDrawColor(0);
-             doc.setLineDash([]); 
+          doc.setLineDash([2, 2], 0);
+          doc.setDrawColor(150);
+          doc.line(10, 148.5, 200, 148.5);
+          doc.setDrawColor(0);
+          doc.setLineDash([]);
         }
       }
-
     } else if (docType === 'copro' || docType === 'convocation') {
       // PAYSAGE (2 par page)
       for (let i = 0; i < workers.length; i++) {
         if (i > 0 && i % 2 === 0) doc.addPage();
-        
+
         const xOffset = i % 2 === 0 ? 0 : 148.5;
-        
+
         if (docType === 'copro') {
-            drawCoproRequest(doc, workers[i], options, xOffset);
+          drawCoproRequest(doc, workers[i], options, xOffset);
         } else {
-            drawConvocation(doc, workers[i], options, xOffset);
+          drawConvocation(doc, workers[i], options, xOffset);
         }
-        
+
         if (i % 2 === 0 && i < workers.length - 1) {
-             doc.setLineDash([2, 2], 0);
-             doc.setDrawColor(150);
-             doc.line(148.5, 10, 148.5, 200);
-             doc.setDrawColor(0);
-             doc.setLineDash([]); 
+          doc.setLineDash([2, 2], 0);
+          doc.setDrawColor(150);
+          doc.line(148.5, 10, 148.5, 200);
+          doc.setDrawColor(0);
+          doc.setLineDash([]);
         }
       }
-
     } else {
       workers.forEach((worker, index) => {
         if (index > 0) doc.addPage();
@@ -106,24 +103,24 @@ export const pdfService = {
     const fileName = `CoproWatch_${docType}_${dateStr}_${timeStr}.pdf`;
 
     await initCapacitor();
-    
+
     if (Capacitor.isNativePlatform()) {
       try {
         const base64Data = doc.output('datauristring').split(',')[1];
-        
+
         // 2. Define specific Export folder
         const folder = 'copro-watch/Exports';
-        
+
         // 3. Create folder if it doesn't exist (safe - won't overwrite existing)
         try {
-            await Filesystem.mkdir({ 
-                path: folder, 
-                directory: Directory.Documents, 
-                recursive: true 
-            });
+          await Filesystem.mkdir({
+            path: folder,
+            directory: Directory.Documents,
+            recursive: true,
+          });
         } catch (e) {
-            // Folder likely exists - that's fine, we can still write to it
-            console.log('[PDF] Folder already exists or creation warning, attempting write...');
+          // Folder likely exists - that's fine, we can still write to it
+          console.log('[PDF] Folder already exists or creation warning, attempting write...');
         }
 
         // 4. Save file to the specific folder
@@ -132,11 +129,13 @@ export const pdfService = {
           data: base64Data,
           directory: Directory.Documents,
         });
-        
+
         alert(`✅ PDF sauvegardé :\nDocuments/${folder}/${fileName}`);
       } catch (e) {
         console.error(e);
-        alert('❌ Erreur de sauvegarde. Le dossier Documents/copro-watch existe peut-être déjà.\n\nEssayez de renommer ou déplacer ce dossier, puis réessayez.');
+        alert(
+          '❌ Erreur de sauvegarde. Le dossier Documents/copro-watch existe peut-être déjà.\n\nEssayez de renommer ou déplacer ce dossier, puis réessayez.'
+        );
       }
     } else {
       // Web fallback
@@ -150,20 +149,20 @@ export const pdfService = {
 // 1. CONVOCATION INDIVIDUELLE (PAYSAGE)
 // ==========================================
 function drawConvocation(doc, worker, options, xOffset) {
-  const centerX = xOffset + 74.25; 
+  const centerX = xOffset + 74.25;
   const leftMargin = xOffset + 10;
-  const y = (val) => val; 
+  const y = (val) => val;
 
   // HEADER OFFICIEL
   doc.setTextColor(0);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  
+
   doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, y(15), { align: 'center' });
-  
+
   doc.setFontSize(8);
   doc.text("MINISTERE DE L'INTERIEUR ET", leftMargin, y(22));
-  doc.text("DE TRANSPORT", leftMargin, y(26));
+  doc.text('DE TRANSPORT', leftMargin, y(26));
   doc.text('DIRECTION GENERALE', leftMargin, y(30));
   doc.text('DE LA SURETE NATIONALE', leftMargin, y(34));
   doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, y(38));
@@ -172,55 +171,63 @@ function drawConvocation(doc, worker, options, xOffset) {
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.text(`LE : ${logic.formatDateDisplay(options.date)}`, xOffset + 130, y(48), { align: 'right' });
+  doc.text(`LE : ${logic.formatDateDisplay(options.date)}`, xOffset + 130, y(48), {
+    align: 'right',
+  });
 
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
   doc.setLineWidth(0.5);
   doc.roundedRect(centerX - 35, y(53), 70, 10, 2, 2);
-  doc.text("CONVOCATION", centerX, y(60), { align: 'center' });
+  doc.text('CONVOCATION', centerX, y(60), { align: 'center' });
 
   const drawField = (label, value, posY) => {
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     doc.text(label, leftMargin, posY);
-    
+
     const startDots = leftMargin + doc.getTextWidth(label) + 2;
     const endDots = xOffset + 135;
-    let dots = "";
-    while (doc.getTextWidth(dots) < (endDots - startDots)) { dots += "."; }
+    let dots = '';
+    while (doc.getTextWidth(dots) < endDots - startDots) {
+      dots += '.';
+    }
     doc.text(dots, startDots, posY);
 
     doc.setFont('helvetica', 'bold');
-    doc.text(value, startDots + 5, posY - 1); 
+    doc.text(value, startDots + 5, posY - 1);
   };
 
   const nomPrenom = `${worker.last_name || ''} ${worker.first_name || ''}`;
-  const service = `${worker.deptName || ''} ${worker.workplaceName ? '(' + worker.workplaceName + ')' : ''}`;
+  const service = `${worker.deptName || ''} ${
+    worker.workplaceName ? '(' + worker.workplaceName + ')' : ''
+  }`;
 
-  drawField("M./Mme :", nomPrenom, y(75));
-  drawField("Service :", service, y(85));
-  drawField("Matricule :", worker.national_id || '', y(95));
+  drawField('M./Mme :', nomPrenom, y(75));
+  drawField('Service :', service, y(85));
+  drawField('Matricule :', worker.national_id || '', y(95));
 
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text("Est convoqué(e) à se présenter au Service Médical le :", leftMargin, y(115));
+  doc.text('Est convoqué(e) à se présenter au Service Médical le :', leftMargin, y(115));
 
   const rdvDate = options.consultDate || options.date;
   const rdvTime = options.consultTime || '08:30';
-  
+
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(14);
-  doc.text(`${logic.formatDateDisplay(rdvDate)} à ${rdvTime}`, centerX, y(130), { align: 'center' });
+  doc.text(`${logic.formatDateDisplay(rdvDate)} à ${rdvTime}`, centerX, y(130), {
+    align: 'center',
+  });
 
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
-  doc.text("Objet : Visite Médicale de Médecine du Travail.", leftMargin, y(145));
-  doc.text("La présence est obligatoire.", leftMargin, y(155));
+  doc.text('Objet : Visite Médicale de Médecine du Travail.', leftMargin, y(145));
+  doc.text('La présence est obligatoire.', leftMargin, y(155));
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text("Le Médecin", xOffset + 110, y(180));
+  doc.text('Le Médecin', xOffset + 110, y(180));
 }
 
 // ==========================================
@@ -241,14 +248,14 @@ function generateGroupedList(doc, workers, options) {
 
     const centerX = 105;
     const leftMargin = MARGIN;
-    
+
     // --- HEADER OFFICIEL ---
     doc.setTextColor(0);
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    
+
     doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 15, { align: 'center' });
-    
+
     doc.setFontSize(8);
     doc.text("MINISTERE DE L'INTERIEUR ET DE TRANSPORT", leftMargin, 22);
     doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', leftMargin, 26);
@@ -256,7 +263,6 @@ function generateGroupedList(doc, workers, options) {
     doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 34);
     doc.text("DE L'ACTION SOCIAL ET ACTIVITES SPORTIVES", leftMargin, 38);
 
-    
     // --- TITRE ---
     doc.setFontSize(16);
     doc.text(`LISTE DE CONVOCATION`, centerX, 50, { align: 'center' });
@@ -265,7 +271,7 @@ function generateGroupedList(doc, workers, options) {
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
     doc.text(`SERVICE : ${dept.toUpperCase()}`, leftMargin, 65);
-    
+
     const rdvDate = options.consultDate || options.date;
     const rdvTime = options.consultTime || '08:30';
     doc.text(`DATE PRÉVUE : ${logic.formatDateDisplay(rdvDate)} à ${rdvTime}`, leftMargin, 72);
@@ -279,7 +285,7 @@ function generateGroupedList(doc, workers, options) {
     doc.rect(leftMargin, y - 6, 170, 8, 'F');
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    
+
     doc.text('Matricule', leftMargin + 2, y);
     doc.text('Nom et Prénom', leftMargin + 30, y);
     doc.text('Poste / Lieu', leftMargin + 90, y);
@@ -306,12 +312,12 @@ function generateGroupedList(doc, workers, options) {
     doc.setTextColor(0);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text("Le Médecin", 160, 265); // Signature en bas à droite
-    
+    doc.text('Le Médecin', 160, 265); // Signature en bas à droite
+
     // Note légale brève
     doc.setFontSize(9);
     doc.setTextColor(80);
-    const note = "Rappel : Visite médicale obligatoire tous les 6 mois.";
+    const note = 'Rappel : Visite médicale obligatoire tous les 6 mois.';
     doc.text(note, centerX, 285, { align: 'center' });
     doc.setTextColor(0);
   });
@@ -321,15 +327,18 @@ function generateGroupedList(doc, workers, options) {
 // 3. DEMANDE COPRO (PAYSAGE)
 // ==========================================
 function drawCoproRequest(doc, worker, options, xOffset) {
-  const centerX = xOffset + 74.25; 
+  const centerX = xOffset + 74.25;
   const leftMargin = xOffset + 10;
-  const y = (val) => val; 
+  const y = (val) => val;
 
   let nom = worker.last_name || '';
   let prenom = worker.first_name || '';
   if (!nom && !prenom && worker.full_name) {
-      const parts = worker.full_name.trim().split(/\s+/);
-      if (parts.length > 0) { nom = parts[0]; prenom = parts.slice(1).join(' '); }
+    const parts = worker.full_name.trim().split(/\s+/);
+    if (parts.length > 0) {
+      nom = parts[0];
+      prenom = parts.slice(1).join(' ');
+    }
   }
 
   doc.setTextColor(0);
@@ -338,71 +347,80 @@ function drawCoproRequest(doc, worker, options, xOffset) {
   doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, y(15), { align: 'center' });
   doc.setFontSize(8);
   doc.text("MINISTERE DE L'INTERIEUR ET", leftMargin, y(22));
-  doc.text("DE TRANSPORT", leftMargin, y(26));
+  doc.text('DE TRANSPORT', leftMargin, y(26));
   doc.text('DIRECTION GENERALE', leftMargin, y(30));
   doc.text('DE LA SURETE NATIONALE', leftMargin, y(34));
   doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, y(38));
   doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, y(42));
   doc.text("DE L'ACTION SOCIAL ET DES ACTIVITES SPORTIVES", leftMargin, y(46));
-  
+
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(10);
-  doc.text(`LE : ${logic.formatDateDisplay(options.date)}`, xOffset + 130, y(48), { align: 'right' });
+  doc.text(`LE : ${logic.formatDateDisplay(options.date)}`, xOffset + 130, y(48), {
+    align: 'right',
+  });
 
   doc.setFontSize(18);
   doc.setFont('helvetica', 'bold');
   doc.setLineWidth(0.5);
   doc.roundedRect(centerX - 30, y(53), 60, 10, 2, 2);
-  doc.text("ORDONNANCE", centerX, y(60), { align: 'center' });
+  doc.text('ORDONNANCE', centerX, y(60), { align: 'center' });
 
   const drawField = (label, value, posY) => {
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     doc.text(label, leftMargin, posY);
     const startDots = leftMargin + doc.getTextWidth(label) + 2;
-    const endDots = xOffset + 135; 
-    let dots = "";
-    while (doc.getTextWidth(dots) < (endDots - startDots)) { dots += "."; }
+    const endDots = xOffset + 135;
+    let dots = '';
+    while (doc.getTextWidth(dots) < endDots - startDots) {
+      dots += '.';
+    }
     doc.text(dots, startDots, posY);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
-    const centerDots = startDots + ((endDots - startDots) / 2);
+    const centerDots = startDots + (endDots - startDots) / 2;
     doc.text(value, centerDots, posY - 1, { align: 'center' });
   };
 
-  drawField("Nom :", nom, y(80));
-  drawField("Prénom :", prenom, y(90));
-  drawField("Age :", worker.age ? String(worker.age) + " ans" : "", y(100));
+  drawField('Nom :', nom, y(80));
+  drawField('Prénom :', prenom, y(90));
+  drawField('Age :', worker.age ? String(worker.age) + ' ans' : '', y(100));
 
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text("Cher confrère,", leftMargin, y(120));
-  doc.text("Permettez-moi de vous confier le patient sus-nommé pour :", leftMargin, y(130));
+  doc.text('Cher confrère,', leftMargin, y(120));
+  doc.text('Permettez-moi de vous confier le patient sus-nommé pour :', leftMargin, y(130));
   doc.setFontSize(14);
   doc.setFont('helvetica', 'bold');
-  doc.text("Une Copro-parasitologie des selles", centerX, y(145), { align: 'center' });
+  doc.text('Une Copro-parasitologie des selles', centerX, y(145), { align: 'center' });
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text("Cordialement.", leftMargin + 100, y(165), { align: 'center' });
+  doc.text('Cordialement.', leftMargin + 100, y(165), { align: 'center' });
 
   doc.setLineWidth(0.3);
   doc.line(leftMargin, y(190), xOffset + 138, y(190));
   doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
-  doc.text("NB : Ne pas laisser les médicaments à la portée des enfants.", centerX, y(196), { align: 'center' });
+  doc.text('NB : Ne pas laisser les médicaments à la portée des enfants.', centerX, y(196), {
+    align: 'center',
+  });
 }
 
 // ==========================================
 // 4. CERTIFICAT APTITUDE (PORTRAIT)
 // ==========================================
 function drawAptitudeCertificate(doc, worker, options, offset, workplaceMap) {
-  const y = (val) => offset + val; 
+  const y = (val) => offset + val;
   const centerX = 105;
   let nom = worker.last_name || '';
   let prenom = worker.first_name || '';
   if (!nom && !prenom && worker.full_name) {
-      const parts = worker.full_name.trim().split(/\s+/);
-      if (parts.length > 0) { nom = parts[0]; prenom = parts.slice(1).join(' '); }
+    const parts = worker.full_name.trim().split(/\s+/);
+    if (parts.length > 0) {
+      nom = parts[0];
+      prenom = parts.slice(1).join(' ');
+    }
   }
 
   doc.setFontSize(10);
@@ -416,21 +434,23 @@ function drawAptitudeCertificate(doc, worker, options, offset, workplaceMap) {
   doc.setFont('helvetica', 'normal');
   doc.text(`LE : ${logic.formatDateDisplay(options.date)}`, 160, y(38));
 
-  const status = worker.latest_status; 
+  const status = worker.latest_status;
   const drawDynamicField = (label, value, startX, startY, dotLength) => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(11);
     doc.text(label, startX, startY);
     const labelWidth = doc.getTextWidth(label);
-    const dotsStartX = startX + labelWidth + 2; 
-    let dots = "";
-    while(doc.getTextWidth(dots) < dotLength) { dots += "."; }
+    const dotsStartX = startX + labelWidth + 2;
+    let dots = '';
+    while (doc.getTextWidth(dots) < dotLength) {
+      dots += '.';
+    }
     doc.text(dots, dotsStartX, startY);
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     const valueWidth = doc.getTextWidth(value);
-    const centerDots = dotsStartX + (dotLength / 2);
-    if (valueWidth > dotLength) doc.text(value, dotsStartX, startY - 1); 
+    const centerDots = dotsStartX + dotLength / 2;
+    if (valueWidth > dotLength) doc.text(value, dotsStartX, startY - 1);
     else doc.text(value, centerDots, startY - 1, { align: 'center' });
   };
 
@@ -438,66 +458,92 @@ function drawAptitudeCertificate(doc, worker, options, offset, workplaceMap) {
     doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
     doc.text("CERTIFICAT D'APTITUDE AU POSTE DE TRAVAIL", centerX, y(48), { align: 'center' });
-    doc.text("(AVEC AMÉNAGEMENT)", centerX, y(54), { align: 'center' });
+    doc.text('(AVEC AMÉNAGEMENT)', centerX, y(54), { align: 'center' });
     doc.setFontSize(10);
     doc.setFont('helvetica', 'normal');
-    doc.text(`Je soussigné Dr ........................................................ certifie avoir examiné ce jour :`, MARGIN, y(62));
-    drawDynamicField("Nom:", nom, MARGIN, y(70), 65);
-    drawDynamicField("Prénom:", prenom, MARGIN + 85, y(70), 65);
+    doc.text(
+      `Je soussigné Dr ........................................................ certifie avoir examiné ce jour :`,
+      MARGIN,
+      y(62)
+    );
+    drawDynamicField('Nom:', nom, MARGIN, y(70), 65);
+    drawDynamicField('Prénom:', prenom, MARGIN + 85, y(70), 65);
     doc.setFont('helvetica', 'normal');
-    doc.text("Et déclare que son état de santé actuel est :", MARGIN, y(78));
+    doc.text('Et déclare que son état de santé actuel est :', MARGIN, y(78));
     doc.setFont('helvetica', 'bold');
-    doc.text("APTE AU TRAVAIL AVEC RESTRICTIONS TEMPORAIRES", centerX, y(85), { align: 'center' });
+    doc.text('APTE AU TRAVAIL AVEC RESTRICTIONS TEMPORAIRES', centerX, y(85), { align: 'center' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text("L'employé est autorisé à travailler, mais avec des restrictions temporaires strictes.", MARGIN, y(92));
+    doc.text(
+      "L'employé est autorisé à travailler, mais avec des restrictions temporaires strictes.",
+      MARGIN,
+      y(92)
+    );
     doc.setFont('helvetica', 'bold');
-    doc.text("Interdictions formelles :", MARGIN, y(97));
+    doc.text('Interdictions formelles :', MARGIN, y(97));
     doc.setFont('helvetica', 'normal');
     doc.text("* Aucune manipulation d'aliments crus (salades, fruits).", MARGIN + 5, y(101));
-    doc.text("* Aucun contact à mains nues avec des plats cuits (dressage, sandwichs).", MARGIN + 5, y(105));
+    doc.text(
+      '* Aucun contact à mains nues avec des plats cuits (dressage, sandwichs).',
+      MARGIN + 5,
+      y(105)
+    );
     doc.setFont('helvetica', 'bold');
-    doc.text("Tâches autorisées uniquement :", MARGIN, y(111));
+    doc.text('Tâches autorisées uniquement :', MARGIN, y(111));
     doc.setFont('helvetica', 'normal');
-    doc.text("* Poste de cuisson (grill, four, friteuse).", MARGIN + 5, y(115));
-    doc.text("* Préparation de légumes destinés à une cuisson immédiate.", MARGIN + 5, y(119));
-    doc.text("* Plonge et nettoyage des locaux.", MARGIN + 5, y(123));
+    doc.text('* Poste de cuisson (grill, four, friteuse).', MARGIN + 5, y(115));
+    doc.text('* Préparation de légumes destinés à une cuisson immédiate.', MARGIN + 5, y(119));
+    doc.text('* Plonge et nettoyage des locaux.', MARGIN + 5, y(123));
     doc.setFont('helvetica', 'bold');
-    doc.text("Hygiène imposée :", MARGIN, y(129));
+    doc.text('Hygiène imposée :', MARGIN, y(129));
     doc.setFont('helvetica', 'normal');
-    doc.text("Port de gants obligatoire en continu et lavage des mains au savon bactéricide chaque heure.", MARGIN + 28, y(129));
+    doc.text(
+      'Port de gants obligatoire en continu et lavage des mains au savon bactéricide chaque heure.',
+      MARGIN + 28,
+      y(129)
+    );
     doc.setFont('helvetica', 'bold');
-    doc.text("Durée :", MARGIN, y(134));
+    doc.text('Durée :', MARGIN, y(134));
     doc.setFont('helvetica', 'normal');
-    doc.text("Valable jusqu'à la fin du traitement et l'obtention de résultats d'analyses médicales satisfaisants.", MARGIN + 12, y(134));
+    doc.text(
+      "Valable jusqu'à la fin du traitement et l'obtention de résultats d'analyses médicales satisfaisants.",
+      MARGIN + 12,
+      y(134)
+    );
     doc.setFontSize(11);
-    doc.text("Le Médecin", 160, y(140)); 
+    doc.text('Le Médecin', 160, y(140));
   } else {
     doc.setFontSize(14);
     doc.setFont('helvetica', 'bold');
-    doc.text("CERTIFICAT MEDICAL", centerX, y(55), { align: 'center' });
-    drawDynamicField("Nom:", nom, MARGIN, y(70), 70);
-    drawDynamicField("Prénom:", prenom, MARGIN + 90, y(70), 70);
+    doc.text('CERTIFICAT MEDICAL', centerX, y(55), { align: 'center' });
+    drawDynamicField('Nom:', nom, MARGIN, y(70), 70);
+    drawDynamicField('Prénom:', prenom, MARGIN + 90, y(70), 70);
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
-    doc.text("Je soussigné certifie que le(la) susnommé(e) est :", MARGIN, y(82));
+    doc.text('Je soussigné certifie que le(la) susnommé(e) est :', MARGIN, y(82));
     doc.setFontSize(18);
     doc.setFont('helvetica', 'bold');
-    if (status === 'apte') { doc.text("APTE", centerX, y(95), { align: 'center' }); } 
-    else if (status === 'inapte') { doc.text("INAPTE", centerX, y(95), { align: 'center' }); } 
-    else { doc.setFontSize(14); doc.text("EN COURS D'ÉVALUATION", centerX, y(95), { align: 'center' }); }
+    if (status === 'apte') {
+      doc.text('APTE', centerX, y(95), { align: 'center' });
+    } else if (status === 'inapte') {
+      doc.text('INAPTE', centerX, y(95), { align: 'center' });
+    } else {
+      doc.setFontSize(14);
+      doc.text("EN COURS D'ÉVALUATION", centerX, y(95), { align: 'center' });
+    }
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
     const wpName = (worker.workplaceName || '').trim();
     const wpLower = wpName.toLowerCase();
     let customText = workplaceMap ? workplaceMap.get(wpLower) : null;
     let textLieu;
-    if (customText) { textLieu = customText; } 
-    else {
-        if (wpLower.includes('cuisine')) textLieu = "A travailler dans la CUISINE";
-        else if (wpLower.includes('foyer')) textLieu = "A travailler dans le FOYER";
-        else if (wpLower.includes('coiffure')) textLieu = "A travailler dans le SALON DE COIFFURE";
-        else textLieu = "A travailler dans : " + (wpName || '________________');
+    if (customText) {
+      textLieu = customText;
+    } else {
+      if (wpLower.includes('cuisine')) textLieu = 'A travailler dans la CUISINE';
+      else if (wpLower.includes('foyer')) textLieu = 'A travailler dans le FOYER';
+      else if (wpLower.includes('coiffure')) textLieu = 'A travailler dans le SALON DE COIFFURE';
+      else textLieu = 'A travailler dans : ' + (wpName || '________________');
     }
     doc.text(textLieu, centerX, y(110), { align: 'center' });
     const ySignature = y(125);
@@ -508,17 +554,19 @@ function drawAptitudeCertificate(doc, worker, options, offset, workplaceMap) {
       doc.text(`Prochaine visite avant le : ${nextDate}`, MARGIN, ySignature);
     }
     doc.setFontSize(11);
-    doc.text("Le Médecin", 160, ySignature); 
+    doc.text('Le Médecin', 160, ySignature);
   }
 
   if (worker.next_exam_due && logic.isOverdue(worker.next_exam_due)) {
     try {
       doc.saveGraphicsState();
       doc.setTextColor(255, 0, 0);
-      doc.setFontSize(30); 
+      doc.setFontSize(30);
       doc.setFont('helvetica', 'bold');
-      if (doc.GState) { doc.setGState(new doc.GState({ opacity: 0.3 })); }
-      const centerY = offset + 74; 
+      if (doc.GState) {
+        doc.setGState(new doc.GState({ opacity: 0.3 }));
+      }
+      const centerY = offset + 74;
       doc.text('[ EN RETARD ]', 105, centerY, { align: 'center', angle: 35 });
       doc.restoreGraphicsState();
     } catch (e) {

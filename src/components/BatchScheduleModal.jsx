@@ -27,7 +27,16 @@ export default function BatchScheduleModal({ count, onConfirm, onCancel }) {
         zIndex: 2000,
       }}
     >
-      <div className="card" style={{ width: '100%', maxWidth: '400px', maxHeight: '90vh', overflowY: 'auto', padding: '1.5rem' }}>
+      <div
+        className="card"
+        style={{
+          width: '100%',
+          maxWidth: '400px',
+          maxHeight: '90vh',
+          overflowY: 'auto',
+          padding: '1.5rem',
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
             <FaCalendarAlt /> Nouvelle Analyse ({count})

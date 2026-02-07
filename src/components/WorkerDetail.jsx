@@ -50,13 +50,13 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
       // Convert workerId to Number to ensure match
       const id = Number(workerId);
       const w = await db.getWorker(id);
-      
+
       if (!w) {
         console.warn('[WorkerDetail] Worker not found for ID:', id);
         setWorkerNotFound(true);
         return;
       }
-      
+
       setWorkerNotFound(false);
       setWorker(w);
 

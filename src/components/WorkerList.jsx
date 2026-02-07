@@ -695,7 +695,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
           {/* [NEW] EXCEL BUTTON (For Administration) */}
           <button
             className="btn btn-outline"
-           onClick={handleExcelExport}
+            onClick={handleExcelExport}
             title="Générer un rapport Excel officiel"
             style={{ borderColor: '#107C41', color: '#107C41' }} /* [FIX] Excel Green */
           >

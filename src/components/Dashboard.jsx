@@ -14,7 +14,7 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
 
   // [SURGICAL] Expansion State - 'exam' for Examens à prévoir, 'retest' for Contre-visites
   const [expandedSection, setExpandedSection] = useState(null); // 'exam' or 'retest'
-  
+
   const toggleExpand = (section) =>
     setExpandedSection(expandedSection === section ? null : section);
 
@@ -23,14 +23,16 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
     if (typeof window === 'undefined') {
       return false;
     }
-    
+
     const userAgent = navigator.userAgent || navigator.vendor || window.opera;
-    const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(userAgent);
+    const isMobileUA = /android|webos|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(
+      userAgent
+    );
     const isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
     const screenWidth = window.innerWidth;
     const screenHeight = window.innerHeight;
     const isTabletUA = /tablet|ipad|playbook|silk|kindle/i.test(userAgent);
-    
+
     // DIAGNOSIS: Log detection values
     console.log('=== LAYOUT DIAGNOSIS ===');
     console.log('User Agent:', userAgent);
@@ -40,19 +42,24 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
     console.log('screenHeight:', screenHeight);
     console.log('isTabletUA:', isTabletUA);
     console.log('=========================');
-    
+
     // Proper device classification:
     // - Mobile (phone): width < 768px (portrait phones)
     // - Tablet: width >= 768px AND width < 1200px (includes most tablets in landscape)
     // - Desktop: width >= 1200px
     // Note: We treat tablets as DESKTOP layout, not mobile
-    
+
     const isPhone = screenWidth < 768;
     const isTablet = screenWidth >= 768 && screenWidth < 1200;
     const isDesktop = screenWidth >= 1200;
-    
-    console.log('Classification:', { isPhone, isTablet, isDesktop, shouldUseMobileLayout: isPhone });
-    
+
+    console.log('Classification:', {
+      isPhone,
+      isTablet,
+      isDesktop,
+      shouldUseMobileLayout: isPhone,
+    });
+
     // Return true ONLY for phones, NOT tablets
     // Tablets should use desktop/tablet layout
     return isPhone;
@@ -97,13 +104,9 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
 
     // 3. TRI AUTOMATIQUE
     if (computed.dueSoon)
-      computed.dueSoon.sort((a, b) =>
-        (a.next_exam_due || '').localeCompare(b.next_exam_due || '')
-      );
+      computed.dueSoon.sort((a, b) => (a.next_exam_due || '').localeCompare(b.next_exam_due || ''));
     if (computed.overdue)
-      computed.overdue.sort((a, b) =>
-        (a.next_exam_due || '').localeCompare(b.next_exam_due || '')
-      );
+      computed.overdue.sort((a, b) => (a.next_exam_due || '').localeCompare(b.next_exam_due || ''));
     if (computed.retests)
       computed.retests.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
 
@@ -144,7 +147,7 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
               : { marginBottom: '0', marginTop: '0', lineHeight: '1.2' }
           }
         >
-              Tableau de bord
+          Tableau de bord
         </h2>
         <p
           style={{
@@ -517,10 +520,11 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
 
                   {/* [ACTION] Limit Due Soon based on combined total (overdue + dueSoon = max 5) */}
                   {(() => {
-                    const maxDueSoonToShow = isMobile && expandedSection !== 'exam'
-                      ? Math.max(0, 5 - stats.overdue.length)
-                      : stats.dueSoon.length;
-                    
+                    const maxDueSoonToShow =
+                      isMobile && expandedSection !== 'exam'
+                        ? Math.max(0, 5 - stats.overdue.length)
+                        : stats.dueSoon.length;
+
                     return stats.dueSoon.slice(0, maxDueSoonToShow).map((w) => (
                       <div
                         key={w.id}
@@ -530,7 +534,9 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
                         <div className="hybrid-cell" style={{ fontWeight: 600 }}>
                           {w.full_name}
                         </div>
-                        <div className="hybrid-cell">{logic.formatDateDisplay(w.next_exam_due)}</div>
+                        <div className="hybrid-cell">
+                          {logic.formatDateDisplay(w.next_exam_due)}
+                        </div>
                         <div className="hybrid-actions" style={{ justifyContent: 'center' }}>
                           <button
                             className="btn btn-sm btn-outline"
@@ -546,7 +552,7 @@ export default function Dashboard({ onNavigateWorker, compactMode }) {
               </div>
 
               {/* [ACTION] Single 'Show More' button for combined overdue + dueSoon */}
-              {isMobile && (stats.overdue.length + stats.dueSoon.length) > 5 && (
+              {isMobile && stats.overdue.length + stats.dueSoon.length > 5 && (
                 <button
                   onClick={() => toggleExpand('exam')}
                   className="btn btn-sm btn-outline"

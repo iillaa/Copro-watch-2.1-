@@ -21,7 +21,9 @@ export const exportWorkersToExcel = async (workers, departments) => {
     // [FIX] Memory limit check - warn if dataset is too large
     const MEMORY_LIMIT = 2000; // Max workers before warning
     if (workers.length > MEMORY_LIMIT) {
-      console.warn(`[Excel] Large dataset detected (${workers.length} workers). Export may be slow.`);
+      console.warn(
+        `[Excel] Large dataset detected (${workers.length} workers). Export may be slow.`
+      );
     }
 
     // 1. DATA PREPARATION
@@ -401,7 +403,7 @@ export const exportWorkersToExcel = async (workers, departments) => {
 
     // [SURGICAL REPLACEMENT START]
     const buffer = await workbook.xlsx.writeBuffer();
-    
+
     // 1. Unique Filename with Time
     const now = new Date();
     const dateStr = now.toISOString().split('T')[0];
@@ -414,11 +416,13 @@ export const exportWorkersToExcel = async (workers, departments) => {
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
       try {
         // Android 10+ doesn't always need requestPermissions for public Documents, but good to keep
-        try { await Filesystem.requestPermissions(); } catch (e) {}
-        
+        try {
+          await Filesystem.requestPermissions();
+        } catch (e) {}
+
         // 2. Define Export Folder
         const folder = 'copro-watch/Exports';
-        
+
         // 3. Create folder if it doesn't exist (safe - won't overwrite existing)
         try {
           await Filesystem.mkdir({
@@ -430,20 +434,22 @@ export const exportWorkersToExcel = async (workers, departments) => {
           // Folder likely exists - that's fine, we can still write to it
           console.log('[Excel] Folder already exists or creation warning, attempting write...');
         }
-        
+
         const base64Data = arrayBufferToBase64(buffer);
-        
+
         // 4. Write File
         await Filesystem.writeFile({
           path: `${folder}/${filename}`,
           data: base64Data,
           directory: Directory.Documents,
         });
-        
+
         alert(`✅ Excel sauvegardé :\nDocuments/${folder}/${filename}`);
       } catch (e) {
         console.error(e);
-        throw new Error("Impossible d'écrire dans Documents. Le dossier Documents/copro-watch existe peut-être déjà.\n\nEssayez de renommer ou déplacer ce dossier, puis réessayez.");
+        throw new Error(
+          "Impossible d'écrire dans Documents. Le dossier Documents/copro-watch existe peut-être déjà.\n\nEssayez de renommer ou déplacer ce dossier, puis réessayez."
+        );
       }
     } else {
       // Web Fallback
