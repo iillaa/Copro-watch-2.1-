@@ -21,6 +21,7 @@ function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [waterResetKey, setWaterResetKey] = useState(0);
   const [compactMode, setCompactMode] = useState(true);
+  const [forceMobile, setForceMobile] = useState(false);
   const [pin, setPin] = useState('0000');
   // --- ENGINE STARTUP (The Only Change) ---
   const initApp = async () => {
