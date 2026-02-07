@@ -98,27 +98,51 @@ export const pdfService = {
       });
     }
 
-    const dateStr = new Date().toISOString().split('T')[0];
-    const fileName = `CoproWatch_${docType}_${dateStr}.pdf`;
+    // [SURGICAL REPLACEMENT START]
+    // 1. Generate unique filename with Date AND Time (HH-MM-SS) to prevent overwriting
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // 14:30:00 -> 14-30-00
+    const fileName = `CoproWatch_${docType}_${dateStr}_${timeStr}.pdf`;
 
     await initCapacitor();
     
     if (Capacitor.isNativePlatform()) {
       try {
         const base64Data = doc.output('datauristring').split(',')[1];
+        
+        // 2. Define specific Export folder
+        const folder = 'copro-watch/Exports';
+        
+        // 3. Create folder if it doesn't exist (safe - won't overwrite existing)
+        try {
+            await Filesystem.mkdir({ 
+                path: folder, 
+                directory: Directory.Documents, 
+                recursive: true 
+            });
+        } catch (e) {
+            // Folder likely exists - that's fine, we can still write to it
+            console.log('[PDF] Folder already exists or creation warning, attempting write...');
+        }
+
+        // 4. Save file to the specific folder
         await Filesystem.writeFile({
-          path: fileName,
+          path: `${folder}/${fileName}`,
           data: base64Data,
           directory: Directory.Documents,
         });
-        alert(`✅ Fichier sauvegardé dans Documents :\n${fileName}`);
+        
+        alert(`✅ PDF sauvegardé :\nDocuments/${folder}/${fileName}`);
       } catch (e) {
         console.error(e);
-        alert('❌ Erreur de sauvegarde. Vérifiez les permissions.');
+        alert('❌ Erreur de sauvegarde. Le dossier Documents/copro-watch existe peut-être déjà.\n\nEssayez de renommer ou déplacer ce dossier, puis réessayez.');
       }
     } else {
+      // Web fallback
       doc.save(fileName);
     }
+    // [SURGICAL REPLACEMENT END]
   },
 };
 

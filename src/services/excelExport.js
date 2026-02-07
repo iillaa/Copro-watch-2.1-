@@ -399,42 +399,60 @@ export const exportWorkersToExcel = async (workers, departments) => {
       });
     }
 
-    // SAVING LOGIC
+    // [SURGICAL REPLACEMENT START]
     const buffer = await workbook.xlsx.writeBuffer();
-    const dateStr = new Date().toISOString().split('T')[0];
-    const filename = `CoproWatch_Complet_${dateStr}.xlsx`;
+    
+    // 1. Unique Filename with Time
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-');
+    const filename = `CoproWatch_Excel_${dateStr}_${timeStr}.xlsx`;
 
     const { Capacitor } = await import('@capacitor/core');
 
     if (Capacitor.isNativePlatform()) {
       const { Filesystem, Directory } = await import('@capacitor/filesystem');
       try {
-        await Filesystem.requestPermissions();
+        // Android 10+ doesn't always need requestPermissions for public Documents, but good to keep
+        try { await Filesystem.requestPermissions(); } catch (e) {}
+        
+        // 2. Define Export Folder
+        const folder = 'copro-watch/Exports';
+        
+        // 3. Create folder if it doesn't exist (safe - won't overwrite existing)
         try {
-          await Filesystem.stat({ path: 'copro-watch', directory: Directory.Documents });
-        } catch {
           await Filesystem.mkdir({
-            path: 'copro-watch',
+            path: folder,
             directory: Directory.Documents,
             recursive: true,
           });
+        } catch (e) {
+          // Folder likely exists - that's fine, we can still write to it
+          console.log('[Excel] Folder already exists or creation warning, attempting write...');
         }
+        
         const base64Data = arrayBufferToBase64(buffer);
+        
+        // 4. Write File
         await Filesystem.writeFile({
-          path: `copro-watch/${filename}`,
+          path: `${folder}/${filename}`,
           data: base64Data,
           directory: Directory.Documents,
         });
-        alert(`SUCCÈS !\n\nFichier enregistré dans :\nMes Documents / copro-watch / ${filename}`);
+        
+        alert(`✅ Excel sauvegardé :\nDocuments/${folder}/${filename}`);
       } catch (e) {
-        throw new Error("Impossible d'écrire dans Documents. Vérifiez les permissions.");
+        console.error(e);
+        throw new Error("Impossible d'écrire dans Documents. Le dossier Documents/copro-watch existe peut-être déjà.\n\nEssayez de renommer ou déplacer ce dossier, puis réessayez.");
       }
     } else {
+      // Web Fallback
       const blob = new Blob([buffer], {
         type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
       });
       saveAs(blob, filename);
     }
+    // [SURGICAL REPLACEMENT END]
   } catch (error) {
     console.error('[Excel] Generation Error:', error);
     throw new Error('Erreur Export: ' + error.message);
