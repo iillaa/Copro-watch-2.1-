@@ -495,22 +495,22 @@ tr:nth-child(even) td {
   overflow-y: auto;
 
   /* [FIX 1] Removed 'contain' so you don't get stuck! (Restores Scroll Chaining) */
-  overscroll-behavior: auto !important; 
-  
+  overscroll-behavior: auto !important;
+
   /* [FIX 2] STOP THE VIBRATION (Windows Chrome Fix) */
   /* We disable smooth scrolling LOCALLY for this list to stop the physics conflict */
-  scroll-behavior: auto !important; 
+  scroll-behavior: auto !important;
   overflow-anchor: none; /* Stops the browser from "guessing" the scroll position */
-  
+
   /* Force GPU to smooth out the rendering */
-  transform: translateZ(0);       
+  transform: translateZ(0);
 
   -webkit-overflow-scrolling: touch;
 
   /* Layout */
   margin: 0 -1rem;
   padding: 0 1rem;
-  
+
   /* Default min-height for desktop */
   min-height: 200px;
 }
