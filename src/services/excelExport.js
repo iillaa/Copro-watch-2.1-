@@ -465,6 +465,77 @@ export const exportWorkersToExcel = async (workers, departments) => {
   }
 };
 
+export const exportWeaponsToExcel = async (agents, departments) => {
+  try {
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Copro-Watch v2.1';
+    workbook.created = new Date();
+
+    const sheet = workbook.addWorksheet('Détenteurs Armes', {
+      views: [{ state: 'frozen', ySplit: 1 }],
+    });
+
+    sheet.columns = [
+      { header: 'Nom et Prénom', key: 'full_name', width: 30 },
+      { header: 'Matricule', key: 'national_id', width: 15 },
+      { header: 'Service', key: 'department_name', width: 25 },
+      { header: 'Poste / Grade', key: 'job_function', width: 25 },
+      { header: 'Statut', key: 'status', width: 15 },
+      { header: 'Date Prochaine Visite', key: 'next_review_date', width: 20 },
+    ];
+
+    const rows = agents.map((a) => {
+      const dept = departments.find((d) => d.id == a.department_id);
+      return {
+        full_name: a.full_name,
+        national_id: a.national_id,
+        department_name: dept ? dept.name : '-',
+        job_function: a.job_function || '-',
+        status: a.status === 'apte' ? 'Apte' : a.status?.replace('_', ' '),
+        next_review_date: logic.formatDateDisplay(a.next_review_date),
+      };
+    });
+
+    sheet.addRows(rows);
+    styleSheet(sheet);
+
+    // Conditional formatting for status
+    sheet.eachRow((row, rowNumber) => {
+      if (rowNumber === 1) return;
+      const cell = row.getCell('status');
+      const val = cell.value?.toString().toLowerCase();
+      if (val === 'apte') {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFC6EFCE' } };
+        cell.font = { color: { argb: 'FF006100' } };
+      } else if (val?.includes('inapte')) {
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFC7CE' } };
+        cell.font = { color: { argb: 'FF9C0006' }, bold: true };
+      }
+    });
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    const filename = `Export_Armes_${new Date().toISOString().split('T')[0]}.xlsx`;
+
+    const { Capacitor } = await import('@capacitor/core');
+    if (Capacitor.isNativePlatform()) {
+      const { Filesystem, Directory } = await import('@capacitor/filesystem');
+      const base64Data = arrayBufferToBase64(buffer);
+      await Filesystem.writeFile({
+        path: `copro-watch/Exports/${filename}`,
+        data: base64Data,
+        directory: Directory.Documents,
+      });
+      alert(`✅ Excel sauvegardé : Documents/copro-watch/Exports/${filename}`);
+    } else {
+      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      saveAs(blob, filename);
+    }
+  } catch (error) {
+    console.error('[Excel Weapons] Error:', error);
+    throw error;
+  }
+};
+
 // --- STYLING HELPERS ---
 
 function styleSheet(sheet) {

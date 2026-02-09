@@ -52,6 +52,12 @@ export const pdfService = {
 
     if (docType === 'list_manager') {
       generateGroupedList(doc, workers, options);
+    } else if (docType === 'weapon_aptitude') {
+      // WEAPON APTITUDE (Portrait)
+      workers.forEach((agent, index) => {
+        if (index > 0) doc.addPage();
+        drawWeaponAptitude(doc, agent, options);
+      });
     } else if (docType === 'aptitude') {
       // APTITUDE (Portrait 2/page)
       for (let i = 0; i < workers.length; i++) {
@@ -591,4 +597,72 @@ function drawFooter(doc) {
   doc.setTextColor(150);
   doc.text('Généré par Copro Watch', 105, pageHeight - 10, { align: 'center' });
   doc.setTextColor(0);
+}
+
+// ==========================================
+// 5. CERTIFICAT APTITUDE PORT D'ARME (PORTRAIT)
+// ==========================================
+function drawWeaponAptitude(doc, agent, options) {
+  const centerX = 105;
+  const y = (val) => val;
+
+  // HEADER OFFICIEL
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, y(15), { align: 'center' });
+  doc.setFontSize(9);
+  doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', centerX, y(23), { align: 'center' });
+  doc.text("SURETE DE WILAYA D'IN-SALAH", centerX, y(28), { align: 'center' });
+  doc.text('SERVICE DE WILAYA DE SANTE', centerX, y(28), { align: 'center' });
+  doc.text("COMMISSION MEDICALE D'APTITUDE AU PORT D'ARME", centerX, y(38), { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.text(`LE : ${logic.formatDateDisplay(options.date || new Date())}`, 160, y(45));
+
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text("CERTIFICAT D'APTITUDE", centerX, y(60), { align: 'center' });
+
+  const drawField = (label, value, posY) => {
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(label, MARGIN, posY);
+    const startDots = MARGIN + doc.getTextWidth(label) + 2;
+    const endDots = 180;
+    let dots = '';
+    while (doc.getTextWidth(dots) < endDots - startDots) dots += '.';
+    doc.text(dots, startDots, posY);
+    doc.setFont('helvetica', 'bold');
+    doc.text(String(value), startDots + 5, posY - 1);
+  };
+
+  drawField('Nom et Prénom :', agent.full_name, y(80));
+  drawField('Matricule :', agent.national_id, y(90));
+  drawField('Service :', agent.deptName || '-', y(100));
+  drawField('Poste / Grade :', agent.job_function || '-', y(110));
+
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text('La Commission Médicale, après examen clinique et psychologique, déclare l\'intéressé(e) :', MARGIN, y(130));
+
+  doc.setFontSize(22);
+  doc.setFont('helvetica', 'bold');
+  const decision = agent.status === 'apte' ? 'APTE' : 'INAPTE';
+  doc.text(decision, centerX, y(150), { align: 'center' });
+
+  if (agent.status === 'apte') {
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'normal');
+    doc.text("Pour le port et la détention d'arme de service.", centerX, y(165), { align: 'center' });
+  }
+
+  const ySig = y(200);
+  if (agent.next_review_date) {
+    doc.setFontSize(11);
+    doc.text(`Prochaine révision : ${logic.formatDateDisplay(agent.next_review_date)}`, MARGIN, ySig);
+  }
+  
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Le Médecin Chef', 150, ySig);
 }

@@ -75,7 +75,8 @@ Logic resides in `src/services/backup.js`.
 - **Implementation:** `src/services/pdfGenerator.js`
 - **Library:** `jspdf` with `jspdf-autotable`
 - **Documents Generated:**
-  - Medical fitness certificates (Aptitude/Inaptitude)
+  - Medical fitness certificates (Aptitude/Inaptitude) for hygiene
+  - Weapon aptitude certificates (Commission Médicale)
   - Exam summons/convocations
   - Water analysis requests
   - Attendance sheets for batch operations
@@ -100,16 +101,19 @@ The project utilizes automated pipelines for consistent build delivery via GitHu
 
 ## 7. Database Schema
 
-### 7.1 Core Tables (Updated v2 Schema)
+### 7.1 Core Tables (Updated v3 Schema)
 
 | Table               | Fields                                                                       | Indexes                     |
 | :------------------ | :--------------------------------------------------------------------------- | :-------------------------- |
-| `workers`           | id, firstName, lastName, departmentId, workplaceId, pin, status, nextExamDue | status, departmentId        |
+| `workers`           | id, full_name, national_id, department_id, archived                          | archived, department_id     |
 | `departments`       | id, name                                                                     | name                        |
 | `workplaces`        | id, name, certificate_text                                                   | name                        |
-| `exams`             | id, workerId, date, weight, result, treatment, decision, nextExamDue         | workerId, date              |
+| `exams`             | id, worker_id, exam_date                                                     | worker_id, exam_date        |
 | `water_departments` | id, name                                                                     | name                        |
-| `water_analyses`    | id, sample_date, department_id, structure_id, chlorine, ph, temperature...   | department_id, structure_id |
+| `water_analyses`    | id, sample_date, department_id, structure_id                                 | department_id, structure_id |
+| `weapon_holders`    | id, full_name, national_id, department_id, status, archived                  | archived, department_id     |
+| `weapon_exams`      | id, holder_id, exam_date, visit_reason, final_decision                       | holder_id, exam_date        |
+| `weapon_departments`| id, name                                                                     | name                        |
 
 ### 7.2 Settings Table
 

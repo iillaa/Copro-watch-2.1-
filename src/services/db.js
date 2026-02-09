@@ -39,8 +39,9 @@ class CoproDatabase extends Dexie {
       water_analyses: '++id, sample_date, department_id, structure_id',
       water_departments: '++id',
       settings: 'key',
-      weapon_holders: '++id, full_name, national_id, status, next_review_date, archived',
+      weapon_holders: '++id, full_name, national_id, department_id, status, next_review_date, archived',
       weapon_exams: '++id, holder_id, exam_date, visit_reason, final_decision',
+      weapon_departments: '++id, name',
     });
   }
 }
@@ -93,6 +94,7 @@ async function exportData() {
     water_departments: await dbInstance.water_departments.toArray(),
     weapon_holders: await dbInstance.weapon_holders.toArray(),
     weapon_exams: await dbInstance.weapon_exams.toArray(),
+    weapon_departments: await dbInstance.weapon_departments.toArray(),
   };
   return JSON.stringify(data);
 }
@@ -150,6 +152,24 @@ export const db = {
   },
   async deleteWeaponExam(id) {
     await dbInstance.weapon_exams.delete(Number(id));
+    await triggerBackupCheck();
+  },
+
+  // --- WEAPON DEPARTMENTS (NEW) ---
+  async getWeaponDepartments() {
+    return await dbInstance.weapon_departments.toArray();
+  },
+  async saveWeaponDepartment(dept) {
+    const id = await dbInstance.weapon_departments.put(dept);
+    await triggerBackupCheck();
+    return { ...dept, id };
+  },
+  async deleteWeaponDepartment(id) {
+    const numId = Number(id);
+    await dbInstance.transaction('rw', dbInstance.weapon_holders, dbInstance.weapon_departments, async () => {
+      await dbInstance.weapon_holders.where('department_id').equals(numId).delete();
+      await dbInstance.weapon_departments.delete(numId);
+    });
     await triggerBackupCheck();
   },
 
@@ -334,6 +354,8 @@ export const db = {
           await dbInstance.water_departments.bulkPut(data.water_departments);
         if (data.weapon_holders) await dbInstance.weapon_holders.bulkPut(data.weapon_holders);
         if (data.weapon_exams) await dbInstance.weapon_exams.bulkPut(data.weapon_exams);
+        if (data.weapon_departments)
+          await dbInstance.weapon_departments.bulkPut(data.weapon_departments);
       });
       return true;
     } catch (e) {
