@@ -29,6 +29,19 @@ class CoproDatabase extends Dexie {
       water_departments: '++id',
       settings: 'key',
     });
+
+    // [NEW] Version 3: Weapon Management Module
+    this.version(3).stores({
+      workers: '++id, full_name, national_id, department_id, archived',
+      departments: '++id',
+      workplaces: '++id',
+      exams: '++id, worker_id, exam_date',
+      water_analyses: '++id, sample_date, department_id, structure_id',
+      water_departments: '++id',
+      settings: 'key',
+      weapon_holders: '++id, full_name, national_id, status, next_review_date, archived',
+      weapon_exams: '++id, holder_id, exam_date, visit_reason, final_decision',
+    });
   }
 }
 
@@ -78,6 +91,8 @@ async function exportData() {
     exams: await dbInstance.exams.toArray(),
     water_analyses: await dbInstance.water_analyses.toArray(),
     water_departments: await dbInstance.water_departments.toArray(),
+    weapon_holders: await dbInstance.weapon_holders.toArray(),
+    weapon_exams: await dbInstance.weapon_exams.toArray(),
   };
   return JSON.stringify(data);
 }
@@ -89,6 +104,53 @@ export const db = {
     if (deptCount === 0) {
       console.log('Seeding database (First Run)...');
     }
+  },
+
+  // --- WEAPONS (NEW) ---
+  async getWeaponHolders() {
+    return await dbInstance.weapon_holders.toArray();
+  },
+  async getWeaponHolder(id) {
+    return await dbInstance.weapon_holders.get(Number(id));
+  },
+  async saveWeaponHolder(holder) {
+    const id = await dbInstance.weapon_holders.put(holder);
+    await triggerBackupCheck();
+    return { ...holder, id };
+  },
+  async deleteWeaponHolder(id) {
+    const numId = Number(id);
+    await dbInstance.transaction('rw', dbInstance.weapon_exams, dbInstance.weapon_holders, async () => {
+      await dbInstance.weapon_exams.where('holder_id').equals(numId).delete();
+      await dbInstance.weapon_holders.delete(numId);
+    });
+    await triggerBackupCheck();
+  },
+  async getWeaponExams() {
+    return await dbInstance.weapon_exams.toArray();
+  },
+  async getWeaponExamsByHolder(holderId) {
+    return await dbInstance.weapon_exams.where('holder_id').equals(Number(holderId)).toArray();
+  },
+  async saveWeaponExam(exam) {
+    const id = await dbInstance.weapon_exams.put(exam);
+
+    // Auto-update holder status and review date
+    const holder = await dbInstance.weapon_holders.get(Number(exam.holder_id));
+    if (holder) {
+      holder.status = exam.final_decision;
+      if (exam.next_review_date) {
+        holder.next_review_date = exam.next_review_date;
+      }
+      await dbInstance.weapon_holders.put(holder);
+    }
+
+    await triggerBackupCheck();
+    return { ...exam, id };
+  },
+  async deleteWeaponExam(id) {
+    await dbInstance.weapon_exams.delete(Number(id));
+    await triggerBackupCheck();
   },
 
   // --- SETTINGS (FIXED) ---
@@ -270,6 +332,8 @@ export const db = {
         if (data.water_analyses) await dbInstance.water_analyses.bulkPut(data.water_analyses);
         if (data.water_departments)
           await dbInstance.water_departments.bulkPut(data.water_departments);
+        if (data.weapon_holders) await dbInstance.weapon_holders.bulkPut(data.weapon_holders);
+        if (data.weapon_exams) await dbInstance.weapon_exams.bulkPut(data.weapon_exams);
       });
       return true;
     } catch (e) {

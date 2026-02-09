@@ -46,7 +46,7 @@ This is the brain of the application.
 - **`db.js`** (The Database)
 
   - **Wrapper:** `Dexie`.
-  - **Tables:** `workers`, `departments`, `workplaces`, `exams`, `water_analyses`, `water_departments`.
+  - **Tables:** `workers`, `departments`, `workplaces`, `exams`, `water_analyses`, `water_departments`, `weapon_holders`, `weapon_exams`.
   - **Features:** Handles migration from old `localforage` data automatically.
   - **Triggers:** Calls `backup.registerChange()` on every save/delete.
 
@@ -68,8 +68,9 @@ This is the brain of the application.
   - **Rules:**
     - Standard Exam Interval: **6 Months**.
     - Retest Interval (Positive Case): **7 Days**.
+    - Weapon Review Interval: **12 Months** (or per commission).
   - **Calculations:** Determines `next_exam_due` and `status` (Apte, Inapte).
-  - **Stats:** Generates dashboard counters (Overdue, Due Soon).
+  - **Stats:** Generates dashboard counters (Overdue, Due Soon, Weapon Aptitude).
 
 - **`excelExport.js`** (Data Export)
 
@@ -118,6 +119,14 @@ This is the brain of the application.
 - **`WaterAnalysesHistory.jsx`**: Log of past water tests.
 - **`WaterAnalysisForm.jsx`**: Detailed form for a specific water test.
 - **`WaterServiceDetail.jsx`**: Specific view for a single water department.
+
+#### 🛡️ Weapon Management Module (`src/components/Weapons/`)
+
+- **`WeaponDashboard.jsx`**: Stats for weapon aptitude (Apte, Inapte, Revoir).
+- **`WeaponList.jsx`**: Table of weapon holders with permit details.
+- **`WeaponDetail.jsx`**: Folder for a weapon holder with commission history.
+- **`AddWeaponHolderForm.jsx`**: Form for creating/editing weapon holders (includes Photo).
+- **`WeaponExamForm.jsx`**: Medical commission form (Visual acuity, Psych check).
 
 ### 💅 Styles (`src/`)
 

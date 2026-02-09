@@ -155,6 +155,34 @@ export const logic = {
     return { dueSoon, overdue, activePositive, retests };
   },
 
+  // --- WEAPON LOGIC ---
+  isWeaponDueSoon(nextReviewDateStr) {
+    const nextDate = safeDate(nextReviewDateStr);
+    if (!nextDate) return false;
+    const diff = differenceInDays(nextDate, new Date());
+    // Spec says 30 days for weapon aptitude
+    return diff <= 30 && diff >= 0;
+  },
+
+  getWeaponDashboardStats(holders, exams) {
+    const active = holders.filter((h) => !h.archived && h.status === 'apte');
+    const inapte = holders.filter((h) => !h.archived && h.status?.startsWith('inapte'));
+    const dueSoon = holders.filter(
+      (h) => !h.archived && this.isWeaponDueSoon(h.next_review_date) && h.status === 'apte'
+    );
+
+    // Latest activity (last 10 exams)
+    const latestExams = [...exams]
+      .sort((a, b) => (safeDate(b.exam_date) || 0) - (safeDate(a.exam_date) || 0))
+      .slice(0, 10)
+      .map((e) => {
+        const holder = holders.find((h) => h.id === e.holder_id);
+        return { ...e, holder };
+      });
+
+    return { active, inapte, dueSoon, latestExams };
+  },
+
   // WATER ANALYSIS LOGIC
   getDepartmentWaterHistory(departmentId, allAnalyses) {
     return allAnalyses

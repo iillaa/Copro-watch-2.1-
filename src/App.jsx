@@ -10,13 +10,18 @@ import PinLock from './components/PinLock';
 import Settings from './components/Settings';
 import WaterAnalyses from './components/WaterAnalyses';
 
-import { FaUsers, FaChartLine, FaCog, FaFlask } from 'react-icons/fa';
+import WeaponDashboard from './components/Weapons/WeaponDashboard';
+import WeaponList from './components/Weapons/WeaponList';
+import WeaponDetail from './components/Weapons/WeaponDetail';
+
+import { FaUsers, FaChartLine, FaCog, FaFlask, FaShieldAlt, FaUserShield } from 'react-icons/fa';
 
 function App() {
   // --- STATE (Original) ---
   const [view, setView] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [selectedWorkerId, setSelectedWorkerId] = useState(null);
+  const [selectedWeaponHolderId, setSelectedWeaponHolderId] = useState(null);
   const [isLocked, setIsLocked] = useState(true);
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [waterResetKey, setWaterResetKey] = useState(0);
@@ -119,6 +124,11 @@ function App() {
     setView('worker-detail');
   };
 
+  const navigateToWeaponHolder = (id) => {
+    setSelectedWeaponHolderId(id);
+    setView('weapon-detail');
+  };
+
   // Helper to validate PIN (Supports both Old Plain "0011" and New Hashed PINs)
   const checkPin = async (inputPin) => {
     // 1. If stored PIN is 4 digits, it's an OLD plain PIN
@@ -206,6 +216,29 @@ function App() {
             <FaFlask className="nav-icon" />
             <span className="nav-text">Analyses d'eau</span>
           </div>
+
+          <div style={{ margin: '0.5rem 0', borderTop: '1px solid rgba(255,255,255,0.1)' }}></div>
+
+          <div
+            className={`nav-item ${view === 'weapons-dashboard' ? 'active' : ''}`}
+            onClick={() => setView('weapons-dashboard')}
+            title="Tableau Armes"
+          >
+            <FaShieldAlt className="nav-icon" />
+            <span className="nav-text">Tableau Armes</span>
+          </div>
+          <div
+            className={`nav-item ${view === 'weapons-list' || view === 'weapon-detail' ? 'active' : ''}`}
+            onClick={() => {
+              setView('weapons-list');
+              setSelectedWeaponHolderId(null);
+            }}
+            title="Détenteurs Armes"
+          >
+            <FaUserShield className="nav-icon" />
+            <span className="nav-text">Détenteurs Armes</span>
+          </div>
+
           <div
             className={`nav-item ${view === 'settings' ? 'active' : ''}`}
             onClick={() => setView('settings')}
@@ -262,6 +295,28 @@ function App() {
               compactMode={compactMode} // <--- [NEW] Pass Prop
             />
           )}
+
+          {view === 'weapons-dashboard' && (
+            <WeaponDashboard
+              onNavigateWeaponHolder={navigateToWeaponHolder}
+              compactMode={compactMode}
+              forceMobile={forceMobile}
+            />
+          )}
+          {view === 'weapons-list' && (
+            <WeaponList
+              onNavigateWeaponHolder={navigateToWeaponHolder}
+              compactMode={compactMode}
+            />
+          )}
+          {view === 'weapon-detail' && selectedWeaponHolderId && (
+            <WeaponDetail
+              holderId={selectedWeaponHolderId}
+              onBack={() => setView('weapons-list')}
+              compactMode={compactMode}
+            />
+          )}
+
           {view === 'settings' && (
             <Settings
               currentPin={pin}
