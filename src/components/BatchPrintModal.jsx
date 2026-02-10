@@ -9,9 +9,13 @@ import {
   FaCalendarDay,
 } from 'react-icons/fa';
 
-export default function BatchPrintModal({ count, onConfirm, onCancel }) {
+export default function BatchPrintModal({ count, onConfirm, onCancel, weaponMode = false }) {
   // Par défaut : si plusieurs personnes, liste manager, sinon convocation
-  const [docType, setDocType] = useState(count > 1 ? 'list_manager' : 'convocation');
+  const defaultDoc = weaponMode 
+    ? (count > 1 ? 'weapon_convocation_list' : 'weapon_convocation_individual')
+    : (count > 1 ? 'list_manager' : 'convocation');
+    
+  const [docType, setDocType] = useState(defaultDoc);
 
   // Date de création (Signature en bas de page)
   const [creationDate, setCreationDate] = useState(new Date().toISOString().split('T')[0]);
@@ -78,62 +82,94 @@ export default function BatchPrintModal({ count, onConfirm, onCancel }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: '0.8rem' }}>
             <label className="label">Type de Document</label>
 
-            {count > 1 && (
-              <label style={radioStyle}>
-                <input
-                  type="radio"
-                  name="doctype"
-                  value="list_manager"
-                  checked={docType === 'list_manager'}
-                  onChange={(e) => setDocType(e.target.value)}
-                />
-                <FaListUl style={{ color: '#4F46E5' }} />
-                <span>Liste de convocation (Par Service)</span>
-              </label>
+            {weaponMode ? (
+              <>
+                {count > 1 && (
+                  <label style={radioStyle}>
+                    <input
+                      type="radio"
+                      name="doctype"
+                      value="weapon_convocation_list"
+                      checked={docType === 'weapon_convocation_list'}
+                      onChange={(e) => setDocType(e.target.value)}
+                    />
+                    <FaListUl style={{ color: '#4F46E5' }} />
+                    <span>Liste de convocation (Par Service)</span>
+                  </label>
+                )}
+
+                <label style={radioStyle}>
+                  <input
+                    type="radio"
+                    name="doctype"
+                    value="weapon_convocation_individual"
+                    checked={docType === 'weapon_convocation_individual'}
+                    onChange={(e) => setDocType(e.target.value)}
+                  />
+                  <FaFileAlt style={{ color: '#4F46E5' }} />
+                  <span>{count > 1 ? 'Convocations Individuelles' : 'Convocation Médicale'}</span>
+                </label>
+              </>
+            ) : (
+              <>
+                {count > 1 && (
+                  <label style={radioStyle}>
+                    <input
+                      type="radio"
+                      name="doctype"
+                      value="list_manager"
+                      checked={docType === 'list_manager'}
+                      onChange={(e) => setDocType(e.target.value)}
+                    />
+                    <FaListUl style={{ color: '#4F46E5' }} />
+                    <span>Liste de convocation (Par Service)</span>
+                  </label>
+                )}
+
+                <label style={radioStyle}>
+                  <input
+                    type="radio"
+                    name="doctype"
+                    value="convocation"
+                    checked={docType === 'convocation'}
+                    onChange={(e) => setDocType(e.target.value)}
+                  />
+                  <FaFileAlt style={{ color: '#4F46E5' }} />
+                  <span>{count > 1 ? 'Convocations Individuelles' : 'Convocation Médicale'}</span>
+                </label>
+
+                <label style={radioStyle}>
+                  <input
+                    type="radio"
+                    name="doctype"
+                    value="copro"
+                    checked={docType === 'copro'}
+                    onChange={(e) => setDocType(e.target.value)}
+                  />
+                  <FaFileAlt style={{ color: '#059669' }} />
+                  <span>Demande Coproparasitologie</span>
+                </label>
+
+                <label style={radioStyle}>
+                  <input
+                    type="radio"
+                    name="doctype"
+                    value="aptitude"
+                    checked={docType === 'aptitude'}
+                    onChange={(e) => setDocType(e.target.value)}
+                  />
+                  <FaUserMd style={{ color: '#4F46E5' }} />
+                  <span>Certificat d'Aptitude</span>
+                </label>
+              </>
             )}
-
-            <label style={radioStyle}>
-              <input
-                type="radio"
-                name="doctype"
-                value="convocation"
-                checked={docType === 'convocation'}
-                onChange={(e) => setDocType(e.target.value)}
-              />
-              <FaFileAlt style={{ color: '#4F46E5' }} />
-              <span>{count > 1 ? 'Convocations Individuelles' : 'Convocation Médicale'}</span>
-            </label>
-
-            <label style={radioStyle}>
-              <input
-                type="radio"
-                name="doctype"
-                value="copro"
-                checked={docType === 'copro'}
-                onChange={(e) => setDocType(e.target.value)}
-              />
-              <FaFileAlt style={{ color: '#059669' }} />
-              <span>Demande Coproparasitologie</span>
-            </label>
-
-            <label style={radioStyle}>
-              <input
-                type="radio"
-                name="doctype"
-                value="aptitude"
-                checked={docType === 'aptitude'}
-                onChange={(e) => setDocType(e.target.value)}
-              />
-              <FaUserMd style={{ color: '#4F46E5' }} />
-              <span>Certificat d'Aptitude</span>
-            </label>
           </div>
 
           <hr style={{ margin: 0, borderTop: '1px solid #eee' }} />
 
           {/* [NEW] SECTION CONVOCATION - Date de RDV */}
 
-          {(docType === 'convocation' || docType === 'list_manager') && (
+          {(docType === 'convocation' || docType === 'list_manager' || docType === 'weapon_convocation_list' || docType === 'weapon_convocation_individual') && (
             <div
               style={{
                 background: '#f0f9ff',

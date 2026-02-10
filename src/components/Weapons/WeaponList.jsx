@@ -1,10 +1,15 @@
 import { useState, useEffect, useMemo, useDeferredValue } from 'react';
 import { db } from '../../services/db';
 import { logic } from '../../services/logic';
+import backupService from '../../services/backup';
 import AddWeaponHolderForm from './AddWeaponHolderForm';
 import { useToast } from '../Toast';
 import BulkActionsToolbar from '../BulkActionsToolbar';
+import BatchScheduleModal from '../BatchScheduleModal';
+import BatchPrintModal from '../BatchPrintModal';
+import BatchResultModal from '../BatchResultModal';
 import { exportWeaponsToExcel } from '../../services/excelExport';
+import { pdfService } from '../../services/pdfGenerator';
 import {
   FaPlus,
   FaSearch,
@@ -16,6 +21,11 @@ import {
   FaUserPlus,
   FaCheckSquare,
   FaFileExcel,
+  FaFileDownload,
+  FaFileUpload,
+  FaHistory,
+  FaStethoscope,
+  FaBalanceScale,
   FaPrint,
 } from 'react-icons/fa';
 
@@ -38,6 +48,10 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState(new Set());
+
+  const [showScheduleModal, setShowScheduleModal] = useState(false);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [showPrintModal, setShowPrintModal] = useState(false);
 
   const loadData = async () => {
     try {
@@ -106,6 +120,17 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
     setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
   };
 
+  const getSortIcon = (key) => {
+    if (sortConfig.key !== key) {
+      return <FaSort style={{ opacity: 0.3, marginLeft: '5px' }} />;
+    }
+    return sortConfig.direction === 'asc' ? (
+      <FaSortUp style={{ marginLeft: '5px' }} />
+    ) : (
+      <FaSortDown style={{ marginLeft: '5px' }} />
+    );
+  };
+
   const toggleSelectionMode = () => {
     setIsSelectionMode(!isSelectionMode);
     setSelectedIds(new Set());
@@ -124,12 +149,95 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   };
 
   const handleBatchDelete = async () => {
-    if (window.confirm(`Supprimer ${selectedIds.size} agents ?`)) {
+    if (window.confirm(`Supprimer définitivement ${selectedIds.size} agents ?`)) {
       await Promise.all(Array.from(selectedIds).map(id => db.deleteWeaponHolder(id)));
       showToast('Suppression terminée', 'success');
       setSelectedIds(new Set());
       loadData();
     }
+  };
+
+  const handleBatchScheduleConfirm = async (dateStr) => {
+    await Promise.all(Array.from(selectedIds).map(async (id) => {
+      await db.saveWeaponExam({
+        holder_id: id,
+        exam_date: dateStr,
+        visit_reason: 'Périodique',
+        final_decision: 'pending', // Special status for batch scheduled
+      });
+    }));
+    setShowScheduleModal(false);
+    setSelectedIds(new Set());
+    loadData();
+    showToast('Visites planifiées', 'success');
+  };
+
+  const handleBatchResultConfirm = async (payload) => {
+    const today = new Date().toISOString().split('T')[0];
+    await Promise.all(Array.from(selectedIds).map(async (id) => {
+      const exams = await db.getWeaponExamsByHolder(id);
+      exams.sort((a,b) => new Date(b.exam_date) - new Date(a.exam_date));
+      
+      const lastExam = exams[0] || { holder_id: id, exam_date: today };
+      
+      const decision = payload.decision; // 'apte', 'inapte_temporaire', etc.
+      let nextDate = '';
+      if (decision === 'apte') {
+          const d = new Date(payload.date || today);
+          d.setFullYear(d.getFullYear() + 1);
+          nextDate = d.toISOString().split('T')[0];
+      } else if (decision === 'inapte_temporaire') {
+          const d = new Date(payload.date || today);
+          d.setMonth(d.getMonth() + (parseInt(payload.retestDays) || 3));
+          nextDate = d.toISOString().split('T')[0];
+      }
+
+      await db.saveWeaponExam({
+        ...lastExam,
+        exam_date: payload.date || lastExam.exam_date,
+        final_decision: decision,
+        next_review_date: nextDate,
+      });
+    }));
+    setShowResultModal(false);
+    setSelectedIds(new Set());
+    loadData();
+    showToast('Décisions enregistrées', 'success');
+  };
+
+  const handleBatchPrintConfirm = (docType, creationDate, options) => {
+    const targets = holders.filter(h => selectedIds.has(h.id)).map(h => ({
+        ...h,
+        deptName: departments.find(d => d.id === h.department_id)?.name || '-'
+    }));
+    pdfService.generateBatchDoc(targets, docType, { ...options, date: creationDate });
+    setShowPrintModal(false);
+  };
+
+  const handleExport = async () => {
+    try {
+      const json = await db.exportData();
+      await backupService.saveBackupJSON(json, `weapon_backup_${new Date().toISOString().split('T')[0]}.json`);
+      showToast('Export JSON réussi', 'success');
+    } catch (e) {
+      showToast('Erreur export JSON', 'error');
+    }
+  };
+
+  const handleImport = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      const success = await db.importData(evt.target.result);
+      if (success) {
+        showToast('Import réussi', 'success');
+        loadData();
+      } else {
+        showToast('Erreur import', 'error');
+      }
+    };
+    reader.readAsText(file);
   };
 
   const handleExcelExport = async () => {
@@ -140,7 +248,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
     }
   };
 
-  const gridTemplate = isSelectionMode ? '50px 1.5fr 1fr 1fr 1.2fr 1fr 100px' : '0px 1.5fr 1fr 1fr 1.2fr 1fr 100px';
+  const gridTemplate = isSelectionMode ? '50px 1.8fr 0.7fr 1fr 1fr 2fr 100px' : '0px 1.8fr 0.7fr 1fr 1fr 2fr 100px';
 
   return (
     <div>
@@ -155,6 +263,13 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           <button className={`btn ${isSelectionMode ? 'btn-primary' : 'btn-outline'}`} onClick={toggleSelectionMode} title="Sélection Multiple" style={{ padding: '0.8rem 1rem' }}>
             <FaCheckSquare />
           </button>
+          <button className="btn btn-outline" title="Backup JSON" onClick={handleExport} style={{ padding: '0.8rem 1rem' }}>
+            <FaFileDownload />
+          </button>
+          <label className="btn btn-outline" title="Import JSON" style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>
+            <FaFileUpload />
+            <input type="file" onChange={handleImport} style={{ display: 'none' }} accept=".json" />
+          </label>
           <button className="btn btn-outline" style={{ color: '#107C41', borderColor: '#107C41', padding: '0.8rem 1rem' }} onClick={handleExcelExport}>
             <FaFileExcel /> <span className="hide-mobile">Excel</span>
           </button>
@@ -191,17 +306,18 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
             <div style={{ textAlign: 'center' }}>
               {isSelectionMode && <input type="checkbox" onChange={toggleSelectAll} checked={filteredHolders.length > 0 && selectedIds.size === filteredHolders.length} />}
             </div>
-            <div onClick={() => handleSort('full_name')} style={{ cursor: 'pointer' }}>Nom {sortConfig.key === 'full_name' && (sortConfig.direction === 'asc' ? <FaSortUp /> : <FaSortDown />)}</div>
-            <div>Matricule</div>
-            <div>Service</div>
-            <div>Poste / Grade</div>
-            <div>Statut</div>
+            <div onClick={() => handleSort('full_name')} style={{ cursor: 'pointer' }}>Nom et prénom {getSortIcon('full_name')}</div>
+            <div onClick={() => handleSort('national_id')} style={{ cursor: 'pointer' }}>Matricule {getSortIcon('national_id')}</div>
+            <div onClick={() => handleSort('department_id')} style={{ cursor: 'pointer' }}>Service {getSortIcon('department_id')}</div>
+            <div onClick={() => handleSort('job_function')} style={{ cursor: 'pointer' }}>Poste / Grade {getSortIcon('job_function')}</div>
+            <div onClick={() => handleSort('next_review_date')} style={{ cursor: 'pointer' }}>Prochain Dû {getSortIcon('next_review_date')}</div>
             <div style={{ textAlign: 'right' }}>Actions</div>
           </div>
 
           {filteredHolders.map((h) => {
             const isSelected = selectedIds.has(h.id);
             const deptName = departments.find(d => d.id === h.department_id)?.name || '-';
+            const isDue = logic.isWeaponDueSoon(h.next_review_date);
             return (
               <div key={h.id} className={`hybrid-row ${isSelected ? 'selected' : ''}`} style={{ gridTemplateColumns: gridTemplate }} onClick={() => isSelectionMode ? toggleSelectOne(h.id) : onNavigateWeaponHolder(h.id)}>
                 <div style={{ textAlign: 'center' }}>
@@ -212,9 +328,14 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                 <div className="hybrid-cell">{deptName}</div>
                 <div className="hybrid-cell">{h.job_function}</div>
                 <div className="hybrid-cell">
-                  <span className={`badge ${h.status === 'apte' ? 'badge-green' : h.status === 'inapte_definitif' ? 'badge-black' : 'badge-red'}`}>
-                    {h.status === 'apte' ? 'Apte' : h.status === 'inapte_definitif' ? 'Inapte Définitif' : 'Inapte Temp.'}
+                  <span style={{ fontWeight: 600, color: isDue ? 'var(--danger)' : 'inherit' }}>
+                    {logic.formatDateDisplay(h.next_review_date)}
                   </span>
+                  {h.status && (
+                    <span className={`badge ${h.status === 'apte' ? 'badge-green' : h.status === 'inapte_definitif' ? 'badge-black' : 'badge-red'}`} style={{ marginLeft: '5px', fontSize: '0.7rem' }}>
+                      {h.status === 'apte' ? 'Apte' : 'Inapte'}
+                    </span>
+                  )}
                 </div>
                 <div className="hybrid-actions">
                    <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); setEditingHolder(h); setShowForm(true); }}><FaEdit /></button>
@@ -230,7 +351,36 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
           onDelete={handleBatchDelete}
+          onSchedule={() => setShowScheduleModal(true)}
+          onResult={() => setShowResultModal(true)}
+          onPrint={() => setShowPrintModal(true)}
           onCancel={() => setSelectedIds(new Set())}
+        />
+      )}
+
+      {showScheduleModal && (
+        <BatchScheduleModal
+          count={selectedIds.size}
+          onConfirm={handleBatchScheduleConfirm}
+          onCancel={() => setShowScheduleModal(false)}
+        />
+      )}
+
+      {showResultModal && (
+        <BatchResultModal
+          count={selectedIds.size}
+          onConfirm={handleBatchResultConfirm}
+          onCancel={() => setShowResultModal(false)}
+          weaponMode={true}
+        />
+      )}
+
+      {showPrintModal && (
+        <BatchPrintModal
+          count={selectedIds.size}
+          onConfirm={handleBatchPrintConfirm}
+          onCancel={() => setShowPrintModal(false)}
+          weaponMode={true}
         />
       )}
 

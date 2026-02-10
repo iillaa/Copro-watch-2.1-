@@ -160,20 +160,34 @@ export const logic = {
     const nextDate = safeDate(nextReviewDateStr);
     if (!nextDate) return false;
     const diff = differenceInDays(nextDate, new Date());
-    // Spec says 30 days for weapon aptitude
-    return diff <= 30 && diff >= 0;
+    // Updated: 20 days for weapon aptitude
+    return diff <= 20 && diff >= 0;
   },
 
   getWeaponDashboardStats(holders, exams) {
+    // "Active" = Status APTE (Valid)
     const active = holders.filter((h) => !h.archived && h.status === 'apte');
+    
+    // "Inapte" = Status INAPTE (Any kind)
     const inapte = holders.filter((h) => !h.archived && h.status?.startsWith('inapte'));
-    const dueSoon = holders.filter(
-      (h) => !h.archived && this.isWeaponDueSoon(h.next_review_date) && h.status === 'apte'
-    );
+    
+    // "A Revoir" (Due Soon)
+    // 1. New Agents (Pending)
+    // 2. Inaptes Temporaires coming due
+    const dueSoon = holders.filter((h) => {
+        if (h.archived) return false;
+        if (h.status === 'pending') return true; // New agents
+        if (h.status === 'inapte_temporaire' && (this.isWeaponDueSoon(h.next_review_date) || this.isOverdue(h.next_review_date))) return true;
+        return false;
+    });
 
-    // Latest activity (last 10 exams)
+    // Latest activity (last 10 exams) - SORTED CHRONOLOGICALLY (Newest first)
     const latestExams = [...exams]
-      .sort((a, b) => (safeDate(b.exam_date) || 0) - (safeDate(a.exam_date) || 0))
+      .sort((a, b) => {
+          const dateA = safeDate(a.commission_date || a.exam_date) || 0;
+          const dateB = safeDate(b.commission_date || b.exam_date) || 0;
+          return dateB - dateA;
+      })
       .slice(0, 10)
       .map((e) => {
         const holder = holders.find((h) => h.id === e.holder_id);

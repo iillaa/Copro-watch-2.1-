@@ -52,6 +52,13 @@ export const pdfService = {
 
     if (docType === 'list_manager') {
       generateGroupedList(doc, workers, options);
+    } else if (docType === 'weapon_convocation_list') {
+      generateWeaponConvocationList(doc, workers, options);
+    } else if (docType === 'weapon_convocation_individual') {
+      for (let i = 0; i < workers.length; i++) {
+        if (i > 0) doc.addPage();
+        drawWeaponConvocationIndividual(doc, workers[i], options);
+      }
     } else if (docType === 'weapon_aptitude') {
       // WEAPON APTITUDE (Portrait)
       workers.forEach((agent, index) => {
@@ -665,4 +672,111 @@ function drawWeaponAptitude(doc, agent, options) {
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.text('Le Médecin Chef', 150, ySig);
+}
+
+// ==========================================
+// 6. LISTE DE CONVOCATION ARME (PORTRAIT - GROUPÉE)
+// ==========================================
+function generateWeaponConvocationList(doc, agents, options) {
+  const groups = {};
+  agents.forEach((a) => {
+    const dName = a.deptName || 'Service Inconnu';
+    if (!groups[dName]) groups[dName] = [];
+    groups[dName].push(a);
+  });
+
+  Object.keys(groups).forEach((dept, i) => {
+    if (i > 0) doc.addPage();
+    const centerX = 105;
+    const leftMargin = MARGIN;
+
+    // HEADER
+    doc.setTextColor(0);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 15, { align: 'center' });
+    doc.setFontSize(8);
+    doc.text("MINISTERE DE L'INTERIEUR ET DE TRANSPORT", leftMargin, 22);
+    doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', leftMargin, 26);
+    doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, 30);
+    doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 34);
+
+    doc.setFontSize(14);
+    doc.text('CONVOCATION VISITE MÉDICALE (PORT D\'ARME)', centerX, 50, { align: 'center' });
+
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`SERVICE : ${dept.toUpperCase()}`, leftMargin, 65);
+    const rdv = `${logic.formatDateDisplay(options.consultDate)} à ${options.consultTime || '08:30'}`;
+    doc.text(`DATE PRÉVUE : ${rdv}`, leftMargin, 72);
+    doc.text(`Le : ${logic.formatDateDisplay(options.date)}`, 190, 65, { align: 'right' });
+
+    // TABLE
+    let y = 80;
+    doc.setFillColor(230, 230, 230);
+    doc.rect(leftMargin, y - 6, 170, 8, 'F');
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Matricule', leftMargin + 2, y);
+    doc.text('Nom et Prénom', leftMargin + 30, y);
+    doc.text('Grade / Poste', leftMargin + 90, y);
+    doc.text('Émargement', leftMargin + 140, y);
+
+    y += 10;
+    doc.setFont('helvetica', 'normal');
+    groups[dept].forEach((a) => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.text(String(a.national_id || '-'), leftMargin + 2, y);
+      doc.text(a.full_name, leftMargin + 30, y);
+      doc.text(a.job_function || '-', leftMargin + 90, y);
+      doc.line(leftMargin, y + 2, 190, y + 2);
+      y += 12;
+    });
+
+    doc.setFont('helvetica', 'bold');
+    doc.text('Le Médecin Chef', 160, 270);
+  });
+}
+
+// ==========================================
+// 7. CONVOCATION ARME INDIVIDUELLE (PORTRAIT)
+// ==========================================
+function drawWeaponConvocationIndividual(doc, agent, options) {
+  const centerX = 105;
+  const leftMargin = MARGIN;
+  
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 15, { align: 'center' });
+  doc.setFontSize(8);
+  doc.text("MINISTERE DE L'INTERIEUR", leftMargin, 22);
+  doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', leftMargin, 26);
+  doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 30);
+
+  doc.setFontSize(16);
+  doc.text('CONVOCATION MÉDICALE', centerX, 60, { align: 'center' });
+  doc.text('(APTITUDE AU PORT D\'ARME)', centerX, 68, { align: 'center' });
+
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  const yStart = 90;
+  doc.text(`M. ${agent.full_name}`, leftMargin, yStart);
+  doc.text(`Matricule : ${agent.national_id}`, leftMargin, yStart + 10);
+  doc.text(`Service : ${agent.deptName || '-'}`, leftMargin, yStart + 20);
+
+  const rdv = `${logic.formatDateDisplay(options.consultDate)} à ${options.consultTime || '08:30'}`;
+  doc.setFont('helvetica', 'bold');
+  doc.text(`Est convoqué(e) pour sa visite d'aptitude au port d'arme le :`, leftMargin, yStart + 40);
+  doc.setFontSize(14);
+  doc.text(rdv, centerX, yStart + 55, { align: 'center' });
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.text('La présence est obligatoire muni de sa pièce d\'identité.', leftMargin, yStart + 80);
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Le Médecin Chef', 150, 250);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(9);
+  doc.text(`Fait le : ${logic.formatDateDisplay(options.date)}`, leftMargin, 250);
 }

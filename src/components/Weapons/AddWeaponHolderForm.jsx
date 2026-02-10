@@ -9,10 +9,11 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
   const [formData, setFormData] = useState({
     full_name: '',
     national_id: '',
-    birth_date: '',
+    phone: '',
+    medical_history: '',
     department_id: '',
-    job_function: 'Agent de Sécurité',
-    status: 'apte',
+    job_function: '',
+    status: 'pending',
     archived: false,
     next_review_date: '',
   });
@@ -88,14 +89,24 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
               <input className="input" name="national_id" value={formData.national_id} onChange={handleChange} required />
             </div>
             <div style={{ flex: 1 }}>
-              <label className="label">Date de Naissance</label>
-              <input className="input" type="date" name="birth_date" value={formData.birth_date} onChange={handleChange} />
+              <label className="label">Téléphone</label>
+              <input className="input" name="phone" value={formData.phone} onChange={handleChange} />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label className="label">Antécédents Médicaux</label>
+            <textarea className="input" name="medical_history" value={formData.medical_history} onChange={handleChange} rows="3" />
           </div>
 
           <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>
-              <label className="label">Service RH</label>
+              <label className="label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                Service RH
+                <button type="button" onClick={() => window.alert("Veuillez vous rendre dans Paramètres > Organisation pour gérer les services.")} style={{ border: 'none', background: 'none', color: 'var(--primary)', fontSize: '0.75rem', cursor: 'pointer', textDecoration: 'underline' }}>
+                  Gérer
+                </button>
+              </label>
               <select className="input" name="department_id" value={formData.department_id} onChange={handleChange} required>
                 <option value="">Sélectionner...</option>
                 {departments.map((d) => (

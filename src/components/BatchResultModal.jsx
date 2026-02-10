@@ -1,28 +1,41 @@
 import { useState } from 'react';
-import { FaClipboardCheck, FaTimes, FaSave, FaFlask } from 'react-icons/fa';
+import { FaClipboardCheck, FaTimes, FaSave, FaFlask, FaShieldAlt } from 'react-icons/fa';
 import { logic } from '../services/logic'; // Need logic to calculate retest dates if needed
 
-export default function BatchResultModal({ count, onConfirm, onCancel }) {
-  const [mode, setMode] = useState('negative'); // 'negative' or 'positive'
+export default function BatchResultModal({ count, onConfirm, onCancel, weaponMode = false }) {
+  const [mode, setMode] = useState(weaponMode ? 'apte' : 'negative'); // 'negative' or 'positive'
 
   // Shared State
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
-  // Positive State
+  // Positive State (Hygiene)
   const [parasite, setParasite] = useState('Amibes');
   const [treatment, setTreatment] = useState('Flagyl 500mg (7j)');
-  const [decision, setDecision] = useState('inapte'); // 'inapte' or 'apte_partielle'
+  const [hygieneDecision, setHygieneDecision] = useState('inapte'); // 'inapte' or 'apte_partielle'
   const [retestDays, setRetestDays] = useState(7);
+
+  // Weapon State
+  const [weaponDecision, setWeaponDecision] = useState('apte'); // 'apte', 'inapte_temporaire', 'inapte_definitif'
+  const [weaponRetestMonths, setWeaponRetestMonths] = useState(3);
 
   const handleSubmit = (e) => {
     e.preventDefault();
+
+    if (weaponMode) {
+      onConfirm({
+        decision: weaponDecision,
+        date,
+        retestDays: weaponRetestMonths, // Used as months in WeaponList handler
+      });
+      return;
+    }
 
     const payload = {
       mode,
       date, // Date of result/validation
       parasite: mode === 'positive' ? parasite : null,
       treatment: mode === 'positive' ? treatment : null,
-      decision: mode === 'positive' ? decision : 'apte',
+      decision: mode === 'positive' ? hygieneDecision : 'apte',
       retestDays: mode === 'positive' ? retestDays : 0,
     };
 
@@ -44,123 +57,203 @@ export default function BatchResultModal({ count, onConfirm, onCancel }) {
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1.5rem' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <FaClipboardCheck /> Résultats Groupés ({count})
+            {weaponMode ? <FaShieldAlt /> : <FaClipboardCheck />} Décisions Groupées ({count})
           </h3>
           <button onClick={onCancel} className="btn-icon">
             <FaTimes />
           </button>
         </div>
 
-        {/* Mode Selection Tabs */}
-        <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem' }}>
-          <button
-            type="button"
-            className={`btn ${mode === 'negative' ? 'btn-success' : 'btn-outline'}`}
-            style={{ flex: 1 }}
-            onClick={() => setMode('negative')}
+        {weaponMode ? (
+          <form
+            onSubmit={handleSubmit}
+            style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}
           >
-            Négatif (-) <br />
-            <small>Tout va bien</small>
-          </button>
-          <button
-            type="button"
-            className={`btn ${mode === 'positive' ? 'btn-danger' : 'btn-outline'}`}
-            style={{ flex: 1 }}
-            onClick={() => setMode('positive')}
-          >
-            Positif (+) <br />
-            <small>Traitement requis</small>
-          </button>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
-        >
-          {/* Common Date Field */}
-          <div>
-            <label className="label">Date du Résultat / Validation</label>
-            <input
-              type="date"
-              className="input"
-              required
-              value={date}
-              onChange={(e) => setDate(e.target.value)}
-            />
-          </div>
-
-          {/* NEGATIVE MODE UI */}
-          {mode === 'negative' && (
-            <div className="p-3 bg-green-50 border border-green-200 rounded text-green-800 text-sm">
-              ✅ <strong>Action :</strong> Ces {count} travailleurs seront marqués
-              <strong> Négatifs</strong> et validés <strong>APTE</strong>. La prochaine visite sera
-              calculée automatiquement (+6 mois).
-            </div>
-          )}
-
-          {/* POSITIVE MODE UI */}
-          {mode === 'positive' && (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div>
-                <label className="label">Parasite identifié</label>
-                <input
-                  className="input"
-                  placeholder="ex: Kystes d'amibes"
-                  value={parasite}
-                  onChange={(e) => setParasite(e.target.value)}
-                />
-              </div>
-              <div>
-                <label className="label">Traitement prescrit</label>
-                <input
-                  className="input"
-                  placeholder="ex: Metronidazole 500mg"
-                  value={treatment}
-                  onChange={(e) => setTreatment(e.target.value)}
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <div>
-                  <label className="label">Décision</label>
-                  <select
-                    className="input"
-                    value={decision}
-                    onChange={(e) => setDecision(e.target.value)}
-                  >
-                    <option value="inapte">Inapte Temporaire</option>
-                    <option value="apte_partielle">Apte Sous Réserve</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Contre-visite (Jours)</label>
-                  <input
-                    type="number"
-                    className="input"
-                    value={retestDays}
-                    onChange={(e) => setRetestDays(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-
-              <div className="p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
-                ⚠️ <strong>Action :</strong> Ces {count} travailleurs seront marqués
-                <strong> Positifs</strong>. Prochaine visite dans {retestDays} jours.
+            <div>
+              <label className="label">Décision de la Commission</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                <button
+                  type="button"
+                  className={`btn ${weaponDecision === 'apte' ? 'btn-success' : 'btn-outline'}`}
+                  onClick={() => setWeaponDecision('apte')}
+                >
+                  🟢 APTE (Valable 1 an)
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${
+                    weaponDecision === 'inapte_temporaire' ? 'btn-danger' : 'btn-outline'
+                  }`}
+                  onClick={() => setWeaponDecision('inapte_temporaire')}
+                >
+                  🔴 INAPTE TEMPORAIRE
+                </button>
+                <button
+                  type="button"
+                  className={`btn ${
+                    weaponDecision === 'inapte_definitif' ? 'btn-black' : 'btn-outline'
+                  }`}
+                  onClick={() => setWeaponDecision('inapte_definitif')}
+                >
+                  ⚫ INAPTE DÉFINITIF
+                </button>
               </div>
             </div>
-          )}
 
-          <div
-            style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}
-          >
-            <button type="button" className="btn btn-outline" onClick={onCancel}>
-              Annuler
-            </button>
-            <button type="submit" className="btn btn-primary">
-              <FaSave /> Appliquer aux {count} dossiers
-            </button>
-          </div>
-        </form>
+            {weaponDecision === 'inapte_temporaire' && (
+              <div>
+                <label className="label">Durée de l'inaptitude (Mois)</label>
+                <select
+                  className="input"
+                  value={weaponRetestMonths}
+                  onChange={(e) => setWeaponRetestMonths(Number(e.target.value))}
+                >
+                  <option value={1}>1 mois</option>
+                  <option value={3}>3 mois</option>
+                  <option value={6}>6 mois</option>
+                </select>
+              </div>
+            )}
+
+            <div>
+              <label className="label">Date de la Commission</label>
+              <input
+                type="date"
+                className="input"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+              <button type="button" className="btn btn-outline" onClick={onCancel}>
+                Annuler
+              </button>
+              <button type="submit" className="btn btn-primary">
+                <FaSave /> Appliquer à {count} agents
+              </button>
+            </div>
+          </form>
+        ) : (
+          <>
+            {/* Mode Selection Tabs (Hygiene) */}
+            <div style={{ display: 'flex', gap: '10px', marginBottom: '1.5rem' }}>
+              <button
+                type="button"
+                className={`btn ${mode === 'negative' ? 'btn-success' : 'btn-outline'}`}
+                style={{ flex: 1 }}
+                onClick={() => setMode('negative')}
+              >
+                Négatif (-) <br />
+                <small>Tout va bien</small>
+              </button>
+              <button
+                type="button"
+                className={`btn ${mode === 'positive' ? 'btn-danger' : 'btn-outline'}`}
+                style={{ flex: 1 }}
+                onClick={() => setMode('positive')}
+              >
+                Positif (+) <br />
+                <small>Traitement requis</small>
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSubmit}
+              style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
+            >
+              {/* Common Date Field */}
+              <div>
+                <label className="label">Date du Résultat / Validation</label>
+                <input
+                  type="date"
+                  className="input"
+                  required
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                />
+              </div>
+
+              {/* NEGATIVE MODE UI */}
+              {mode === 'negative' && (
+                <div className="p-3 bg-green-50 border border-green-200 rounded text-green-800 text-sm">
+                  ✅ <strong>Action :</strong> Ces {count} travailleurs seront marqués
+                  <strong> Négatifs</strong> et validés <strong>APTE</strong>. La prochaine visite
+                  sera calculée automatiquement (+6 mois).
+                </div>
+              )}
+
+              {/* POSITIVE MODE UI */}
+              {mode === 'positive' && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                  <div>
+                    <label className="label">Parasite identifié</label>
+                    <input
+                      className="input"
+                      placeholder="ex: Kystes d'amibes"
+                      value={parasite}
+                      onChange={(e) => setParasite(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Traitement prescrit</label>
+                    <input
+                      className="input"
+                      placeholder="ex: Metronidazole 500mg"
+                      value={treatment}
+                      onChange={(e) => setTreatment(e.target.value)}
+                    />
+                  </div>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                    <div>
+                      <label className="label">Décision</label>
+                      <select
+                        className="input"
+                        value={hygieneDecision}
+                        onChange={(e) => setHygieneDecision(e.target.value)}
+                      >
+                        <option value="inapte">Inapte Temporaire</option>
+                        <option value="apte_partielle">Apte Sous Réserve</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Contre-visite (Jours)</label>
+                      <input
+                        type="number"
+                        className="input"
+                        value={retestDays}
+                        onChange={(e) => setRetestDays(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="p-3 bg-red-50 border border-red-200 rounded text-red-800 text-sm">
+                    ⚠️ <strong>Action :</strong> Ces {count} travailleurs seront marqués
+                    <strong> Positifs</strong>. Prochaine visite dans {retestDays} jours.
+                  </div>
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  justifyContent: 'flex-end',
+                  marginTop: '1rem',
+                }}
+              >
+                <button type="button" className="btn btn-outline" onClick={onCancel}>
+                  Annuler
+                </button>
+                <button type="submit" className="btn btn-primary">
+                  <FaSave /> Appliquer aux {count} dossiers
+                </button>
+              </div>
+            </form>
+          </>
+        )}
       </div>
     </div>
   );

@@ -66,6 +66,11 @@ export default function Settings({
   const [newWaterDepartmentName, setNewWaterDepartmentName] = useState('');
   const [waterDepartmentsLoading, setWaterDepartmentsLoading] = useState(false);
 
+  // Weapon Departments management (NEW)
+  const [weaponDepartments, setWeaponDepartments] = useState([]);
+  const [newWeaponDepartmentName, setNewWeaponDepartmentName] = useState('');
+  const [weaponDepartmentsLoading, setWeaponDepartmentsLoading] = useState(false);
+
   const handleSave = async () => {
     // 1. Logic: If pin is empty, we KEEP the old one.
     let pinToSave = currentPin;
@@ -190,6 +195,8 @@ export default function Settings({
     loadWorkplaces();
     // Load water departments
     loadWaterDepartments();
+    // Load weapon departments
+    loadWeaponDepartments();
   }, []);
 
   useEffect(() => {
@@ -474,6 +481,65 @@ export default function Settings({
       showToast("Service d'eau et historique supprimés.", 'success');
     } catch (error) {
       console.error('Error deleting water dept:', error);
+      showToast('Erreur lors de la suppression.', 'error');
+    }
+  };
+
+  // --- WEAPON DEPT LOGIC (NEW) ---
+  const loadWeaponDepartments = async () => {
+    setWeaponDepartmentsLoading(true);
+    try {
+      const [depts, holders] = await Promise.all([db.getWeaponDepartments(), db.getWeaponHolders()]);
+      const deptsWithCount = depts.map((d) => ({
+        ...d,
+        count: holders.filter((h) => h.department_id === d.id && !h.archived).length,
+      }));
+      setWeaponDepartments(deptsWithCount);
+    } catch (error) {
+      console.error('Error loading weapon departments:', error);
+    }
+    setWeaponDepartmentsLoading(false);
+  };
+
+  const addWeaponDepartment = async () => {
+    if (!newWeaponDepartmentName.trim()) {
+      showToast('Veuillez saisir un nom de service (Armes).', 'error');
+      return;
+    }
+    try {
+      const newDept = { name: newWeaponDepartmentName.trim() };
+      await db.saveWeaponDepartment(newDept);
+      setNewWeaponDepartmentName('');
+      await loadWeaponDepartments();
+      showToast('Service (Armes) ajouté avec succès !', 'success');
+    } catch (error) {
+      console.error('Error adding weapon department:', error);
+      showToast("Erreur lors de l'ajout du service.", 'error');
+    }
+  };
+
+  const deleteWeaponDepartment = async (id) => {
+    const holders = await db.getWeaponHolders();
+    const linkedHolders = holders.filter((h) => h.department_id === id);
+    const count = linkedHolders.length;
+
+    if (count > 0) {
+      const confirmMsg = `ATTENTION: Ce service contient ${count} agent(s).\n\nSi vous supprimez ce service, CES AGENTS SERONT AUSSI SUPPRIMÉS.\n\nConfirmer la suppression totale ?`;
+      if (!window.confirm(confirmMsg)) return;
+      await Promise.all(linkedHolders.map((h) => db.deleteWeaponHolder(h.id)));
+    } else {
+      if (!window.confirm('Supprimer ce service vide ?')) return;
+    }
+
+    try {
+      await db.deleteWeaponDepartment(id);
+      await loadWeaponDepartments();
+      showToast(
+        count > 0 ? `Service et ${count} agents supprimés.` : 'Service supprimé.',
+        'success'
+      );
+    } catch (error) {
+      console.error('Error deleting weapon department:', error);
       showToast('Erreur lors de la suppression.', 'error');
     }
   };
@@ -933,6 +999,96 @@ export default function Settings({
                       className="btn btn-sm btn-outline"
                       onClick={() => deleteWaterDepartment(dept.id)}
                       style={{ color: 'var(--danger)', borderColor: 'transparent' }}
+                    >
+                      <FaTrash />
+                    </button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          {/* Services (Armes) (NEW) */}
+          <div className="card" style={{ marginTop: 0 }}>
+            <h3
+              style={{
+                marginTop: 0,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '0.5rem',
+                color: 'var(--primary)',
+              }}
+            >
+              <FaShieldAlt /> Services (Armes)
+            </h3>
+            <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
+              <input
+                type="text"
+                placeholder="Nouveau service (Armes)..."
+                value={newWeaponDepartmentName}
+                onChange={(e) => setNewWeaponDepartmentName(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addWeaponDepartment()}
+                className="input"
+                style={{ flex: 1 }}
+              />
+              <button
+                className="btn btn-primary"
+                onClick={addWeaponDepartment}
+                disabled={weaponDepartmentsLoading || !newWeaponDepartmentName.trim()}
+              >
+                <FaPlus />
+              </button>
+            </div>
+
+            <div
+              style={{
+                maxHeight: '400px',
+                overflowY: 'auto',
+                border: '1px solid var(--border-color)',
+                borderRadius: '4px',
+                padding: '0.5rem',
+                background: '#f8fafc',
+              }}
+            >
+              {weaponDepartments.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '1rem', color: 'var(--text-muted)' }}>
+                  Aucun service défini.
+                </div>
+              ) : (
+                weaponDepartments.map((dept) => (
+                  <div
+                    key={dept.id}
+                    style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '0.75rem',
+                      borderBottom: '1px solid #e2e8f0',
+                      background: 'white',
+                      marginBottom: '4px',
+                      borderRadius: '4px',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                      <span style={{ fontWeight: '600' }}>{dept.name}</span>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          background: '#e2e8f0',
+                          color: '#475569',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {dept.count || 0} agents
+                      </span>
+                    </div>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      onClick={() => deleteWeaponDepartment(dept.id)}
+                      style={{ color: 'var(--danger)', borderColor: 'transparent' }}
+                      title="Supprimer"
                     >
                       <FaTrash />
                     </button>
