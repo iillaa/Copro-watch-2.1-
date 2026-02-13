@@ -243,10 +243,11 @@ export default function WaterAnalysisPanel({
                 disabled={isResultSaved}
                 style={{ borderRadius: '8px' }}
               />
-              {/* [FIX] Show OK if unsaved OR changed */}
-              {(!savedRecord?.id ||
+              {/* [FIX] Show OK only for current month dates - disable for older dates */}
+              {((!savedRecord?.id ||
                 isCreatingRetest ||
-                formData.request_date !== savedRecord.request_date) && (
+                formData.request_date !== savedRecord.request_date) &&
+                formData.request_date.startsWith(currentMonthISO)) && (
                 <button
                   className="btn btn-primary btn-sm"
                   onClick={() => handleSave('request')}
@@ -254,6 +255,12 @@ export default function WaterAnalysisPanel({
                 >
                   OK
                 </button>
+              )}
+              {/* Show message for old dates */}
+              {formData.request_date && !formData.request_date.startsWith(currentMonthISO) && (
+                <span style={{ fontSize: '0.65rem', color: 'var(--danger)', fontWeight: 600 }}>
+                  Mois en cours uniquement
+                </span>
               )}
             </div>
           </div>
