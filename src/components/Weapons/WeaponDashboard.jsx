@@ -10,6 +10,7 @@ import {
   FaCog,
   FaPlus,
   FaTrash,
+  FaBell,
 } from 'react-icons/fa';
 
 export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, forceMobile }) {
@@ -17,6 +18,33 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
   const [showSettings, setShowSettings] = useState(false);
   const [holders, setHolders] = useState([]);
   const [exams, setExams] = useState([]);
+  const [alert, setAlert] = useState(null);
+
+  const calculateAlert = (pendingCount, examList) => {
+    let daysSinceLast = 0;
+    if (examList && examList.length > 0) {
+      const sorted = [...examList].sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
+      const lastDate = new Date(sorted[0].exam_date);
+      const diffTime = Math.abs(new Date() - lastDate);
+      daysSinceLast = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    }
+
+    if (pendingCount >= 20) {
+      setAlert({
+        level: 'danger',
+        title: 'Volume Élevé',
+        message: `${pendingCount} agents en attente. Commission requise.`
+      });
+    } else if (daysSinceLast >= 60 && pendingCount > 0) {
+      setAlert({
+        level: 'warning',
+        title: 'Rappel Commission',
+        message: `Dernière commission il y a ${daysSinceLast} jours. ${pendingCount} dossiers en attente.`
+      });
+    } else {
+      setAlert(null);
+    }
+  };
 
   const checkMobile = () => {
     if (forceMobile) return true;
@@ -43,6 +71,8 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
       const [h, e] = await Promise.all([db.getWeaponHolders(), db.getWeaponExams()]);
       setHolders(h || []);
       setExams(e || []);
+      const pending = (h || []).filter(w => w.status === 'pending').length;
+      calculateAlert(pending, e || []);
     } catch (e) {
       console.error('WeaponDashboard error:', e);
     } finally {
@@ -74,10 +104,31 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
           <h2 style={{ marginBottom: 0, marginTop: 0, lineHeight: 1.2 }}>Gestion des Armes</h2>
           <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: isMobile ? '0.85rem' : '0.9rem' }}>Aperçu de l'aptitude au port d'arme.</p>
         </div>
-        <button className="btn btn-outline" style={{ padding: '0.8rem 1.2rem' }} onClick={() => setShowSettings(true)} title="Gérer les Services RH">
-          <FaCog /> <span className="hide-mobile">Services RH</span>
-        </button>
+
       </header>
+
+      {/* --- START ALERT BANNER --- */}
+      {alert && (
+        <div className="card" style={{ 
+            marginBottom: '1rem', 
+            border: `2px solid ${alert.level === 'danger' ? '#ef4444' : '#f59e0b'}`,
+            background: alert.level === 'danger' ? '#fef2f2' : '#fffbeb',
+            display: 'flex', alignItems: 'center', gap: '1rem', padding: '1rem'
+        }}>
+            <div style={{ fontSize: '1.5rem', color: alert.level === 'danger' ? '#ef4444' : '#f59e0b' }}>
+                <FaBell />
+            </div>
+            <div>
+                <h4 style={{ margin: 0, color: alert.level === 'danger' ? '#991b1b' : '#92400e' }}>
+                    {alert.title}
+                </h4>
+                <div style={{ fontSize: '0.9rem', color: '#374151' }}>
+                    {alert.message}
+                </div>
+            </div>
+        </div>
+      )}
+      {/* --- END ALERT BANNER --- */}
 
       <div style={isMobile ? { display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.5rem', marginBottom: '0.5rem' } : { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '1rem', marginBottom: '0.5rem' }}>
         {/* CARD 1: APTE */}
