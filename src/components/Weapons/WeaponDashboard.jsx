@@ -96,8 +96,12 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
       
       const pending = activeHolders.filter(w => w.status === 'pending').length;
       
+      // [SURGICAL FIX] Only count 'inapte_temporaire' as work. 
+      // Apte agents with old dates are ignored.
       const reviews = activeHolders.filter(w => 
-        w.next_review_date && (logic.isWeaponDueSoon(w.next_review_date) || logic.isOverdue(w.next_review_date))
+        w.status === 'inapte_temporaire' &&
+        w.next_review_date && 
+        (logic.isWeaponDueSoon(w.next_review_date) || logic.isOverdue(w.next_review_date))
       ).length;
 
       // Pass both counts to the alert logic
@@ -218,8 +222,8 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
             <div className="hybrid-container">
               <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}><div>Nom</div><div>Date</div><div style={{ textAlign: 'center' }}>Action</div></div>
               {stats.dueSoon.map(h => {
-                // [FIX] Calculate Overdue Logic
-                const isLate = h.next_review_date && logic.isOverdue(h.next_review_date);
+                // [FIX] Strict Overdue Check for the List Visuals
+                const isLate = h.status === 'inapte_temporaire' && h.next_review_date && logic.isOverdue(h.next_review_date);
                 
                 return (
                   <div key={h.id} className="hybrid-row" style={{ gridTemplateColumns: gridDashboard }}>

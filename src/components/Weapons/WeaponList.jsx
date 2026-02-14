@@ -380,8 +380,9 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
             const deptName = departments.find(d => d.id === h.department_id)?.name || '-';
             const isDue = logic.isWeaponDueSoon(h.next_review_date);
             
-            // [NEW] Calculate Overdue
-            const isOverdue = h.next_review_date && logic.isOverdue(h.next_review_date);
+            // [SURGICAL FIX] Strict Status Check
+            // Only 'inapte_temporaire' can be overdue. Apte/Definitif are ignored.
+            const isOverdue = h.status === 'inapte_temporaire' && h.next_review_date && logic.isOverdue(h.next_review_date);
 
             return (
               <div 
