@@ -96,7 +96,8 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   const [filterDept, setFilterDept] = useState(
     () => localStorage.getItem('worker_filter_dept') || ''
   );
-  const [filterStatus, setFilterStatus] = useState(''); // '' = Tous, 'late', 'apte', 'inapte', 'due_soon'
+  // [SURGICAL FIX] Initialize from LocalStorage
+  const [filterStatus, setFilterStatus] = useState(localStorage.getItem('worker_filter_status') || '');
 
   const [sortConfig, setSortConfig] = useState({
     key: 'full_name',
@@ -791,7 +792,10 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                 color: filterStatus ? 'var(--primary)' : 'inherit',
               }}
               value={filterStatus}
-              onChange={(e) => setFilterStatus(e.target.value)}
+              onChange={(e) => {
+                setFilterStatus(e.target.value);
+                localStorage.setItem('worker_filter_status', e.target.value);
+              }}
             >
               <option value="">Tout le monde</option>
               <option value="late">⚠️ En Retard</option>
@@ -823,6 +827,9 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                   setSearchTerm('');
                   setFilterDept('');
                   setFilterStatus('');
+                  // [FIX] Clear Storage
+                  localStorage.removeItem('worker_filter_dept');
+                  localStorage.removeItem('worker_filter_status');
                 }}
               >
                 Effacer

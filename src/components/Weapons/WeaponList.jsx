@@ -41,8 +41,9 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearch = useDeferredValue(searchTerm);
   
-  const [filterDept, setFilterDept] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  // [SURGICAL FIX] Sticky Filters
+  const [filterDept, setFilterDept] = useState(localStorage.getItem('weapon_filter_dept') || '');
+  const [filterStatus, setFilterStatus] = useState(localStorage.getItem('weapon_filter_status') || '');
   
   const [sortConfig, setSortConfig] = useState({ key: 'full_name', direction: 'asc' });
   const [showArchived, setShowArchived] = useState(false);
@@ -344,11 +345,31 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           <FaSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
           <input className="input" style={{ paddingLeft: '2.5rem', borderRadius: '50px' }} placeholder="Rechercher (Nom, Matricule, Poste, Antécédents)..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
-        <select className="input" style={{ width: 'auto', borderRadius: '50px' }} value={filterDept} onChange={(e) => setFilterDept(e.target.value)}>
+        
+        {/* [FIX] Sticky Dept */}
+        <select 
+          className="input" 
+          style={{ width: 'auto', borderRadius: '50px' }} 
+          value={filterDept} 
+          onChange={(e) => {
+            setFilterDept(e.target.value);
+            localStorage.setItem('weapon_filter_dept', e.target.value);
+          }}
+        >
           <option value="">Tous les services</option>
           {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
-        <select className="input" style={{ width: 'auto', borderRadius: '50px' }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+
+        {/* [FIX] Sticky Status */}
+        <select 
+          className="input" 
+          style={{ width: 'auto', borderRadius: '50px' }} 
+          value={filterStatus} 
+          onChange={(e) => {
+            setFilterStatus(e.target.value);
+            localStorage.setItem('weapon_filter_status', e.target.value);
+          }}
+        >
           <option value="">Tous les statuts</option>
           <option value="late">⚠️ En Retard</option>
           <option value="apte">🟢 Apte</option>
@@ -356,6 +377,24 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           <option value="inapte_definitif">⚫ Inapte Définitif</option>
           <option value="due_soon">🟠 À Revoir</option>
         </select>
+
+        {/* [NEW] Effacer Button */}
+        {(searchTerm || filterDept || filterStatus) && (
+          <button
+            className="btn btn-outline btn-sm"
+            onClick={() => {
+              setSearchTerm('');
+              setFilterDept('');
+              setFilterStatus('');
+              // Clear sticky storage too
+              localStorage.removeItem('weapon_filter_dept');
+              localStorage.removeItem('weapon_filter_status');
+            }}
+          >
+            Effacer
+          </button>
+        )}
+
         <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap', cursor: 'pointer' }}>
           <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Archives
         </label>
