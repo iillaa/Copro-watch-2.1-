@@ -115,6 +115,10 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
       nextDue = new Date().toISOString().split('T')[0];
     }
 
+    // [FIX] Save sticky values for next time
+    if (formData.department_id) localStorage.setItem('last_worker_dept', formData.department_id);
+    if (formData.workplace_id) localStorage.setItem('last_worker_place', formData.workplace_id);
+
     await db.saveWorker({
       ...formData, // Cela préserve le champ 'archived' si on modifie un ancien dossier
       id: workerToEdit ? workerToEdit.id : undefined,

@@ -88,6 +88,21 @@ export default function WaterAnalysisForm({
       return false;
     }
 
+    // [FIX] Strict Date Validation (Current Month Only)
+    if (formData.sample_date) {
+      const selectedDate = new Date(formData.sample_date);
+      const today = new Date();
+      
+      // Compare Year and Month
+      if (
+        selectedDate.getMonth() !== today.getMonth() ||
+        selectedDate.getFullYear() !== today.getFullYear()
+      ) {
+        showToast('La date de prélèvement doit être dans le mois en cours.', 'error');
+        return false;
+      }
+    }
+
     // 1. Validate Request Date
     if (!formData.request_date) {
       showToast('Veuillez saisir la date de demande.', 'error');

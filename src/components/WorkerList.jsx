@@ -150,6 +150,10 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   useEffect(() => {
     localStorage.setItem('worker_filter_dept', filterDept);
   }, [filterDept]);
+
+  useEffect(() => {
+    localStorage.setItem('worker_filter_status', filterStatus);
+  }, [filterStatus]);
   // ==================================================================================
   // 3. FILTERING & SORTING ENGINE (useMemo)
   // ==================================================================================
