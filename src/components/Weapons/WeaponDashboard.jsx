@@ -20,26 +20,32 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
   const [exams, setExams] = useState([]);
   const [alert, setAlert] = useState(null);
 
-  const calculateAlert = (pendingCount, examList) => {
+  // [SURGICAL UPDATE] Updated to include Reviews in the count
+  const calculateAlert = (pendingCount, reviewCount, examList) => {
     let daysSinceLast = 0;
     if (examList && examList.length > 0) {
       const sorted = [...examList].sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
       const lastDate = new Date(sorted[0].exam_date);
       const diffTime = Math.abs(new Date() - lastDate);
-      daysSinceLast = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      daysSinceLast = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
     }
 
-    if (pendingCount >= 20) {
+    const totalWork = pendingCount + reviewCount;
+
+    // RULE 1: Volume (New + Reviews)
+    if (totalWork >= 20) {
       setAlert({
         level: 'danger',
         title: 'Volume Élevé',
-        message: `${pendingCount} agents en attente. Commission requise.`
+        message: `${totalWork} dossiers en attente (Nouveaux + Révisions). Commission requise.`
       });
-    } else if (daysSinceLast >= 60 && pendingCount > 0) {
+    } 
+    // RULE 2: Time (60 Days + Any Work)
+    else if (daysSinceLast >= 60 && totalWork > 0) {
       setAlert({
         level: 'warning',
         title: 'Rappel Commission',
-        message: `Dernière commission il y a ${daysSinceLast} jours. ${pendingCount} dossiers en attente.`
+        message: `Dernière commission il y a ${daysSinceLast} jours. ${totalWork} dossiers en attente.`
       });
     } else {
       setAlert(null);
@@ -71,8 +77,18 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
       const [h, e] = await Promise.all([db.getWeaponHolders(), db.getWeaponExams()]);
       setHolders(h || []);
       setExams(e || []);
-      const pending = (h || []).filter(w => w.status === 'pending').length;
-      calculateAlert(pending, e || []);
+      
+      // [SURGICAL UPDATE] Count both Pending and Due Reviews (including Overdue)
+      const activeHolders = h || [];
+      
+      const pending = activeHolders.filter(w => w.status === 'pending').length;
+      
+      const reviews = activeHolders.filter(w => 
+        w.next_review_date && (logic.isWeaponDueSoon(w.next_review_date) || logic.isOverdue(w.next_review_date))
+      ).length;
+
+      // Pass both counts to the alert logic
+      calculateAlert(pending, reviews, e || []);
     } catch (e) {
       console.error('WeaponDashboard error:', e);
     } finally {
