@@ -183,8 +183,10 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
         // Apte Sous Réserve
         result = result.filter((w) => w.latest_status === 'apte_partielle');
       } else if (filterStatus === 'apte') {
-        // Juste les Aptes
-        result = result.filter((w) => w.latest_status === 'apte');
+        // [MODIFICATION] : On garde les aptes MAIS on exclut ceux en retard
+        result = result.filter((w) => 
+          w.latest_status === 'apte' && !logic.isOverdue(w.next_exam_due)
+        );
       }
     }
     // C. Filter Search (Using the deferred value!)
