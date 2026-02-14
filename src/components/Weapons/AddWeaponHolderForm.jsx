@@ -21,12 +21,28 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
   useEffect(() => {
     const loadDepts = async () => {
       const depts = await db.getWeaponDepartments();
-      setDepartments(depts);
+      setDepartments(depts || []);
+      
+      // [FIX] Auto-select LAST used Service if available, otherwise first one
+      if (!holderToEdit && depts.length > 0) {
+        const lastDept = localStorage.getItem('last_weapon_dept');
+        const targetId = lastDept ? Number(lastDept) : depts[0].id;
+        // Verify if ID still exists
+        const validId = depts.find(d => d.id === targetId) ? targetId : depts[0].id;
+        
+        setFormData(prev => ({ ...prev, department_id: validId }));
+      }
     };
     loadDepts();
 
     if (holderToEdit) {
       setFormData(holderToEdit);
+    } else {
+      // [FIX] Load LAST used Grade/Function
+      const lastJob = localStorage.getItem('last_weapon_job');
+      if (lastJob) {
+        setFormData(prev => ({ ...prev, job_function: lastJob }));
+      }
     }
   }, [holderToEdit]);
 
@@ -58,9 +74,18 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
       console.error(err);
     }
 
-    await db.saveWeaponHolder({
+    // [FIX] Prepare final data with proper types
+    const finalData = {
       ...formData,
       department_id: formData.department_id ? Number(formData.department_id) : '',
+    };
+
+    // [FIX] Remember these choices for next time
+    localStorage.setItem('last_weapon_dept', finalData.department_id);
+    localStorage.setItem('last_weapon_job', finalData.job_function);
+
+    await db.saveWeaponHolder({
+      ...finalData,
       id: holderToEdit ? holderToEdit.id : undefined,
     });
 

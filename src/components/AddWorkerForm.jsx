@@ -23,10 +23,35 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
 
   useEffect(() => {
     const loadRefData = async () => {
-      const depts = await db.getDepartments();
-      const works = await db.getWorkplaces();
-      setDepartments(depts);
-      setWorkplaces(works);
+      try {
+        const depts = await db.getDepartments();
+        const works = await db.getWorkplaces();
+        setDepartments(depts);
+        setWorkplaces(works);
+
+        // [FIX] Sticky Defaults
+        if (!workerToEdit) {
+          // 1. Service
+          const lastDept = localStorage.getItem('last_worker_dept');
+          const validDept = lastDept && depts.find(d => d.id === Number(lastDept)) 
+            ? Number(lastDept) 
+            : (depts.length > 0 ? depts[0].id : '');
+
+          // 2. Lieu de Travail
+          const lastPlace = localStorage.getItem('last_worker_place');
+          const validPlace = lastPlace && works.find(p => p.id === Number(lastPlace))
+            ? Number(lastPlace)
+            : (works.length > 0 ? works[0].id : '');
+
+          setFormData(prev => ({
+            ...prev,
+            department_id: validDept,
+            workplace_id: validPlace
+          }));
+        }
+      } catch (error) {
+        console.error('Failed to load options', error);
+      }
     };
     loadRefData();
 
@@ -73,6 +98,10 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
       console.error('Erreur lors de la vérification des doublons', error);
     }
     // --- FIN LOGIQUE ---
+
+    // [FIX] Save sticky values
+    if (formData.department_id) localStorage.setItem('last_worker_dept', formData.department_id);
+    if (formData.workplace_id) localStorage.setItem('last_worker_place', formData.workplace_id);
 
     // Date par défaut si nouvelle saisie
     let nextDue = formData.next_exam_due;
