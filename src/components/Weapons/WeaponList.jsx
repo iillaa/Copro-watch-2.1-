@@ -87,7 +87,11 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
 
     if (filterStatus) {
        if (filterStatus === 'due_soon') {
-          result = result.filter(h => logic.isWeaponDueSoon(h.next_review_date) && h.status === 'apte');
+          // [FIX] Show "Pending" (New) OR "Due Soon" (expired/review needed)
+          result = result.filter(h => 
+            h.status === 'pending' || 
+            (h.next_review_date && logic.isWeaponDueSoon(h.next_review_date))
+          );
        } else {
           result = result.filter((h) => h.status === filterStatus);
        }
@@ -381,7 +385,8 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                   <span style={{ fontWeight: 600, color: isDue ? 'var(--danger)' : 'inherit' }}>
                     {logic.formatDateDisplay(h.next_review_date)}
                   </span>
-                  {h.status && (
+                  {/* [FIX] Only show badge if status is NOT pending */}
+                  {h.status && h.status !== 'pending' && (
                     <span className={`badge ${h.status === 'apte' ? 'badge-green' : h.status === 'inapte_definitif' ? 'badge-black' : 'badge-red'}`} style={{ marginLeft: '5px', fontSize: '0.7rem' }}>
                       {h.status === 'apte' ? 'Apte' : 'Inapte'}
                     </span>
