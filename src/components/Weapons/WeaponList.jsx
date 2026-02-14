@@ -86,7 +86,13 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
     }
 
     if (filterStatus) {
-       if (filterStatus === 'due_soon') {
+       // [SURGICAL ADDITION] Overdue Filter
+       if (filterStatus === 'late') {
+          result = result.filter(h => 
+            h.next_review_date && logic.isOverdue(h.next_review_date)
+          );
+       } 
+       else if (filterStatus === 'due_soon') {
           // [FIX] Show "Pending" (New) OR "Due Soon" (expired/review needed)
           result = result.filter(h => 
             h.status === 'pending' || 
@@ -344,6 +350,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
         </select>
         <select className="input" style={{ width: 'auto', borderRadius: '50px' }} value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
           <option value="">Tous les statuts</option>
+          <option value="late">⚠️ En Retard</option>
           <option value="apte">🟢 Apte</option>
           <option value="inapte_temporaire">🔴 Inapte Temporaire</option>
           <option value="inapte_definitif">⚫ Inapte Définitif</option>
@@ -372,8 +379,18 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
             const isSelected = selectedIds.has(h.id);
             const deptName = departments.find(d => d.id === h.department_id)?.name || '-';
             const isDue = logic.isWeaponDueSoon(h.next_review_date);
+            
+            // [NEW] Calculate Overdue
+            const isOverdue = h.next_review_date && logic.isOverdue(h.next_review_date);
+
             return (
-              <div key={h.id} className={`hybrid-row ${isSelected ? 'selected' : ''}`} style={{ gridTemplateColumns: gridTemplate }} onClick={() => isSelectionMode ? toggleSelectOne(h.id) : onNavigateWeaponHolder(h.id)}>
+              <div 
+                key={h.id} 
+                // [NEW] Add 'overdue-worker-row' class for red border effect
+                className={`hybrid-row ${isSelected ? 'selected' : ''} ${!h.archived && isOverdue ? 'overdue-worker-row' : ''}`} 
+                style={{ gridTemplateColumns: gridTemplate }} 
+                onClick={() => isSelectionMode ? toggleSelectOne(h.id) : onNavigateWeaponHolder(h.id)}
+              >
                 <div style={{ textAlign: 'center' }}>
                   {isSelectionMode && <input type="checkbox" checked={isSelected} onChange={() => toggleSelectOne(h.id)} onClick={e => e.stopPropagation()} />}
                 </div>
@@ -382,11 +399,20 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                 <div className="hybrid-cell">{deptName}</div>
                 <div className="hybrid-cell">{h.job_function}</div>
                 <div className="hybrid-cell">
-                  <span style={{ fontWeight: 600, color: isDue ? 'var(--danger)' : 'inherit' }}>
+                  <span style={{ 
+                      fontWeight: 600, 
+                      color: isOverdue ? 'var(--danger)' : (isDue ? '#d97706' : 'inherit') 
+                  }}>
                     {logic.formatDateDisplay(h.next_review_date)}
                   </span>
-                  {/* [FIX] Only show badge if status is NOT pending */}
-                  {h.status && h.status !== 'pending' && (
+                  
+                  {/* [NEW] RETARD BADGE */}
+                  {!h.archived && isOverdue && (
+                    <span className="badge badge-red" style={{ marginLeft: '5px', fontSize: '0.65rem' }}>RETARD</span>
+                  )}
+
+                  {/* Existing Status Badge (Only show if NOT pending) */}
+                  {h.status && h.status !== 'pending' && !isOverdue && (
                     <span className={`badge ${h.status === 'apte' ? 'badge-green' : h.status === 'inapte_definitif' ? 'badge-black' : 'badge-red'}`} style={{ marginLeft: '5px', fontSize: '0.7rem' }}>
                       {h.status === 'apte' ? 'Apte' : 'Inapte'}
                     </span>

@@ -373,7 +373,8 @@ tr:nth-child(even) td {
   background-color: #fafafa;
 }
 .overdue-worker-row {
-  background: var(--danger-light) !important;
+  background-color: #fef2f2 !important; /* Very light red */
+  border-left: 4px solid #ef4444 !important; /* Red indicator */
 }
 .overdue-worker-row td {
   background-color: var(--danger-light) !important;
