@@ -919,6 +919,52 @@ tr:nth-child(even) td {
   border-color: var(--primary);
 }
 
+/* --- DASHBOARD ROW/HEADER (Exact copy of Hybrid but without Mobile Grid Override) --- */
+.dashboard-header {
+  display: grid;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background-color: var(--primary-light);
+  color: var(--primary);
+  padding: 1rem 1.25rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+  border: 2px solid #000000;
+  border-radius: 12px;
+  box-shadow: 1px 1px 0px rgba(0, 0, 0, 0.1);
+  margin-bottom: 0.75rem;
+  margin-top: 0.25rem;
+}
+.dashboard-row {
+  display: grid;
+  background: var(--bg-card);
+  padding: 1rem 1.25rem;
+  margin-bottom: 0.6rem;
+  border-radius: 12px;
+  border: 1.5px solid var(--row-border);
+  box-shadow: 1px 1px 0px var(--row-shadow);
+  align-items: center;
+  transition: all 0.15s ease;
+  cursor: pointer;
+  content-visibility: auto;
+  contain-intrinsic-size: 60px;
+}
+@media (hover: hover) {
+  .dashboard-row:hover {
+    transform: translateY(-2px);
+    box-shadow: 4px 4px 0px rgba(0, 0, 0, 0.15);
+    border-color: var(--primary);
+    z-index: 10;
+  }
+}
+.dashboard-row:active {
+  transform: scale(0.98);
+  background-color: var(--primary-light);
+}
+
 /* =========================================
    LOADING & ANIMATIONS
    ========================================= */
