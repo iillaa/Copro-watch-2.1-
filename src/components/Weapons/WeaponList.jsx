@@ -411,8 +411,8 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                     <span className="badge badge-red" style={{ marginLeft: '5px', fontSize: '0.65rem' }}>RETARD</span>
                   )}
 
-                  {/* Existing Status Badge (Only show if NOT pending) */}
-                  {h.status && h.status !== 'pending' && !isOverdue && (
+                  {/* [FIX] Status Badge: Removed '!isOverdue' so it COEXISTS with Retard */}
+                  {h.status && h.status !== 'pending' && (
                     <span className={`badge ${h.status === 'apte' ? 'badge-green' : h.status === 'inapte_definitif' ? 'badge-black' : 'badge-red'}`} style={{ marginLeft: '5px', fontSize: '0.7rem' }}>
                       {h.status === 'apte' ? 'Apte' : 'Inapte'}
                     </span>

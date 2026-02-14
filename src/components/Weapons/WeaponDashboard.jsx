@@ -20,19 +20,29 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
   const [exams, setExams] = useState([]);
   const [alert, setAlert] = useState(null);
 
-  // [SURGICAL UPDATE] Updated to include Reviews in the count
+  // [SURGICAL FIX] Robust Date Calculation & Logic
   const calculateAlert = (pendingCount, reviewCount, examList) => {
     let daysSinceLast = 0;
-    if (examList && examList.length > 0) {
-      const sorted = [...examList].sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
+    
+    // 1. Filter out invalid exams to prevent crashes
+    const validExams = (examList || []).filter(e => 
+        e.exam_date && !isNaN(new Date(e.exam_date).getTime())
+    );
+
+    if (validExams.length > 0) {
+      // 2. Sort Descending (Newest first)
+      const sorted = validExams.sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
       const lastDate = new Date(sorted[0].exam_date);
-      const diffTime = Math.abs(new Date() - lastDate);
+      const today = new Date();
+      
+      // 3. Calculate Days Diff
+      const diffTime = Math.abs(today - lastDate);
       daysSinceLast = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
     }
 
     const totalWork = pendingCount + reviewCount;
 
-    // RULE 1: Volume (New + Reviews)
+    // RULE 1: Volume (Red Alert)
     if (totalWork >= 20) {
       setAlert({
         level: 'danger',
@@ -40,12 +50,15 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
         message: `${totalWork} dossiers en attente (Nouveaux + Révisions). Commission requise.`
       });
     } 
-    // RULE 2: Time (60 Days + Any Work)
-    else if (daysSinceLast >= 60 && totalWork > 0) {
+    // RULE 2: Time (Orange Alert)
+    // Trigger if > 60 days passed OR if there is work but NO previous commission history
+    else if ((daysSinceLast >= 60 || validExams.length === 0) && totalWork > 0) {
       setAlert({
         level: 'warning',
         title: 'Rappel Commission',
-        message: `Dernière commission il y a ${daysSinceLast} jours. ${totalWork} dossiers en attente.`
+        message: validExams.length === 0 
+            ? `Aucune commission enregistrée. ${totalWork} dossiers en attente.`
+            : `Dernière commission il y a ${daysSinceLast} jours. ${totalWork} dossiers en attente.`
       });
     } else {
       setAlert(null);
@@ -204,13 +217,28 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
           ) : (
             <div className="hybrid-container">
               <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}><div>Nom</div><div>Date</div><div style={{ textAlign: 'center' }}>Action</div></div>
-              {stats.dueSoon.map(h => (
-                <div key={h.id} className="hybrid-row" style={{ gridTemplateColumns: gridDashboard }}>
-                  <div className="hybrid-cell" style={{ fontWeight: 600 }}>{h.full_name}</div>
-                  <div className="hybrid-cell">{logic.formatDateDisplay(h.next_review_date)}</div>
-                  <div className="hybrid-actions"><button className="btn btn-sm btn-outline" onClick={() => onNavigateWeaponHolder(h.id)}><FaEye /></button></div>
-                </div>
-              ))}
+              {stats.dueSoon.map(h => {
+                // [FIX] Calculate Overdue Logic
+                const isLate = h.next_review_date && logic.isOverdue(h.next_review_date);
+                
+                return (
+                  <div key={h.id} className="hybrid-row" style={{ gridTemplateColumns: gridDashboard }}>
+                    <div className="hybrid-cell" style={{ fontWeight: 600 }}>{h.full_name}</div>
+                    
+                    {/* [FIX] Color Logic: Red if Late */}
+                    <div className="hybrid-cell" style={{ 
+                        color: isLate ? 'var(--danger)' : 'inherit',
+                        fontWeight: isLate ? 'bold' : 'normal'
+                    }}>
+                      {logic.formatDateDisplay(h.next_review_date)}
+                    </div>
+                    
+                    <div className="hybrid-actions">
+                        <button className="btn btn-sm btn-outline" onClick={() => onNavigateWeaponHolder(h.id)}><FaEye /></button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
