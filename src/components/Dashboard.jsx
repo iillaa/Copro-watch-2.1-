@@ -9,6 +9,111 @@ import {
   FaEye,
 } from 'react-icons/fa';
 
+const DashboardSkeleton = () => {
+  return (
+    <div style={{ paddingBottom: '2rem' }}>
+      {/* Header Skeleton */}
+      <div style={{ marginBottom: '1.5rem' }}>
+        <div
+          className="loading-shimmer"
+          style={{ width: '200px', height: '32px', borderRadius: '8px', marginBottom: '0.5rem' }}
+        ></div>
+        <div
+          className="loading-shimmer"
+          style={{ width: '300px', height: '20px', borderRadius: '8px' }}
+        ></div>
+      </div>
+
+      {/* Stats Cards Skeleton */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+          gap: '1rem',
+          marginBottom: '2rem',
+        }}
+      >
+        {[1, 2, 3].map((i) => (
+          <div
+            key={i}
+            className="card"
+            style={{
+              height: '140px',
+              padding: '1.5rem',
+              display: 'flex',
+              flexDirection: 'column',
+              justifyContent: 'space-between',
+            }}
+          >
+            <div
+              className="loading-shimmer"
+              style={{ width: '60%', height: '20px', borderRadius: '4px' }}
+            ></div>
+            <div
+              className="loading-shimmer"
+              style={{ width: '40%', height: '40px', borderRadius: '8px' }}
+            ></div>
+            <div
+              className="loading-shimmer"
+              style={{ width: '30%', height: '16px', borderRadius: '4px' }}
+            ></div>
+          </div>
+        ))}
+      </div>
+
+      {/* Tables Skeleton */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
+          gap: '1.5rem',
+        }}
+      >
+        {[1, 2].map((i) => (
+          <div
+            key={i}
+            className="card"
+            style={{
+              padding: '0',
+              background: 'transparent',
+              border: 'none',
+              boxShadow: 'none',
+            }}
+          >
+            {/* Table Title */}
+            <div
+              className="loading-shimmer"
+              style={{
+                width: '150px',
+                height: '24px',
+                borderRadius: '4px',
+                marginBottom: '1rem',
+              }}
+            ></div>
+
+            {/* Fake Table */}
+            <div
+              className="dashboard-header"
+              style={{ gridTemplateColumns: '1.5fr 1fr 80px', opacity: 0.5 }}
+            >
+              <div></div>
+              <div></div>
+              <div></div>
+            </div>
+            {[1, 2, 3].map((r) => (
+              <div
+                key={r}
+                className="dashboard-row loading-shimmer"
+                style={{ gridTemplateColumns: '1.5fr 1fr 80px', height: '60px' }}
+              ></div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }) {
   const [loading, setLoading] = useState(true);
 
@@ -93,21 +198,7 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
   }, []);
 
   if (loading) {
-    return (
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center',
-          height: '60vh',
-          gap: '1rem',
-        }}
-      >
-        <div className="loading-spinner"></div>
-        <div style={{ color: 'var(--text-muted)', fontWeight: 600 }}>Chargement des données...</div>
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
@@ -442,7 +533,7 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
               >
                 <div className="hybrid-container" style={{ minWidth: '100%' }}>
                   {/* HEADER */}
-                  <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}>
+                  <div className="dashboard-header" style={{ gridTemplateColumns: gridDashboard }}>
                     <div>Nom</div>
                     <div style={{ whiteSpace: 'nowrap' }}>Date Prévue</div>
                     <div style={{ textAlign: 'center' }}>Action</div>
@@ -455,7 +546,7 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
                   ).map((w) => (
                     <div
                       key={w.id}
-                      className="hybrid-row overdue-worker-row"
+                      className="dashboard-row overdue-worker-row"
                       style={{ gridTemplateColumns: gridDashboard }}
                     >
                       {/* Name + Badge */}
@@ -503,7 +594,7 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
                     return stats.dueSoon.slice(0, maxDueSoonToShow).map((w) => (
                       <div
                         key={w.id}
-                        className="hybrid-row"
+                        className="dashboard-row"
                         style={{ gridTemplateColumns: gridDashboard }}
                       >
                         <div className="hybrid-cell" style={{ fontWeight: 600 }}>
@@ -592,7 +683,7 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
               >
                 <div className="hybrid-container" style={{ minWidth: '100%' }}>
                   {/* HEADER */}
-                  <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}>
+                  <div className="dashboard-header" style={{ gridTemplateColumns: gridDashboard }}>
                     <div>Patient (Suivi)</div>
                     <div>Date Prévue</div>
                     <div style={{ textAlign: 'center' }}>Action</div>
@@ -605,7 +696,7 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
                   ).map((item) => (
                     <div
                       key={item.worker.id}
-                      className="hybrid-row"
+                      className="dashboard-row"
                       style={{ gridTemplateColumns: gridDashboard }}
                     >
                       <div

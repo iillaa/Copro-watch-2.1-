@@ -474,13 +474,32 @@ export default function WaterAnalyses({ compactMode }) {
 
       {/* LIST */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-        {filteredDepartments.map((dept) => {
-          const isExpanded = expandedId === dept.id;
-          const statusColor = logic.getServiceWaterStatusColor(dept.waterStatus);
+        {filteredDepartments.length === 0 ? (
+          <div
+            className="card"
+            style={{
+              textAlign: 'center',
+              padding: '3rem',
+              color: 'var(--text-muted)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+            }}
+          >
+            <FaFlask size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+            <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#94a3b8' }}>Aucune donnée</h3>
+            <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+              Aucun service ne correspond à votre recherche.
+            </p>
+          </div>
+        ) : (
+          filteredDepartments.map((dept) => {
+            const isExpanded = expandedId === dept.id;
+            const statusColor = logic.getServiceWaterStatusColor(dept.waterStatus);
 
-          return (
-            <div
-              key={dept.id}
+            return (
+              <div
+                key={dept.id}
               className="card"
               style={{
                 border: '1px solid black',
@@ -613,8 +632,9 @@ export default function WaterAnalyses({ compactMode }) {
                 </div>
               )}
             </div>
-          );
-        })}
+            );
+          })
+        )}
       </div>
 
       {/* --- MODAL --- */}

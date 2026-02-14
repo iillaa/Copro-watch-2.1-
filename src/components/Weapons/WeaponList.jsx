@@ -521,9 +521,27 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
             <div style={{ textAlign: 'right' }}>Actions</div>
           </div>
 
-          {filteredHolders.map((h) => {
-            const isSelected = selectedIds.has(h.id);
-            const deptName = departments.find((d) => d.id === h.department_id)?.name || '-';
+          {filteredHolders.length === 0 ? (
+            <div
+              style={{
+                textAlign: 'center',
+                padding: '4rem',
+                color: 'var(--text-muted)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+              }}
+            >
+              <FaSearch size={48} style={{ opacity: 0.2, marginBottom: '1rem' }} />
+              <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#94a3b8' }}>Aucun résultat</h3>
+              <p style={{ marginTop: '0.5rem', fontSize: '0.9rem' }}>
+                Essayez de modifier vos filtres.
+              </p>
+            </div>
+          ) : (
+            filteredHolders.map((h) => {
+              const isSelected = selectedIds.has(h.id);
+              const deptName = departments.find((d) => d.id === h.department_id)?.name || '-';
             const isDue = logic.isWeaponDueSoon(h.next_review_date);
 
             // [SURGICAL FIX] Strict Status Check
@@ -626,7 +644,8 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                 </div>
               </div>
             );
-          })}
+          })
+        )}
         </div>
       </div>
 
