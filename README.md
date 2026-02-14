@@ -1,106 +1,150 @@
-# Sentinel (ex-Copro-watch)
+# Gestionnaire de Visites Médicales (Offline SPA)
 
-**Gestionnaire de Visites Médicales & Sécurité (Offline PWA)**
-
-Sentinel est une application web progressive (PWA) conçue pour la gestion médicale et sécuritaire en milieu professionnel (Algérie). Elle fonctionne de manière autonome (**hors ligne**), sans serveur backend, en utilisant une base de données locale sécurisée (IndexedDB) et un système de synchronisation par fichiers JSON.
-
----
+Une application web autonome (Single Page Application) conçue pour la gestion des visites médicales périodiques en entreprise. Elle est optimisée pour fonctionner **hors ligne**, sans serveur, avec une base de données locale sécurisée et un système de sauvegarde robuste.
 
 ## 🌟 Fonctionnalités Clés
 
-### 1. 🏥 Santé au Travail
-- **Suivi des Visites** : Planification automatique des visites périodiques (6 mois) et des contre-visites.
-- **Workflow Médical** : Gestion des examens (Copro-parasitologie), résultats labo, et certificats d'aptitude.
-- **Tableau de Bord** : Vue synthétique des retards, des cas positifs et des actions urgentes.
+### 📊 Tableau de Bord Intelligent
 
-### 2. 🛡️ Gestion des Armes
-- **Permis de Port d'Arme** : Suivi des dates d'expiration et des renouvellements.
-- **Aptitude** : Liaison directe avec le dossier médical pour valider l'aptitude au port d'arme.
+- **Vue d'ensemble** : Affiche les visites à venir (15 jours), les retards critiques et les cas positifs en cours de traitement.
+- **Statistiques** : Indicateurs visuels rapides pour l'état de la flotte.
 
-### 3. 💧 Qualité de l'Eau
-- **Analyses Mensuelles** : Saisie des relevés (Chlore, pH, Bactério) par service/bâtiment.
-- **Statistiques** : Taux de potabilité et alertes de non-conformité.
+### 👥 Gestion des Travailleurs & Départements
+
+- **Base de données complète** : Ajout, modification et archivage des travailleurs.
+- **Organisation** : Gestion par Départements (SWAG, BMPJ, etc.) et Lieux de travail.
+- **Recherche** : Filtrage instantané pour retrouver un dossier.
+- **Transfert** : Déplacement massif de travailleurs entre services.
+
+### 🧪 Cycle d'Examen Médical Complet
+
+- **Workflow Automatisé** :
+  1.  Création d'examen -> Commande Labo (Copro-parasitologie).
+  2.  Saisie des résultats (Positif/Négatif/En cours).
+  3.  **Si Négatif** : Génération automatique du certificat d'aptitude et calcul de la prochaine échéance (+6 mois).
+  4.  **Si Positif** : Protocole de traitement, marquage "Inapte", et planification automatique de la contre-visite (+7/10 jours).
+- **Actions de Masse** : Planification, résultat et impression groupés pour plusieurs travailleurs.
+- **Analyses d'Eau** : Module dédié pour le suivi de la qualité de l'eau (Chlore, pH, Bactério) avec historique complet.
+
+### 🛡️ Sécurité & Sauvegarde
+
+L'application dispose d'un système de sauvegarde "Fail-Safe" pour éviter toute perte de données :
+
+- **Sauvegarde Automatique** : Un fichier `backup-auto.json` est généré/mis à jour automatiquement toutes les **10 modifications** (paramétrable).
+- **Sauvegarde Manuelle** : Un fichier `backup-manuel.json` distinct est créé lorsque vous cliquez sur "Sauvegarder" dans les paramètres.
+- **Restauration Intelligente** : Lors de l'importation d'un dossier de sauvegarde, l'application compare les dates des fichiers Auto et Manuel et charge automatiquement **le plus récent** pour éviter d'écraser des données récentes avec une vieille sauvegarde.
+- **Verrouillage PIN** : Protection par code à 4 chiffres pour accéder à l'application.
 
 ---
 
-## 👩‍💻 Guide du Développeur
+## 🚀 Installation & Déploiement
 
-Cette section est destinée aux ingénieurs souhaitant maintenir ou faire évoluer le projet.
+Choisissez la méthode qui correspond à votre matériel.
+
+### Option A : Version Portable (Fichier Unique) - Recommandé pour PC 💻
+
+C'est la méthode la plus flexible. Elle compile toute l'application (code, base de données, design) en un **seul fichier HTML** que vous pouvez transporter sur une clé USB.
+
+1.  **Générer le fichier** :
+    ```bash
+    npm run build:standalone
+    ```
+2.  **Récupérer** : Le fichier se trouve dans `dist-standalone/index.html`.
+3.  **Utiliser** : Copiez ce fichier sur n'importe quel ordinateur. Double-cliquez pour l'ouvrir dans Chrome/Edge/Firefox. Aucune installation n'est requise.
+
+### Option B : Application Android (APK) 📱
+
+Pour une utilisation sur tablette ou téléphone.
+
+1.  **Compiler** : Suivez les instructions du fichier `ANDROID_BUILD_INSTRUCTIONS.md` (commande `./gradlew assembleRelease`).
+2.  **Installer** : Transférez le fichier `.apk` sur votre appareil et installez-le.
+3.  **Permissions** : Au premier lancement, autorisez l'accès au stockage pour permettre les sauvegardes automatiques.
+
+### Option C : Serveur Web Classique 🌐
+
+Si vous souhaitez héberger l'application sur un réseau local.
+
+1.  **Compiler** : `npm run build`
+2.  **Déployer** : Copiez le contenu du dossier `dist/` sur votre serveur web.
+
+---
+
+## 📖 Guide d'Utilisation Quotidienne
+
+1.  **Le Matin** :
+    - Ouvrez l'application.
+    - Consultez le **Tableau de bord** : Traitez en priorité les alertes "À faire (15 jours)" et les "Cas Positifs".
+2.  **Lors d'une Visite** :
+    - Recherchez le travailleur.
+    - Cliquez sur **"Nouvel Examen"**.
+    - Imprimez la demande d'analyse ou le certificat directement.
+3.  **Gestion de l'Eau** :
+    - Allez dans l'onglet "Analyses d'eau" pour saisir les relevés quotidiens.
+4.  **Fin de Semaine** :
+    - Allez dans **Paramètres**.
+    - Cliquez sur **"Sauvegarder les données (Export)"**.
+    - Stockez le fichier JSON généré sur un support externe (Clé USB ou Drive) par sécurité.
+
+### 🔧 Paramètres & Maintenance
+
+- **Mode Compact** : Dans l'onglet _Général_, activez cette option pour réduire la hauteur des lignes dans les tableaux (utile pour les écrans de 13 pouces).
+- **Nettoyage Base de Données** : Dans l'onglet _Sauvegardes_, le bouton "Maintenance" permet de supprimer les examens "orphelins" (liés à des travailleurs qui ont été mal supprimés). À utiliser si l'application ralentit.
+
+---
+
+## 🛠️ Développement & Technique
+
+Pour les développeurs souhaitant modifier le code source.
 
 ### Prérequis
 
-- **Node.js** : v18 ou supérieur
-- **NPM** : v9 ou supérieur
-- **Navigateur** : Chrome, Edge ou Firefox (Support IndexedDB requis)
+- Node.js (v18+)
+- Android Studio (pour la compilation mobile)
 
-### Installation
+### Commandes Utiles
 
-Clonez le projet et installez les dépendances :
+| Commande                   | Description                                                                                                 |
+| :------------------------- | :---------------------------------------------------------------------------------------------------------- |
+| `npm install`              | Installe toutes les dépendances du projet.                                                                  |
+| `npm run dev`              | Lance le serveur de développement local (avec rechargement à chaud).                                        |
+| `npm run build`            | Compile l'application pour le web (dossier `dist/`).                                                        |
+| `npm run build:standalone` | **Crée la version portable** (`dist-standalone/index.html`). Combine le build web + l'injection des assets. |
+| `npx cap sync`             | Synchronise le code web avec le projet Android natif.                                                       |
+| `npm run lint`             | Vérifie la qualité du code (ESLint).                                                                        |
 
-```bash
-git clone <url-du-repo>
-cd sentinel
-npm install
-```
+### Structure du Projet
 
-### Commandes Disponibles
+- `src/components` : Interface utilisateur (Tableaux, Formulaires).
+- `src/services` : Logique métier.
+  - [`db.js`](src/services/db.js) : Gestion de la base de données IndexedDB (Workers, Exams).
+  - [`backup.js`](src/services/backup.js) : **Cœur du système de sauvegarde** (Auto/Manuel, Permissions Android, Logique Smart Import).
+  - [`logic.js`](src/services/logic.js) : Règles métiers (Calcul des dates, Statuts, Aptitude).
+  - [`excelExport.js`](src/services/excelExport.js) : Export Excel multi-feuilles.
+  - [`pdfGenerator.js`](src/services/pdfGenerator.js) : Génération de PDF (Certificats, Convocations, Demandes).
 
-| Commande | Description |
-| :--- | :--- |
-| `npm run dev` | Lance le serveur de développement (Vite) sur `http://localhost:5173`. |
-| `npm run build` | Compile l'application pour la production dans le dossier `dist/`. |
-| `npm run build:standalone` | Génère une **version portable** (fichier unique HTML) dans `dist-standalone/`. |
-| `npm run lint` | Analyse le code avec ESLint pour détecter les erreurs. |
-| `npm test` | Lance les tests unitaires avec Vitest. |
-| `npm run preview` | Prévisualise la version de production localement. |
+### Stack Technique
 
-### Structure du Code
-
-L'architecture suit une approche modulaire React standard.
-
-```
-src/
-├── components/       # Composants UI (Tableaux, Formulaires, Modales)
-│   ├── Weapons/      # Module Armes
-│   ├── Dashboard.jsx # Vue principale
-│   └── ...
-├── services/         # Logique Métier & Base de Données
-│   ├── db.js         # Couche d'accès aux données (Dexie.js / IndexedDB)
-│   ├── logic.js      # ⛔ ALGORITHMES MÉDICAUX (NE PAS TOUCHER)
-│   ├── backup.js     # Système d'import/export JSON
-│   └── ...
-├── assets/           # Images et styles globaux
-└── App.jsx           # Routeur et Layout principal
-```
-
-### ⛔ Contraintes Critiques
-
-Pour garantir la stabilité et la conformité légale de l'application, certaines règles strictes s'appliquent :
-
-1.  **Fichiers Interdits** : Ne modifiez jamais `src/services/logic.js`. Ce fichier contient les algorithmes de calcul des dates d'expiration et d'aptitude validés médicalement.
-2.  **Persistance** : Ne changez pas la structure de la base de données dans `src/services/db.js` sans prévoir une migration de données (Dexie versioning).
-3.  **UI/UX** : Les modifications visuelles doivent rester légères et ne pas impacter le flux de travail des médecins.
+- **Frontend** : React 19 + Vite
+- **Base de données** : Dexie.js (IndexedDB)
+- **Mobile** : Capacitor 8
+- **PDF** : jspdf + jspdf-autotable
+- **Excel** : xlsx (SheetJS)
+- **Design** : Neobrutalism (CSS pur)
 
 ---
 
-## 📱 Déploiement & Utilisation
+## 📜 Histoire du Projet
 
-### Option A : Version Web (Recommandé)
-1.  Exécutez `npm run build`.
-2.  Déployez le contenu du dossier `dist/` sur n'importe quel serveur web statique (Apache, Nginx, Vercel, Netlify).
+Ce projet a été développé en plusieurs phases, démontrant l'évolution des outils de développement IA :
 
-### Option B : Version Portable (Clé USB)
-1.  Exécutez `npm run build:standalone`.
-2.  Copiez le fichier `dist-standalone/index.html` sur une clé USB.
-3.  Ouvrez-le sur n'importe quel PC (Windows/Mac/Linux) directement dans le navigateur.
+1. **Phase initiale** : Commencé avec **Google Gemini CLI** pour la création des fonctionnalités de base
+2. **Phase de transition** : Migré vers **GitHub Copilot** pour le développement et l'amélioration du code
+3. **Phase de finalisation** : Perfectionné par **BlackBox** utilisant **MiniMax M2 + Gemini 3 pro** pour les dernières retouches, finitions du UI et optimisations des fonctions
 
-### Sauvegardes & Sécurité
-- L'application sauvegarde automatiquement les données dans le navigateur.
-- **Important** : Effectuez régulièrement un **Export JSON** (via les Paramètres) pour sécuriser vos données sur un support externe.
+Cette approche multi-outils a permis de créer une application robuste et complète, en tirant parti des forces uniques de chaque plateforme d'IA.
 
 ---
 
-## 📜 Licence
+## 📄 License
 
-Ce logiciel est une propriété interne destinée à un usage médical professionnel.
-Code source protégé.
+Ce projet est destiné à un usage interne. Consultez le fichier LICENSE pour plus de détails.
