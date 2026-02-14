@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db } from '../services/db';
 import { logic } from '../services/logic';
 import { FaTimes, FaSave, FaFlask } from 'react-icons/fa';
@@ -14,6 +14,7 @@ export default function WaterAnalysisForm({
   onCancel,
 }) {
   const { showToast, ToastContainer } = useToast();
+  const isInitialized = useRef(false);
   const [formData, setFormData] = useState({
     department_id: department?.id || analysis?.department_id || analysis?.structure_id,
     request_date: new Date().toISOString().split('T')[0], // Default Request to Today
@@ -41,31 +42,35 @@ export default function WaterAnalysisForm({
   }, [analysisToEdit]);
 
   useEffect(() => {
-    // Logic for new entries (not editing)
-    if (type === 'edit') {
-      // Handled above in analysisToEdit effect
-    } else if (type === 'launch') {
-      setFormData((prev) => ({
-        ...prev,
-        department_id: department?.id || workplace?.id,
-        request_date: new Date().toISOString().split('T')[0],
-        sample_date: new Date().toISOString().split('T')[0],
-      }));
-    } else if (type === 'result') {
-      setFormData((prev) => ({
-        ...prev,
-        department_id: analysis?.department_id || analysis?.structure_id,
-        request_date: analysis?.request_date || '',
-        sample_date: analysis?.sample_date,
-        result_date: new Date().toISOString().split('T')[0],
-      }));
-    } else if (type === 'retest') {
-      setFormData((prev) => ({
-        ...prev,
-        department_id: department?.id || workplace?.id,
-        request_date: new Date().toISOString().split('T')[0],
-        sample_date: '',
-      }));
+    // Only run this ONCE when the modal opens
+    if (!isInitialized.current) {
+      // Logic for new entries (not editing)
+      if (type === 'edit') {
+        // Handled above in analysisToEdit effect
+      } else if (type === 'launch') {
+        setFormData((prev) => ({
+          ...prev,
+          department_id: department?.id || workplace?.id,
+          request_date: new Date().toISOString().split('T')[0],
+          sample_date: new Date().toISOString().split('T')[0],
+        }));
+      } else if (type === 'result') {
+        setFormData((prev) => ({
+          ...prev,
+          department_id: analysis?.department_id || analysis?.structure_id,
+          request_date: analysis?.request_date || '',
+          sample_date: analysis?.sample_date,
+          result_date: new Date().toISOString().split('T')[0],
+        }));
+      } else if (type === 'retest') {
+        setFormData((prev) => ({
+          ...prev,
+          department_id: department?.id || workplace?.id,
+          request_date: new Date().toISOString().split('T')[0],
+          sample_date: '',
+        }));
+      }
+      isInitialized.current = true; // LOCK IT
     }
   }, [type, analysis, department, workplace]);
 

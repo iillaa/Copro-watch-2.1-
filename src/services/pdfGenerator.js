@@ -53,7 +53,7 @@ export const pdfService = {
     if (docType === 'list_manager') {
       generateGroupedList(doc, workers, options);
     } else if (docType === 'weapon_registre') {
-      generateWeaponRegistre(doc, workers, options);
+      generateWeaponRegistrePortrait(doc, workers, options);
     } else if (docType === 'weapon_convocation_list') {
       generateWeaponConvocationList(doc, workers, options);
     } else if (docType === 'weapon_convocation_individual') {
@@ -786,7 +786,7 @@ function drawWeaponConvocationIndividual(doc, agent, options) {
 // ==========================================
 // 8. REGISTRE DE SUIVI (PORT D'ARME) - PORTRAIT - LISTE UNIQUE
 // ==========================================
-function generateWeaponRegistre(doc, agents, options) {
+function generateWeaponRegistrePortrait(doc, agents, options) {
   // Portrait mode - Single unified list
   const centerX = 105;
   const leftMargin = 10;
