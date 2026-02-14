@@ -228,7 +228,9 @@ function App() {
             <span className="nav-text">Tableau Armes</span>
           </div>
           <div
-            className={`nav-item ${view === 'weapons-list' || view === 'weapon-detail' ? 'active' : ''}`}
+            className={`nav-item ${
+              view === 'weapons-list' || view === 'weapon-detail' ? 'active' : ''
+            }`}
             onClick={() => {
               setView('weapons-list');
               setSelectedWeaponHolderId(null);
@@ -304,10 +306,7 @@ function App() {
             />
           )}
           {view === 'weapons-list' && (
-            <WeaponList
-              onNavigateWeaponHolder={navigateToWeaponHolder}
-              compactMode={compactMode}
-            />
+            <WeaponList onNavigateWeaponHolder={navigateToWeaponHolder} compactMode={compactMode} />
           )}
           {view === 'weapon-detail' && selectedWeaponHolderId && (
             <WeaponDetail

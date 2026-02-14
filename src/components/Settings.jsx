@@ -371,7 +371,11 @@ export default function Settings({
     const count = linkedWorkers.length;
 
     if (count > 0) {
-      if (!window.confirm(`ATTENTION: Ce lieu contient ${count} agent(s).\n\nConfirmer la suppression ?`)) {
+      if (
+        !window.confirm(
+          `ATTENTION: Ce lieu contient ${count} agent(s).\n\nConfirmer la suppression ?`
+        )
+      ) {
         return;
       }
     } else {
@@ -504,7 +508,10 @@ export default function Settings({
   const loadWeaponDepartments = async () => {
     setWeaponDepartmentsLoading(true);
     try {
-      const [depts, holders] = await Promise.all([db.getWeaponDepartments(), db.getWeaponHolders()]);
+      const [depts, holders] = await Promise.all([
+        db.getWeaponDepartments(),
+        db.getWeaponHolders(),
+      ]);
       const deptsWithCount = depts.map((d) => ({
         ...d,
         count: holders.filter((h) => h.department_id === d.id && !h.archived).length,

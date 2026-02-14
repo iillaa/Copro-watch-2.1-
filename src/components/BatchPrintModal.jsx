@@ -12,10 +12,14 @@ import {
 
 export default function BatchPrintModal({ count, onConfirm, onCancel, weaponMode = false }) {
   // Par défaut : si plusieurs personnes, liste manager, sinon convocation
-  const defaultDoc = weaponMode 
-    ? (count > 1 ? 'weapon_convocation_list' : 'weapon_convocation_individual')
-    : (count > 1 ? 'list_manager' : 'convocation');
-    
+  const defaultDoc = weaponMode
+    ? count > 1
+      ? 'weapon_convocation_list'
+      : 'weapon_convocation_individual'
+    : count > 1
+    ? 'list_manager'
+    : 'convocation';
+
   const [docType, setDocType] = useState(defaultDoc);
 
   // Date de création (Signature en bas de page)
@@ -183,7 +187,10 @@ export default function BatchPrintModal({ count, onConfirm, onCancel, weaponMode
 
           {/* [NEW] SECTION CONVOCATION - Date de RDV */}
 
-          {(docType === 'convocation' || docType === 'list_manager' || docType === 'weapon_convocation_list' || docType === 'weapon_convocation_individual') && (
+          {(docType === 'convocation' ||
+            docType === 'list_manager' ||
+            docType === 'weapon_convocation_list' ||
+            docType === 'weapon_convocation_individual') && (
             <div
               style={{
                 background: '#f0f9ff',

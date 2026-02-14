@@ -424,7 +424,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
             </div>
           ) : (
             // [SURGICAL FIX] Added Scroll Wrapper for Compact Mode
-            <div 
+            <div
               className="scroll-wrapper"
               style={{
                 maxHeight: compactMode ? '510px' : 'none',
@@ -434,52 +434,52 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
                 margin: 0,
               }}
             >
-            <div className="hybrid-container">
-              <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}>
-                <div>Nom</div>
-                <div>Date</div>
-                <div style={{ textAlign: 'center' }}>Action</div>
-              </div>
-              {stats.dueSoon.map((h) => {
-                // [FIX] Strict Overdue Check for the List Visuals
-                const isLate =
-                  h.status === 'inapte_temporaire' &&
-                  h.next_review_date &&
-                  logic.isOverdue(h.next_review_date);
+              <div className="hybrid-container">
+                <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}>
+                  <div>Nom</div>
+                  <div>Date</div>
+                  <div style={{ textAlign: 'center' }}>Action</div>
+                </div>
+                {stats.dueSoon.map((h) => {
+                  // [FIX] Strict Overdue Check for the List Visuals
+                  const isLate =
+                    h.status === 'inapte_temporaire' &&
+                    h.next_review_date &&
+                    logic.isOverdue(h.next_review_date);
 
-                return (
-                  <div
-                    key={h.id}
-                    className="hybrid-row"
-                    style={{ gridTemplateColumns: gridDashboard }}
-                  >
-                    <div className="hybrid-cell" style={{ fontWeight: 600 }}>
-                      {h.full_name}
-                    </div>
-
-                    {/* [FIX] Color Logic: Red if Late */}
+                  return (
                     <div
-                      className="hybrid-cell"
-                      style={{
-                        color: isLate ? 'var(--danger)' : 'inherit',
-                        fontWeight: isLate ? 'bold' : 'normal',
-                      }}
+                      key={h.id}
+                      className="hybrid-row"
+                      style={{ gridTemplateColumns: gridDashboard }}
                     >
-                      {logic.formatDateDisplay(h.next_review_date)}
-                    </div>
+                      <div className="hybrid-cell" style={{ fontWeight: 600 }}>
+                        {h.full_name}
+                      </div>
 
-                    <div className="hybrid-actions">
-                      <button
-                        className="btn btn-sm btn-outline"
-                        onClick={() => onNavigateWeaponHolder(h.id)}
+                      {/* [FIX] Color Logic: Red if Late */}
+                      <div
+                        className="hybrid-cell"
+                        style={{
+                          color: isLate ? 'var(--danger)' : 'inherit',
+                          fontWeight: isLate ? 'bold' : 'normal',
+                        }}
                       >
-                        <FaEye />
-                      </button>
+                        {logic.formatDateDisplay(h.next_review_date)}
+                      </div>
+
+                      <div className="hybrid-actions">
+                        <button
+                          className="btn btn-sm btn-outline"
+                          onClick={() => onNavigateWeaponHolder(h.id)}
+                        >
+                          <FaEye />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>
@@ -502,7 +502,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
             </div>
           ) : (
             // [SURGICAL FIX] Added Scroll Wrapper for Compact Mode
-            <div 
+            <div
               className="scroll-wrapper"
               style={{
                 maxHeight: compactMode ? '510px' : 'none',
@@ -512,41 +512,41 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
                 margin: 0,
               }}
             >
-            <div className="hybrid-container">
-              <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}>
-                <div>Agent</div>
-                <div>Verdict</div>
-                <div style={{ textAlign: 'center' }}>Action</div>
-              </div>
-              {stats.latestExams.map((e) => (
-                <div
-                  key={e.id}
-                  className="hybrid-row"
-                  style={{ gridTemplateColumns: gridDashboard }}
-                >
-                  <div className="hybrid-cell" style={{ fontWeight: 600 }}>
-                    {e.holder?.full_name || 'Agent Supprimé'}
-                  </div>
-                  <div className="hybrid-cell">
-                    <span
-                      className={`badge ${
-                        e.final_decision === 'apte' ? 'badge-green' : 'badge-red'
-                      }`}
-                    >
-                      {e.final_decision?.toUpperCase()}
-                    </span>
-                  </div>
-                  <div className="hybrid-actions">
-                    <button
-                      className="btn btn-sm btn-outline"
-                      onClick={() => onNavigateWeaponHolder(e.holder_id)}
-                    >
-                      <FaEye />
-                    </button>
-                  </div>
+              <div className="hybrid-container">
+                <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}>
+                  <div>Agent</div>
+                  <div>Verdict</div>
+                  <div style={{ textAlign: 'center' }}>Action</div>
                 </div>
-              ))}
-            </div>
+                {stats.latestExams.map((e) => (
+                  <div
+                    key={e.id}
+                    className="hybrid-row"
+                    style={{ gridTemplateColumns: gridDashboard }}
+                  >
+                    <div className="hybrid-cell" style={{ fontWeight: 600 }}>
+                      {e.holder?.full_name || 'Agent Supprimé'}
+                    </div>
+                    <div className="hybrid-cell">
+                      <span
+                        className={`badge ${
+                          e.final_decision === 'apte' ? 'badge-green' : 'badge-red'
+                        }`}
+                      >
+                        {e.final_decision?.toUpperCase()}
+                      </span>
+                    </div>
+                    <div className="hybrid-actions">
+                      <button
+                        className="btn btn-sm btn-outline"
+                        onClick={() => onNavigateWeaponHolder(e.holder_id)}
+                      >
+                        <FaEye />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

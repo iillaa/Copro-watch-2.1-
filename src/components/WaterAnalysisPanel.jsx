@@ -244,18 +244,18 @@ export default function WaterAnalysisPanel({
                 style={{ borderRadius: '8px' }}
               />
               {/* [FIX] Show OK only for current month dates - disable for older dates */}
-              {((!savedRecord?.id ||
+              {(!savedRecord?.id ||
                 isCreatingRetest ||
                 formData.request_date !== savedRecord.request_date) &&
-                formData.request_date.startsWith(currentMonthISO)) && (
-                <button
-                  className="btn btn-primary btn-sm"
-                  onClick={() => handleSave('request')}
-                  style={{ borderRadius: '8px' }}
-                >
-                  OK
-                </button>
-              )}
+                formData.request_date.startsWith(currentMonthISO) && (
+                  <button
+                    className="btn btn-primary btn-sm"
+                    onClick={() => handleSave('request')}
+                    style={{ borderRadius: '8px' }}
+                  >
+                    OK
+                  </button>
+                )}
               {/* Show message for old dates */}
               {formData.request_date && !formData.request_date.startsWith(currentMonthISO) && (
                 <span style={{ fontSize: '0.65rem', color: 'var(--danger)', fontWeight: 600 }}>

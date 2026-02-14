@@ -527,7 +527,9 @@ export const exportWeaponsToExcel = async (agents, departments) => {
       });
       alert(`✅ Excel sauvegardé : Documents/copro-watch/Exports/${filename}`);
     } else {
-      const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const blob = new Blob([buffer], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
       saveAs(blob, filename);
     }
   } catch (error) {

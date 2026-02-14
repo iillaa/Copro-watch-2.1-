@@ -126,7 +126,14 @@ export default function BatchResultModal({ count, onConfirm, onCancel, weaponMod
               />
             </div>
 
-            <div style={{ display: 'flex', gap: '1rem', justifyContent: 'flex-end', marginTop: '1rem' }}>
+            <div
+              style={{
+                display: 'flex',
+                gap: '1rem',
+                justifyContent: 'flex-end',
+                marginTop: '1rem',
+              }}
+            >
               <button type="button" className="btn btn-outline" onClick={onCancel}>
                 Annuler
               </button>

@@ -33,20 +33,26 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
         if (!workerToEdit) {
           // 1. Service
           const lastDept = localStorage.getItem('last_worker_dept');
-          const validDept = lastDept && depts.find(d => d.id === Number(lastDept)) 
-            ? Number(lastDept) 
-            : (depts.length > 0 ? depts[0].id : '');
+          const validDept =
+            lastDept && depts.find((d) => d.id === Number(lastDept))
+              ? Number(lastDept)
+              : depts.length > 0
+              ? depts[0].id
+              : '';
 
           // 2. Lieu de Travail
           const lastPlace = localStorage.getItem('last_worker_place');
-          const validPlace = lastPlace && works.find(p => p.id === Number(lastPlace))
-            ? Number(lastPlace)
-            : (works.length > 0 ? works[0].id : '');
+          const validPlace =
+            lastPlace && works.find((p) => p.id === Number(lastPlace))
+              ? Number(lastPlace)
+              : works.length > 0
+              ? works[0].id
+              : '';
 
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
             department_id: validDept,
-            workplace_id: validPlace
+            workplace_id: validPlace,
           }));
         }
       } catch (error) {

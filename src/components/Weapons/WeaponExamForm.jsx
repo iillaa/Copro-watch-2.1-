@@ -26,21 +26,25 @@ export default function WeaponExamForm({ holder, existingExam, onClose, onSave }
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => {
-        const newData = { ...prev, [name]: value };
-        
-        // Auto-calculate next review date based on decision and COMMISSION date
-        if (name === 'final_decision' || name === 'inaptitude_duration' || name === 'commission_date') {
-            const baseDate = new Date(newData.commission_date || newData.exam_date);
-            if (newData.final_decision === 'apte') {
-                newData.next_review_date = ''; // Permanent
-            } else if (newData.final_decision === 'inapte_temporaire') {
-                const months = parseInt(newData.inaptitude_duration) || 1;
-                newData.next_review_date = format(addMonths(baseDate, months), 'yyyy-MM-dd');
-            } else {
-                newData.next_review_date = ''; // Definitive
-            }
+      const newData = { ...prev, [name]: value };
+
+      // Auto-calculate next review date based on decision and COMMISSION date
+      if (
+        name === 'final_decision' ||
+        name === 'inaptitude_duration' ||
+        name === 'commission_date'
+      ) {
+        const baseDate = new Date(newData.commission_date || newData.exam_date);
+        if (newData.final_decision === 'apte') {
+          newData.next_review_date = ''; // Permanent
+        } else if (newData.final_decision === 'inapte_temporaire') {
+          const months = parseInt(newData.inaptitude_duration) || 1;
+          newData.next_review_date = format(addMonths(baseDate, months), 'yyyy-MM-dd');
+        } else {
+          newData.next_review_date = ''; // Definitive
         }
-        return newData;
+      }
+      return newData;
     });
   };
 
@@ -57,193 +61,295 @@ export default function WeaponExamForm({ holder, existingExam, onClose, onSave }
   // [SURGICAL UPDATE] Darker Colors & Neobrutal constants
   const getDecisionColor = () => {
     switch (formData.final_decision) {
-      case 'apte': return '#15803d'; // Darker Green (Tailwind green-700)
-      case 'inapte_temporaire': return '#b91c1c'; // Darker Red (Tailwind red-700)
-      case 'inapte_definitif': return '#1f2937'; // Dark Gray/Black
-      default: return '#333333';
+      case 'apte':
+        return '#15803d'; // Darker Green (Tailwind green-700)
+      case 'inapte_temporaire':
+        return '#b91c1c'; // Darker Red (Tailwind red-700)
+      case 'inapte_definitif':
+        return '#1f2937'; // Dark Gray/Black
+      default:
+        return '#333333';
     }
   };
 
   return (
     <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: '600px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem', paddingBottom: '1rem', borderBottom: '2px solid var(--border-color)' }}>
-          <h3 style={{ margin: 0, color: 'var(--primary)' }}>Commission Médicale - {holder.full_name}</h3>
-          <button onClick={onClose} className="btn-close">×</button>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '1.5rem',
+            paddingBottom: '1rem',
+            borderBottom: '2px solid var(--border-color)',
+          }}
+        >
+          <h3 style={{ margin: 0, color: 'var(--primary)' }}>
+            Commission Médicale - {holder.full_name}
+          </h3>
+          <button onClick={onClose} className="btn-close">
+            ×
+          </button>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="card" style={{ background: '#f8fafc', marginBottom: '1rem' }}>
             <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
-               <div style={{ flex: 1 }}>
-                  <label className="label">Date Consultation (Cabinet)</label>
-                  <input type="date" className="input" name="exam_date" value={formData.exam_date} onChange={handleChange} required />
-               </div>
-               <div style={{ flex: 1 }}>
-                  <label className="label">Type / Motif</label>
-                  <select className="input" name="visit_reason" value={formData.visit_reason} onChange={handleChange}>
-                    <option value="Affection Somatique">Affection Somatique</option>
-                    <option value="Affection Psychiatrique">Affection Psychiatrique</option>
-                    <option value="Affection Psychologique">Affection Psychologique</option>
-                    <option value="Par Précaution">Par Précaution</option>
-                  </select>
-               </div>
+              <div style={{ flex: 1 }}>
+                <label className="label">Date Consultation (Cabinet)</label>
+                <input
+                  type="date"
+                  className="input"
+                  name="exam_date"
+                  value={formData.exam_date}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="label">Type / Motif</label>
+                <select
+                  className="input"
+                  name="visit_reason"
+                  value={formData.visit_reason}
+                  onChange={handleChange}
+                >
+                  <option value="Affection Somatique">Affection Somatique</option>
+                  <option value="Affection Psychiatrique">Affection Psychiatrique</option>
+                  <option value="Affection Psychologique">Affection Psychologique</option>
+                  <option value="Par Précaution">Par Précaution</option>
+                </select>
+              </div>
             </div>
           </div>
 
           <div className="card" style={{ marginBottom: '1rem', borderLeft: '4px solid #3b82f6' }}>
             <h4>Avis des Experts</h4>
             <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
-               <div style={{ flex: 1 }}>
-                  <label className="label">Mon Avis (Médecin)</label>
-                  <select className="input" name="medical_aptitude" value={formData.medical_aptitude} onChange={handleChange}>
-                    <option value="apte">Apte</option>
-                    <option value="inapte">Inapte</option>
-                  </select>
-               </div>
-               <div style={{ flex: 1 }}>
-                  <label className="label">Avis Psychologue</label>
-                  <select className="input" name="psych_advice" value={formData.psych_advice} onChange={handleChange}>
-                    <option value="favorable">Favorable</option>
-                    <option value="reserve">Réservé</option>
-                  </select>
-               </div>
-            </div>
-            <div className="form-group">
-               <label className="label">Avis Chef de Service (Resp. Direct)</label>
-               <select className="input" name="chief_advice" value={formData.chief_advice} onChange={handleChange}>
+              <div style={{ flex: 1 }}>
+                <label className="label">Mon Avis (Médecin)</label>
+                <select
+                  className="input"
+                  name="medical_aptitude"
+                  value={formData.medical_aptitude}
+                  onChange={handleChange}
+                >
+                  <option value="apte">Apte</option>
+                  <option value="inapte">Inapte</option>
+                </select>
+              </div>
+              <div style={{ flex: 1 }}>
+                <label className="label">Avis Psychologue</label>
+                <select
+                  className="input"
+                  name="psych_advice"
+                  value={formData.psych_advice}
+                  onChange={handleChange}
+                >
                   <option value="favorable">Favorable</option>
-                  <option value="defavorable">Défavorable</option>
-               </select>
+                  <option value="reserve">Réservé</option>
+                </select>
+              </div>
             </div>
             <div className="form-group">
-               <label className="label">Observations Générales</label>
-               <textarea className="input" name="medical_obs" rows="2" value={formData.medical_obs} onChange={handleChange}></textarea>
+              <label className="label">Avis Chef de Service (Resp. Direct)</label>
+              <select
+                className="input"
+                name="chief_advice"
+                value={formData.chief_advice}
+                onChange={handleChange}
+              >
+                <option value="favorable">Favorable</option>
+                <option value="defavorable">Défavorable</option>
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="label">Observations Générales</label>
+              <textarea
+                className="input"
+                name="medical_obs"
+                rows="2"
+                value={formData.medical_obs}
+                onChange={handleChange}
+              ></textarea>
             </div>
           </div>
 
-          <div className="card" style={{ marginBottom: '1rem', borderLeft: '4px solid #a855f7', display: 'none' }}>
+          <div
+            className="card"
+            style={{ marginBottom: '1rem', borderLeft: '4px solid #a855f7', display: 'none' }}
+          >
             {/* HIDDEN SECTION - PRESERVED TO AVOID ERROR IF REFERENCED ELSEWHERE */}
           </div>
 
           {/* [SURGICAL REPLACEMENT] Dynamic Color Decision Card */}
-          <div className="card" style={{ 
-              marginBottom: '1rem', 
+          <div
+            className="card"
+            style={{
+              marginBottom: '1rem',
               borderLeft: `8px solid ${getDecisionColor()}`,
-              transition: 'border-color 0.3s ease'
-          }}>
-            <h4 style={{ color: getDecisionColor(), transition: 'color 0.3s ease' }}>Décision de la Commission</h4>
-            
+              transition: 'border-color 0.3s ease',
+            }}
+          >
+            <h4 style={{ color: getDecisionColor(), transition: 'color 0.3s ease' }}>
+              Décision de la Commission
+            </h4>
+
             <div className="form-group">
-               <label className="label">Date de la Commission (Verdict)</label>
-               <input type="date" className="input" name="commission_date" value={formData.commission_date} onChange={handleChange} required />
+              <label className="label">Date de la Commission (Verdict)</label>
+              <input
+                type="date"
+                className="input"
+                name="commission_date"
+                value={formData.commission_date}
+                onChange={handleChange}
+                required
+              />
             </div>
 
             <div className="form-group">
-               <label className="label">Verdict Final</label>
-               <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  
-                  {/* APTE BUTTON (Neobrutal) */}
-                  <button 
-                    type="button" 
-                    className="btn"
-                    style={{
-                        flex: 1,
-                        backgroundColor: formData.final_decision === 'apte' ? '#15803d' : '#ffffff',
-                        color: formData.final_decision === 'apte' ? '#ffffff' : '#15803d',
-                        border: '2px solid #000',
-                        boxShadow: formData.final_decision === 'apte' ? '4px 4px 0px 0px #000' : 'none',
-                        transform: formData.final_decision === 'apte' ? 'translate(-2px, -2px)' : 'none',
-                        fontWeight: '800',
-                        transition: 'all 0.1s ease'
-                    }}
-                    onClick={() => handleChange({target: {name: 'final_decision', value: 'apte'}})}
-                  >
-                    ✅ APTE
-                  </button>
+              <label className="label">Verdict Final</label>
+              <div style={{ display: 'flex', gap: '0.5rem' }}>
+                {/* APTE BUTTON (Neobrutal) */}
+                <button
+                  type="button"
+                  className="btn"
+                  style={{
+                    flex: 1,
+                    backgroundColor: formData.final_decision === 'apte' ? '#15803d' : '#ffffff',
+                    color: formData.final_decision === 'apte' ? '#ffffff' : '#15803d',
+                    border: '2px solid #000',
+                    boxShadow: formData.final_decision === 'apte' ? '4px 4px 0px 0px #000' : 'none',
+                    transform:
+                      formData.final_decision === 'apte' ? 'translate(-2px, -2px)' : 'none',
+                    fontWeight: '800',
+                    transition: 'all 0.1s ease',
+                  }}
+                  onClick={() =>
+                    handleChange({ target: { name: 'final_decision', value: 'apte' } })
+                  }
+                >
+                  ✅ APTE
+                </button>
 
-                  {/* INAPTE TEMP BUTTON (Neobrutal) */}
-                  <button 
-                    type="button" 
-                    className="btn"
-                    style={{
-                        flex: 1,
-                        backgroundColor: formData.final_decision === 'inapte_temporaire' ? '#b91c1c' : '#ffffff',
-                        color: formData.final_decision === 'inapte_temporaire' ? '#ffffff' : '#b91c1c',
-                        border: '2px solid #000',
-                        boxShadow: formData.final_decision === 'inapte_temporaire' ? '4px 4px 0px 0px #000' : 'none',
-                        transform: formData.final_decision === 'inapte_temporaire' ? 'translate(-2px, -2px)' : 'none',
-                        fontWeight: '800',
-                        transition: 'all 0.1s ease'
-                    }}
-                    onClick={() => handleChange({target: {name: 'final_decision', value: 'inapte_temporaire'}})}
-                  >
-                    ⚠️ INAPTE TEMP.
-                  </button>
+                {/* INAPTE TEMP BUTTON (Neobrutal) */}
+                <button
+                  type="button"
+                  className="btn"
+                  style={{
+                    flex: 1,
+                    backgroundColor:
+                      formData.final_decision === 'inapte_temporaire' ? '#b91c1c' : '#ffffff',
+                    color: formData.final_decision === 'inapte_temporaire' ? '#ffffff' : '#b91c1c',
+                    border: '2px solid #000',
+                    boxShadow:
+                      formData.final_decision === 'inapte_temporaire'
+                        ? '4px 4px 0px 0px #000'
+                        : 'none',
+                    transform:
+                      formData.final_decision === 'inapte_temporaire'
+                        ? 'translate(-2px, -2px)'
+                        : 'none',
+                    fontWeight: '800',
+                    transition: 'all 0.1s ease',
+                  }}
+                  onClick={() =>
+                    handleChange({ target: { name: 'final_decision', value: 'inapte_temporaire' } })
+                  }
+                >
+                  ⚠️ INAPTE TEMP.
+                </button>
 
-                  {/* INAPTE DEF BUTTON (Neobrutal) */}
-                  <button 
-                    type="button" 
-                    className="btn"
-                    style={{
-                        flex: 1,
-                        backgroundColor: formData.final_decision === 'inapte_definitif' ? '#1f2937' : '#ffffff',
-                        color: formData.final_decision === 'inapte_definitif' ? '#ffffff' : '#1f2937',
-                        border: '2px solid #000',
-                        boxShadow: formData.final_decision === 'inapte_definitif' ? '4px 4px 0px 0px #000' : 'none',
-                        transform: formData.final_decision === 'inapte_definitif' ? 'translate(-2px, -2px)' : 'none',
-                        fontWeight: '800',
-                        transition: 'all 0.1s ease'
-                    }}
-                    onClick={() => handleChange({target: {name: 'final_decision', value: 'inapte_definitif'}})}
-                  >
-                    ⛔ INAPTE DÉF.
-                  </button>
-               </div>
+                {/* INAPTE DEF BUTTON (Neobrutal) */}
+                <button
+                  type="button"
+                  className="btn"
+                  style={{
+                    flex: 1,
+                    backgroundColor:
+                      formData.final_decision === 'inapte_definitif' ? '#1f2937' : '#ffffff',
+                    color: formData.final_decision === 'inapte_definitif' ? '#ffffff' : '#1f2937',
+                    border: '2px solid #000',
+                    boxShadow:
+                      formData.final_decision === 'inapte_definitif'
+                        ? '4px 4px 0px 0px #000'
+                        : 'none',
+                    transform:
+                      formData.final_decision === 'inapte_definitif'
+                        ? 'translate(-2px, -2px)'
+                        : 'none',
+                    fontWeight: '800',
+                    transition: 'all 0.1s ease',
+                  }}
+                  onClick={() =>
+                    handleChange({ target: { name: 'final_decision', value: 'inapte_definitif' } })
+                  }
+                >
+                  ⛔ INAPTE DÉF.
+                </button>
+              </div>
             </div>
 
             {formData.final_decision === 'inapte_temporaire' && (
-               <div className="form-group" style={{ animation: 'fadeIn 0.3s' }}>
-                  <label className="label">Durée de l'inaptitude</label>
-                  <div style={{ display: 'flex', gap: '10px' }}>
-                    {[1, 3, 6, 12].map(m => (
-                        <button 
-                            key={m}
-                            type="button"
-                            className="btn"
-                            style={{ 
-                                flex: 1,
-                                backgroundColor: parseInt(formData.inaptitude_duration) === m ? '#ef4444' : '#fee2e2',
-                                color: parseInt(formData.inaptitude_duration) === m ? 'white' : '#b91c1c',
-                                border: 'none'
-                            }}
-                            onClick={() => handleChange({target: {name: 'inaptitude_duration', value: m.toString()}})}
-                        >
-                            {m} Mois
-                        </button>
-                    ))}
-                  </div>
-                  <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
-                    Révision automatique le : <strong>{formData.next_review_date}</strong>
-                  </p>
-               </div>
+              <div className="form-group" style={{ animation: 'fadeIn 0.3s' }}>
+                <label className="label">Durée de l'inaptitude</label>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  {[1, 3, 6, 12].map((m) => (
+                    <button
+                      key={m}
+                      type="button"
+                      className="btn"
+                      style={{
+                        flex: 1,
+                        backgroundColor:
+                          parseInt(formData.inaptitude_duration) === m ? '#ef4444' : '#fee2e2',
+                        color: parseInt(formData.inaptitude_duration) === m ? 'white' : '#b91c1c',
+                        border: 'none',
+                      }}
+                      onClick={() =>
+                        handleChange({
+                          target: { name: 'inaptitude_duration', value: m.toString() },
+                        })
+                      }
+                    >
+                      {m} Mois
+                    </button>
+                  ))}
+                </div>
+                <p style={{ marginTop: '0.5rem', fontSize: '0.9rem', color: '#666' }}>
+                  Révision automatique le : <strong>{formData.next_review_date}</strong>
+                </p>
+              </div>
             )}
 
             {formData.final_decision === 'apte' && (
-                <div style={{ padding: '0.5rem', background: '#d1fae5', color: '#065f46', borderRadius: '4px', textAlign: 'center' }}>
-                    Aptitude Permanente (Sauf incident)
-                </div>
+              <div
+                style={{
+                  padding: '0.5rem',
+                  background: '#d1fae5',
+                  color: '#065f46',
+                  borderRadius: '4px',
+                  textAlign: 'center',
+                }}
+              >
+                Aptitude Permanente (Sauf incident)
+              </div>
             )}
           </div>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}>
-            <button type="button" className="btn btn-outline" onClick={onClose}>Annuler</button>
-            <button 
-              type="submit" 
-              className="btn btn-primary" 
+          <div
+            style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}
+          >
+            <button type="button" className="btn btn-outline" onClick={onClose}>
+              Annuler
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
               style={{ backgroundColor: getDecisionColor(), borderColor: getDecisionColor() }}
             >
-                Enregistrer la Décision
+              Enregistrer la Décision
             </button>
           </div>
         </form>

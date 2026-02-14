@@ -103,17 +103,17 @@ The project utilizes automated pipelines for consistent build delivery via GitHu
 
 ### 7.1 Core Tables (Updated v3 Schema)
 
-| Table               | Fields                                                                       | Indexes                     |
-| :------------------ | :--------------------------------------------------------------------------- | :-------------------------- |
-| `workers`           | id, full_name, national_id, department_id, archived                          | archived, department_id     |
-| `departments`       | id, name                                                                     | name                        |
-| `workplaces`        | id, name, certificate_text                                                   | name                        |
-| `exams`             | id, worker_id, exam_date                                                     | worker_id, exam_date        |
-| `water_departments` | id, name                                                                     | name                        |
-| `water_analyses`    | id, sample_date, department_id, structure_id                                 | department_id, structure_id |
-| `weapon_holders`    | id, full_name, national_id, department_id, status, archived                  | archived, department_id     |
-| `weapon_exams`      | id, holder_id, exam_date, visit_reason, final_decision                       | holder_id, exam_date        |
-| `weapon_departments`| id, name                                                                     | name                        |
+| Table                | Fields                                                      | Indexes                     |
+| :------------------- | :---------------------------------------------------------- | :-------------------------- |
+| `workers`            | id, full_name, national_id, department_id, archived         | archived, department_id     |
+| `departments`        | id, name                                                    | name                        |
+| `workplaces`         | id, name, certificate_text                                  | name                        |
+| `exams`              | id, worker_id, exam_date                                    | worker_id, exam_date        |
+| `water_departments`  | id, name                                                    | name                        |
+| `water_analyses`     | id, sample_date, department_id, structure_id                | department_id, structure_id |
+| `weapon_holders`     | id, full_name, national_id, department_id, status, archived | archived, department_id     |
+| `weapon_exams`       | id, holder_id, exam_date, visit_reason, final_decision      | holder_id, exam_date        |
+| `weapon_departments` | id, name                                                    | name                        |
 
 ### 7.2 Settings Table
 

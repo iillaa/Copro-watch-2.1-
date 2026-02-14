@@ -39,7 +39,8 @@ class CoproDatabase extends Dexie {
       water_analyses: '++id, sample_date, department_id, structure_id',
       water_departments: '++id',
       settings: 'key',
-      weapon_holders: '++id, full_name, national_id, department_id, status, next_review_date, archived',
+      weapon_holders:
+        '++id, full_name, national_id, department_id, status, next_review_date, archived',
       weapon_exams: '++id, holder_id, exam_date, visit_reason, final_decision',
       weapon_departments: '++id, name',
     });
@@ -122,10 +123,15 @@ export const db = {
   },
   async deleteWeaponHolder(id) {
     const numId = Number(id);
-    await dbInstance.transaction('rw', dbInstance.weapon_exams, dbInstance.weapon_holders, async () => {
-      await dbInstance.weapon_exams.where('holder_id').equals(numId).delete();
-      await dbInstance.weapon_holders.delete(numId);
-    });
+    await dbInstance.transaction(
+      'rw',
+      dbInstance.weapon_exams,
+      dbInstance.weapon_holders,
+      async () => {
+        await dbInstance.weapon_exams.where('holder_id').equals(numId).delete();
+        await dbInstance.weapon_holders.delete(numId);
+      }
+    );
     await triggerBackupCheck();
   },
   async getWeaponExams() {
@@ -166,10 +172,15 @@ export const db = {
   },
   async deleteWeaponDepartment(id) {
     const numId = Number(id);
-    await dbInstance.transaction('rw', dbInstance.weapon_holders, dbInstance.weapon_departments, async () => {
-      await dbInstance.weapon_holders.where('department_id').equals(numId).delete();
-      await dbInstance.weapon_departments.delete(numId);
-    });
+    await dbInstance.transaction(
+      'rw',
+      dbInstance.weapon_holders,
+      dbInstance.weapon_departments,
+      async () => {
+        await dbInstance.weapon_holders.where('department_id').equals(numId).delete();
+        await dbInstance.weapon_departments.delete(numId);
+      }
+    );
     await triggerBackupCheck();
   },
 
@@ -178,7 +189,7 @@ export const db = {
     return await dbInstance.transaction('rw', dbInstance.weapon_holders, async () => {
       const holders = await dbInstance.weapon_holders.bulkGet(Array.from(holderIds));
       // Tweak: "workplace_id" becomes "department_id"
-      const updates = holders.map(h => ({ ...h, department_id: Number(newDepartmentId) }));
+      const updates = holders.map((h) => ({ ...h, department_id: Number(newDepartmentId) }));
       await dbInstance.weapon_holders.bulkPut(updates);
     });
   },

@@ -28,7 +28,7 @@ import {
   FaStethoscope,
   FaBalanceScale,
   FaPrint,
-  FaArchive,     // [NEW]
+  FaArchive, // [NEW]
   FaExchangeAlt, // [NEW]
 } from 'react-icons/fa';
 
@@ -37,14 +37,16 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const [holders, setHolders] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
-  
+
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearch = useDeferredValue(searchTerm);
-  
+
   // [SURGICAL FIX] Sticky Filters
   const [filterDept, setFilterDept] = useState(localStorage.getItem('weapon_filter_dept') || '');
-  const [filterStatus, setFilterStatus] = useState(localStorage.getItem('weapon_filter_status') || '');
-  
+  const [filterStatus, setFilterStatus] = useState(
+    localStorage.getItem('weapon_filter_status') || ''
+  );
+
   const [sortConfig, setSortConfig] = useState({ key: 'full_name', direction: 'asc' });
   const [showArchived, setShowArchived] = useState(false);
   const [showForm, setShowForm] = useState(false);
@@ -61,10 +63,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const loadData = async () => {
     try {
       setIsLoading(true);
-      const [h, d] = await Promise.all([
-        db.getWeaponHolders(),
-        db.getWeaponDepartments(),
-      ]);
+      const [h, d] = await Promise.all([db.getWeaponHolders(), db.getWeaponDepartments()]);
       setHolders(h || []);
       setDepartments(d || []);
     } catch (error) {
@@ -81,36 +80,35 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const filteredHolders = useMemo(() => {
     let result = holders;
     if (!showArchived) result = result.filter((h) => !h.archived);
-    
+
     if (filterDept) {
       result = result.filter((h) => h.department_id === Number(filterDept));
     }
 
     if (filterStatus) {
-       // [SURGICAL ADDITION] Overdue Filter
-       if (filterStatus === 'late') {
-          result = result.filter(h => 
-            h.next_review_date && logic.isOverdue(h.next_review_date)
-          );
-       } 
-       else if (filterStatus === 'due_soon') {
-          // [FIX] Show "Pending" (New) OR "Due Soon" (expired/review needed)
-          result = result.filter(h => 
-            h.status === 'pending' || 
+      // [SURGICAL ADDITION] Overdue Filter
+      if (filterStatus === 'late') {
+        result = result.filter((h) => h.next_review_date && logic.isOverdue(h.next_review_date));
+      } else if (filterStatus === 'due_soon') {
+        // [FIX] Show "Pending" (New) OR "Due Soon" (expired/review needed)
+        result = result.filter(
+          (h) =>
+            h.status === 'pending' ||
             (h.next_review_date && logic.isWeaponDueSoon(h.next_review_date))
-          );
-       } else {
-          result = result.filter((h) => h.status === filterStatus);
-       }
+        );
+      } else {
+        result = result.filter((h) => h.status === filterStatus);
+      }
     }
 
     if (deferredSearch) {
       const lower = deferredSearch.toLowerCase();
-      result = result.filter((h) => 
-        (h.full_name && h.full_name.toLowerCase().includes(lower)) ||
-        (h.national_id && String(h.national_id).toLowerCase().includes(lower)) ||
-        (h.job_function && h.job_function.toLowerCase().includes(lower)) ||
-        (h.medical_history && h.medical_history.toLowerCase().includes(lower))
+      result = result.filter(
+        (h) =>
+          (h.full_name && h.full_name.toLowerCase().includes(lower)) ||
+          (h.national_id && String(h.national_id).toLowerCase().includes(lower)) ||
+          (h.job_function && h.job_function.toLowerCase().includes(lower)) ||
+          (h.medical_history && h.medical_history.toLowerCase().includes(lower))
       );
     }
 
@@ -118,13 +116,16 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
       result = [...result].sort((a, b) => {
         let aVal = a[sortConfig.key] || '';
         let bVal = b[sortConfig.key] || '';
-        
+
         if (sortConfig.key === 'department_id') {
-          aVal = departments.find(d => d.id === a.department_id)?.name || '';
-          bVal = departments.find(d => d.id === b.department_id)?.name || '';
+          aVal = departments.find((d) => d.id === a.department_id)?.name || '';
+          bVal = departments.find((d) => d.id === b.department_id)?.name || '';
         }
 
-        if (typeof aVal === 'string') { aVal = aVal.toLowerCase(); bVal = bVal.toLowerCase(); }
+        if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = bVal.toLowerCase();
+        }
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
@@ -134,7 +135,10 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   }, [holders, deferredSearch, showArchived, sortConfig, filterStatus, filterDept, departments]);
 
   const handleSort = (key) => {
-    setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' }));
+    setSortConfig((prev) => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc',
+    }));
   };
 
   const getSortIcon = (key) => {
@@ -162,12 +166,12 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
 
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredHolders.length) setSelectedIds(new Set());
-    else setSelectedIds(new Set(filteredHolders.map(h => h.id)));
+    else setSelectedIds(new Set(filteredHolders.map((h) => h.id)));
   };
 
   const handleBatchDelete = async () => {
     if (window.confirm(`Supprimer définitivement ${selectedIds.size} agents ?`)) {
-      await Promise.all(Array.from(selectedIds).map(id => db.deleteWeaponHolder(id)));
+      await Promise.all(Array.from(selectedIds).map((id) => db.deleteWeaponHolder(id)));
       showToast('Suppression terminée', 'success');
       setSelectedIds(new Set());
       loadData();
@@ -208,14 +212,16 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   };
 
   const handleBatchScheduleConfirm = async (dateStr) => {
-    await Promise.all(Array.from(selectedIds).map(async (id) => {
-      await db.saveWeaponExam({
-        holder_id: id,
-        exam_date: dateStr,
-        visit_reason: 'Périodique',
-        final_decision: 'pending', // Special status for batch scheduled
-      });
-    }));
+    await Promise.all(
+      Array.from(selectedIds).map(async (id) => {
+        await db.saveWeaponExam({
+          holder_id: id,
+          exam_date: dateStr,
+          visit_reason: 'Périodique',
+          final_decision: 'pending', // Special status for batch scheduled
+        });
+      })
+    );
     setShowScheduleModal(false);
     setSelectedIds(new Set());
     loadData();
@@ -224,31 +230,33 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
 
   const handleBatchResultConfirm = async (payload) => {
     const today = new Date().toISOString().split('T')[0];
-    await Promise.all(Array.from(selectedIds).map(async (id) => {
-      const exams = await db.getWeaponExamsByHolder(id);
-      exams.sort((a,b) => new Date(b.exam_date) - new Date(a.exam_date));
-      
-      const lastExam = exams[0] || { holder_id: id, exam_date: today };
-      
-      const decision = payload.decision; // 'apte', 'inapte_temporaire', etc.
-      let nextDate = '';
-      if (decision === 'apte') {
+    await Promise.all(
+      Array.from(selectedIds).map(async (id) => {
+        const exams = await db.getWeaponExamsByHolder(id);
+        exams.sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
+
+        const lastExam = exams[0] || { holder_id: id, exam_date: today };
+
+        const decision = payload.decision; // 'apte', 'inapte_temporaire', etc.
+        let nextDate = '';
+        if (decision === 'apte') {
           const d = new Date(payload.date || today);
           d.setFullYear(d.getFullYear() + 1);
           nextDate = d.toISOString().split('T')[0];
-      } else if (decision === 'inapte_temporaire') {
+        } else if (decision === 'inapte_temporaire') {
           const d = new Date(payload.date || today);
           d.setMonth(d.getMonth() + (parseInt(payload.retestDays) || 3));
           nextDate = d.toISOString().split('T')[0];
-      }
+        }
 
-      await db.saveWeaponExam({
-        ...lastExam,
-        exam_date: payload.date || lastExam.exam_date,
-        final_decision: decision,
-        next_review_date: nextDate,
-      });
-    }));
+        await db.saveWeaponExam({
+          ...lastExam,
+          exam_date: payload.date || lastExam.exam_date,
+          final_decision: decision,
+          next_review_date: nextDate,
+        });
+      })
+    );
     setShowResultModal(false);
     setSelectedIds(new Set());
     loadData();
@@ -260,16 +268,18 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
     let targets;
     if (docType === 'weapon_registre') {
       targets = holders
-        .filter(h => !h.archived)  // Only active holders
-        .map(h => ({
+        .filter((h) => !h.archived) // Only active holders
+        .map((h) => ({
           ...h,
-          deptName: departments.find(d => d.id === h.department_id)?.name || '-'
+          deptName: departments.find((d) => d.id === h.department_id)?.name || '-',
         }));
     } else {
-      targets = holders.filter(h => selectedIds.has(h.id)).map(h => ({
+      targets = holders
+        .filter((h) => selectedIds.has(h.id))
+        .map((h) => ({
           ...h,
-          deptName: departments.find(d => d.id === h.department_id)?.name || '-'
-      }));
+          deptName: departments.find((d) => d.id === h.department_id)?.name || '-',
+        }));
     }
     pdfService.generateBatchDoc(targets, docType, { ...options, date: creationDate });
     setShowPrintModal(false);
@@ -278,7 +288,10 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const handleExport = async () => {
     try {
       const json = await db.exportData();
-      await backupService.saveBackupJSON(json, `weapon_backup_${new Date().toISOString().split('T')[0]}.json`);
+      await backupService.saveBackupJSON(
+        json,
+        `weapon_backup_${new Date().toISOString().split('T')[0]}.json`
+      );
       showToast('Export JSON réussi', 'success');
     } catch (e) {
       showToast('Erreur export JSON', 'error');
@@ -309,11 +322,20 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
     }
   };
 
-  const gridTemplate = isSelectionMode ? '50px 1.8fr 0.7fr 1fr 1fr 2fr 100px' : '0px 1.8fr 0.7fr 1fr 1fr 2fr 100px';
+  const gridTemplate = isSelectionMode
+    ? '50px 1.8fr 0.7fr 1fr 1fr 2fr 100px'
+    : '0px 1.8fr 0.7fr 1fr 1fr 2fr 100px';
 
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: '1.5rem',
+        }}
+      >
         <div>
           <h2 style={{ marginBottom: 0 }}>{"Détenteurs d'Armes"}</h2>
           <p style={{ margin: 0, fontSize: '0.875rem', color: 'var(--text-muted)' }}>
@@ -321,50 +343,103 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.75rem' }}>
-          <button className={`btn ${isSelectionMode ? 'btn-primary' : 'btn-outline'}`} onClick={toggleSelectionMode} title="Sélection Multiple" style={{ padding: '0.8rem 1rem' }}>
+          <button
+            className={`btn ${isSelectionMode ? 'btn-primary' : 'btn-outline'}`}
+            onClick={toggleSelectionMode}
+            title="Sélection Multiple"
+            style={{ padding: '0.8rem 1rem' }}
+          >
             <FaCheckSquare />
           </button>
-          <button className="btn btn-outline" title="Backup JSON" onClick={handleExport} style={{ padding: '0.8rem 1rem' }}>
+          <button
+            className="btn btn-outline"
+            title="Backup JSON"
+            onClick={handleExport}
+            style={{ padding: '0.8rem 1rem' }}
+          >
             <FaFileDownload />
           </button>
-          <label className="btn btn-outline" title="Import JSON" style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}>
+          <label
+            className="btn btn-outline"
+            title="Import JSON"
+            style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}
+          >
             <FaFileUpload />
             <input type="file" onChange={handleImport} style={{ display: 'none' }} accept=".json" />
           </label>
-          <button className="btn btn-outline" style={{ color: '#107C41', borderColor: '#107C41', padding: '0.8rem 1rem' }} onClick={handleExcelExport}>
+          <button
+            className="btn btn-outline"
+            style={{ color: '#107C41', borderColor: '#107C41', padding: '0.8rem 1rem' }}
+            onClick={handleExcelExport}
+          >
             <FaFileExcel /> <span className="hide-mobile">Excel</span>
           </button>
-          <button className="btn btn-primary" style={{ padding: '0.8rem 1rem' }} onClick={() => { setEditingHolder(null); setShowForm(true); }}>
+          <button
+            className="btn btn-primary"
+            style={{ padding: '0.8rem 1rem' }}
+            onClick={() => {
+              setEditingHolder(null);
+              setShowForm(true);
+            }}
+          >
             <FaPlus /> <span className="hide-mobile">Nouveau</span>
           </button>
         </div>
       </div>
 
-      <div className="card" style={{ padding: '0.75rem', display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', overflowX: 'auto' }}>
+      <div
+        className="card"
+        style={{
+          padding: '0.75rem',
+          display: 'flex',
+          gap: '1rem',
+          alignItems: 'center',
+          marginBottom: '1rem',
+          overflowX: 'auto',
+        }}
+      >
         <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-          <FaSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input className="input" style={{ paddingLeft: '2.5rem', borderRadius: '50px' }} placeholder="Rechercher (Nom, Matricule, Poste, Antécédents)..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <FaSearch
+            style={{
+              position: 'absolute',
+              left: '12px',
+              top: '50%',
+              transform: 'translateY(-50%)',
+              color: 'var(--text-muted)',
+            }}
+          />
+          <input
+            className="input"
+            style={{ paddingLeft: '2.5rem', borderRadius: '50px' }}
+            placeholder="Rechercher (Nom, Matricule, Poste, Antécédents)..."
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
         </div>
-        
+
         {/* [FIX] Sticky Dept */}
-        <select 
-          className="input" 
-          style={{ width: 'auto', borderRadius: '50px' }} 
-          value={filterDept} 
+        <select
+          className="input"
+          style={{ width: 'auto', borderRadius: '50px' }}
+          value={filterDept}
           onChange={(e) => {
             setFilterDept(e.target.value);
             localStorage.setItem('weapon_filter_dept', e.target.value);
           }}
         >
           <option value="">Tous les services</option>
-          {departments.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+          {departments.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.name}
+            </option>
+          ))}
         </select>
 
         {/* [FIX] Sticky Status */}
-        <select 
-          className="input" 
-          style={{ width: 'auto', borderRadius: '50px' }} 
-          value={filterStatus} 
+        <select
+          className="input"
+          style={{ width: 'auto', borderRadius: '50px' }}
+          value={filterStatus}
           onChange={(e) => {
             setFilterStatus(e.target.value);
             localStorage.setItem('weapon_filter_status', e.target.value);
@@ -395,8 +470,21 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           </button>
         )}
 
-        <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', whiteSpace: 'nowrap', cursor: 'pointer' }}>
-          <input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> Archives
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem',
+            whiteSpace: 'nowrap',
+            cursor: 'pointer',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={showArchived}
+            onChange={(e) => setShowArchived(e.target.checked)}
+          />{' '}
+          Archives
         </label>
       </div>
 
@@ -405,63 +493,136 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
         <div className="hybrid-container">
           <div className="hybrid-header" style={{ gridTemplateColumns: gridTemplate }}>
             <div style={{ textAlign: 'center' }}>
-              {isSelectionMode && <input type="checkbox" onChange={toggleSelectAll} checked={filteredHolders.length > 0 && selectedIds.size === filteredHolders.length} />}
+              {isSelectionMode && (
+                <input
+                  type="checkbox"
+                  onChange={toggleSelectAll}
+                  checked={
+                    filteredHolders.length > 0 && selectedIds.size === filteredHolders.length
+                  }
+                />
+              )}
             </div>
-            <div onClick={() => handleSort('full_name')} style={{ cursor: 'pointer' }}>Nom et prénom {getSortIcon('full_name')}</div>
-            <div onClick={() => handleSort('national_id')} style={{ cursor: 'pointer' }}>Matricule {getSortIcon('national_id')}</div>
-            <div onClick={() => handleSort('department_id')} style={{ cursor: 'pointer' }}>Service {getSortIcon('department_id')}</div>
-            <div onClick={() => handleSort('job_function')} style={{ cursor: 'pointer' }}>Poste / Grade {getSortIcon('job_function')}</div>
-            <div onClick={() => handleSort('next_review_date')} style={{ cursor: 'pointer' }}>Prochain Dû {getSortIcon('next_review_date')}</div>
+            <div onClick={() => handleSort('full_name')} style={{ cursor: 'pointer' }}>
+              Nom et prénom {getSortIcon('full_name')}
+            </div>
+            <div onClick={() => handleSort('national_id')} style={{ cursor: 'pointer' }}>
+              Matricule {getSortIcon('national_id')}
+            </div>
+            <div onClick={() => handleSort('department_id')} style={{ cursor: 'pointer' }}>
+              Service {getSortIcon('department_id')}
+            </div>
+            <div onClick={() => handleSort('job_function')} style={{ cursor: 'pointer' }}>
+              Poste / Grade {getSortIcon('job_function')}
+            </div>
+            <div onClick={() => handleSort('next_review_date')} style={{ cursor: 'pointer' }}>
+              Prochain Dû {getSortIcon('next_review_date')}
+            </div>
             <div style={{ textAlign: 'right' }}>Actions</div>
           </div>
 
           {filteredHolders.map((h) => {
             const isSelected = selectedIds.has(h.id);
-            const deptName = departments.find(d => d.id === h.department_id)?.name || '-';
+            const deptName = departments.find((d) => d.id === h.department_id)?.name || '-';
             const isDue = logic.isWeaponDueSoon(h.next_review_date);
-            
+
             // [SURGICAL FIX] Strict Status Check
             // Only 'inapte_temporaire' can be overdue. Apte/Definitif are ignored.
-            const isOverdue = h.status === 'inapte_temporaire' && h.next_review_date && logic.isOverdue(h.next_review_date);
+            const isOverdue =
+              h.status === 'inapte_temporaire' &&
+              h.next_review_date &&
+              logic.isOverdue(h.next_review_date);
 
             return (
-              <div 
-                key={h.id} 
+              <div
+                key={h.id}
                 // [NEW] Add 'overdue-worker-row' class for red border effect
-                className={`hybrid-row ${isSelected ? 'selected' : ''} ${!h.archived && isOverdue ? 'overdue-worker-row' : ''}`} 
-                style={{ gridTemplateColumns: gridTemplate }} 
-                onClick={() => isSelectionMode ? toggleSelectOne(h.id) : onNavigateWeaponHolder(h.id)}
+                className={`hybrid-row ${isSelected ? 'selected' : ''} ${
+                  !h.archived && isOverdue ? 'overdue-worker-row' : ''
+                }`}
+                style={{ gridTemplateColumns: gridTemplate }}
+                onClick={() =>
+                  isSelectionMode ? toggleSelectOne(h.id) : onNavigateWeaponHolder(h.id)
+                }
               >
                 <div style={{ textAlign: 'center' }}>
-                  {isSelectionMode && <input type="checkbox" checked={isSelected} onChange={() => toggleSelectOne(h.id)} onClick={e => e.stopPropagation()} />}
+                  {isSelectionMode && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectOne(h.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  )}
                 </div>
-                <div className="hybrid-cell" style={{ fontWeight: 600 }}>{h.full_name}</div>
-                <div className="hybrid-cell"><span className="badge-id">{h.national_id}</span></div>
+                <div className="hybrid-cell" style={{ fontWeight: 600 }}>
+                  {h.full_name}
+                </div>
+                <div className="hybrid-cell">
+                  <span className="badge-id">{h.national_id}</span>
+                </div>
                 <div className="hybrid-cell">{deptName}</div>
                 <div className="hybrid-cell">{h.job_function}</div>
                 <div className="hybrid-cell">
-                  <span style={{ 
-                      fontWeight: 600, 
-                      color: isOverdue ? 'var(--danger)' : (isDue ? '#d97706' : 'inherit') 
-                  }}>
+                  <span
+                    style={{
+                      fontWeight: 600,
+                      color: isOverdue ? 'var(--danger)' : isDue ? '#d97706' : 'inherit',
+                    }}
+                  >
                     {logic.formatDateDisplay(h.next_review_date)}
                   </span>
-                  
+
                   {/* [NEW] RETARD BADGE */}
                   {!h.archived && isOverdue && (
-                    <span className="badge badge-red" style={{ marginLeft: '5px', fontSize: '0.65rem' }}>RETARD</span>
+                    <span
+                      className="badge badge-red"
+                      style={{ marginLeft: '5px', fontSize: '0.65rem' }}
+                    >
+                      RETARD
+                    </span>
                   )}
 
                   {/* [FIX] Status Badge: Removed '!isOverdue' so it COEXISTS with Retard */}
                   {h.status && h.status !== 'pending' && (
-                    <span className={`badge ${h.status === 'apte' ? 'badge-green' : h.status === 'inapte_definitif' ? 'badge-black' : 'badge-red'}`} style={{ marginLeft: '5px', fontSize: '0.7rem' }}>
+                    <span
+                      className={`badge ${
+                        h.status === 'apte'
+                          ? 'badge-green'
+                          : h.status === 'inapte_definitif'
+                          ? 'badge-black'
+                          : 'badge-red'
+                      }`}
+                      style={{ marginLeft: '5px', fontSize: '0.7rem' }}
+                    >
                       {h.status === 'apte' ? 'Apte' : 'Inapte'}
                     </span>
                   )}
                 </div>
                 <div className="hybrid-actions">
-                   <button className="btn btn-sm btn-outline" onClick={(e) => { e.stopPropagation(); setEditingHolder(h); setShowForm(true); }}><FaEdit /></button>
-                   <button className="btn btn-sm btn-outline" style={{ color: 'var(--danger)' }} onClick={(e) => { e.stopPropagation(); if(window.confirm('Supprimer ?')) { db.deleteWeaponHolder(h.id); loadData(); } }}><FaTrash /></button>
+                  <button
+                    className="btn btn-sm btn-outline"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingHolder(h);
+                      setShowForm(true);
+                    }}
+                  >
+                    <FaEdit />
+                  </button>
+                  <button
+                    className="btn btn-sm btn-outline"
+                    style={{ color: 'var(--danger)' }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (window.confirm('Supprimer ?')) {
+                        db.deleteWeaponHolder(h.id);
+                        loadData();
+                      }
+                    }}
+                  >
+                    <FaTrash />
+                  </button>
                 </div>
               </div>
             );
@@ -521,7 +682,10 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
         <AddWeaponHolderForm
           holderToEdit={editingHolder}
           onClose={() => setShowForm(false)}
-          onSave={() => { setShowForm(false); loadData(); }}
+          onSave={() => {
+            setShowForm(false);
+            loadData();
+          }}
         />
       )}
       <ToastContainer />

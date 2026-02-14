@@ -652,7 +652,11 @@ function drawWeaponAptitude(doc, agent, options) {
 
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
-  doc.text('La Commission Médicale, après examen clinique et psychologique, déclare l\'intéressé(e) :', MARGIN, y(130));
+  doc.text(
+    "La Commission Médicale, après examen clinique et psychologique, déclare l'intéressé(e) :",
+    MARGIN,
+    y(130)
+  );
 
   doc.setFontSize(22);
   doc.setFont('helvetica', 'bold');
@@ -662,15 +666,21 @@ function drawWeaponAptitude(doc, agent, options) {
   if (agent.status === 'apte') {
     doc.setFontSize(12);
     doc.setFont('helvetica', 'normal');
-    doc.text("Pour le port et la détention d'arme de service.", centerX, y(165), { align: 'center' });
+    doc.text("Pour le port et la détention d'arme de service.", centerX, y(165), {
+      align: 'center',
+    });
   }
 
   const ySig = y(200);
   if (agent.next_review_date) {
     doc.setFontSize(11);
-    doc.text(`Prochaine révision : ${logic.formatDateDisplay(agent.next_review_date)}`, MARGIN, ySig);
+    doc.text(
+      `Prochaine révision : ${logic.formatDateDisplay(agent.next_review_date)}`,
+      MARGIN,
+      ySig
+    );
   }
-  
+
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
   doc.text('Le Médecin Chef', 150, ySig);
@@ -704,12 +714,14 @@ function generateWeaponConvocationList(doc, agents, options) {
     doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 34);
 
     doc.setFontSize(14);
-    doc.text('CONVOCATION VISITE MÉDICALE (PORT D\'ARME)', centerX, 50, { align: 'center' });
+    doc.text("CONVOCATION VISITE MÉDICALE (PORT D'ARME)", centerX, 50, { align: 'center' });
 
     doc.setFontSize(11);
     doc.setFont('helvetica', 'normal');
     doc.text(`SERVICE : ${dept.toUpperCase()}`, leftMargin, 65);
-    const rdv = `${logic.formatDateDisplay(options.consultDate)} à ${options.consultTime || '08:30'}`;
+    const rdv = `${logic.formatDateDisplay(options.consultDate)} à ${
+      options.consultTime || '08:30'
+    }`;
     doc.text(`DATE PRÉVUE : ${rdv}`, leftMargin, 72);
     doc.text(`Le : ${logic.formatDateDisplay(options.date)}`, 190, 65, { align: 'right' });
 
@@ -727,7 +739,10 @@ function generateWeaponConvocationList(doc, agents, options) {
     y += 10;
     doc.setFont('helvetica', 'normal');
     groups[dept].forEach((a) => {
-      if (y > 270) { doc.addPage(); y = 20; }
+      if (y > 270) {
+        doc.addPage();
+        y = 20;
+      }
       doc.text(String(a.national_id || '-'), leftMargin + 2, y);
       doc.text(a.full_name, leftMargin + 30, y);
       doc.text(a.job_function || '-', leftMargin + 90, y);
@@ -746,7 +761,7 @@ function generateWeaponConvocationList(doc, agents, options) {
 function drawWeaponConvocationIndividual(doc, agent, options) {
   const centerX = 105;
   const leftMargin = MARGIN;
-  
+
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 15, { align: 'center' });
@@ -757,7 +772,7 @@ function drawWeaponConvocationIndividual(doc, agent, options) {
 
   doc.setFontSize(16);
   doc.text('CONVOCATION MÉDICALE', centerX, 60, { align: 'center' });
-  doc.text('(APTITUDE AU PORT D\'ARME)', centerX, 68, { align: 'center' });
+  doc.text("(APTITUDE AU PORT D'ARME)", centerX, 68, { align: 'center' });
 
   doc.setFontSize(12);
   doc.setFont('helvetica', 'normal');
@@ -768,13 +783,17 @@ function drawWeaponConvocationIndividual(doc, agent, options) {
 
   const rdv = `${logic.formatDateDisplay(options.consultDate)} à ${options.consultTime || '08:30'}`;
   doc.setFont('helvetica', 'bold');
-  doc.text(`Est convoqué(e) pour sa visite d'aptitude au port d'arme le :`, leftMargin, yStart + 40);
+  doc.text(
+    `Est convoqué(e) pour sa visite d'aptitude au port d'arme le :`,
+    leftMargin,
+    yStart + 40
+  );
   doc.setFontSize(14);
   doc.text(rdv, centerX, yStart + 55, { align: 'center' });
 
   doc.setFontSize(11);
   doc.setFont('helvetica', 'normal');
-  doc.text('La présence est obligatoire muni de sa pièce d\'identité.', leftMargin, yStart + 80);
+  doc.text("La présence est obligatoire muni de sa pièce d'identité.", leftMargin, yStart + 80);
 
   doc.setFont('helvetica', 'bold');
   doc.text('Le Médecin Chef', 150, 250);
@@ -791,12 +810,12 @@ function generateWeaponRegistrePortrait(doc, agents, options) {
   const centerX = 105;
   const leftMargin = 10;
   const pageWidth = 190; // Usable width in portrait (210 - 20)
-  
+
   // HEADER - Only show once at the beginning
   doc.setTextColor(0);
   doc.setFontSize(11);
   doc.setFont('helvetica', 'bold');
-  
+
   doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 12, { align: 'center' });
   doc.setFontSize(9);
   doc.text("MINISTERE DE L'INTERIEUR ET DES COLLECTIVITES TERRITORIALES", leftMargin, 20);
@@ -810,7 +829,9 @@ function generateWeaponRegistrePortrait(doc, agents, options) {
   doc.text('REGISTRE DE SUIVI MEDICAL', centerX, 56, { align: 'center' });
   doc.setFontSize(11);
   doc.text(`Total des agents : ${agents.length}`, leftMargin, 66);
-  doc.text(`Date d'établissement : ${logic.formatDateDisplay(options.date)}`, 200, 66, { align: 'right' });
+  doc.text(`Date d'établissement : ${logic.formatDateDisplay(options.date)}`, 200, 66, {
+    align: 'right',
+  });
 
   // TABLE HEADER - Optimized columns for portrait
   let y = 76;
@@ -819,7 +840,7 @@ function generateWeaponRegistrePortrait(doc, agents, options) {
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(8);
   doc.setFont('helvetica', 'bold');
-  
+
   doc.text('N°', leftMargin + 2, y);
   doc.text('Matricule', leftMargin + 12, y);
   doc.text('Nom et Prénom', leftMargin + 42, y);
@@ -866,15 +887,26 @@ function generateWeaponRegistrePortrait(doc, agents, options) {
 
     // Get latest exam date and decision
     const lastExamDate = a.last_exam_date || a.exam_date || '-';
-    const decision = a.status === 'apte' ? 'APTE' : (a.status === 'inapte_definitif' ? 'INAPTE DÉF.' : (a.status === 'inapte_temporaire' ? 'INAPTE TEMP.' : '-'));
+    const decision =
+      a.status === 'apte'
+        ? 'APTE'
+        : a.status === 'inapte_definitif'
+        ? 'INAPTE DÉF.'
+        : a.status === 'inapte_temporaire'
+        ? 'INAPTE TEMP.'
+        : '-';
     const nextDate = a.next_review_date || '-';
 
     doc.text(String(rowNum), leftMargin + 2, y);
     doc.text(String(a.national_id || '-'), leftMargin + 12, y);
     doc.text(a.full_name || '-', leftMargin + 42, y);
     doc.text(a.deptName || '-', leftMargin + 90, y);
-    doc.text(lastExamDate !== '-' ? logic.formatDateDisplay(lastExamDate) : '-', leftMargin + 125, y);
-    
+    doc.text(
+      lastExamDate !== '-' ? logic.formatDateDisplay(lastExamDate) : '-',
+      leftMargin + 125,
+      y
+    );
+
     // Decision with color
     if (decision === 'APTE') {
       doc.setTextColor(0, 120, 0);
@@ -883,7 +915,7 @@ function generateWeaponRegistrePortrait(doc, agents, options) {
     }
     doc.text(decision, leftMargin + 150, y);
     doc.setTextColor(0, 0, 0);
-    
+
     doc.text(nextDate !== '-' ? logic.formatDateDisplay(nextDate) : '-', leftMargin + 172, y);
     doc.line(leftMargin + 185, y - 2, leftMargin + 200, y - 2); // Signature line
 

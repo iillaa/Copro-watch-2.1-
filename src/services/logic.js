@@ -167,26 +167,30 @@ export const logic = {
   getWeaponDashboardStats(holders, exams) {
     // "Active" = Status APTE (Valid)
     const active = holders.filter((h) => !h.archived && h.status === 'apte');
-    
+
     // "Inapte" = Status INAPTE (Any kind)
     const inapte = holders.filter((h) => !h.archived && h.status?.startsWith('inapte'));
-    
+
     // "A Revoir" (Due Soon)
     // 1. New Agents (Pending)
     // 2. Inaptes Temporaires coming due
     const dueSoon = holders.filter((h) => {
-        if (h.archived) return false;
-        if (h.status === 'pending') return true; // New agents
-        if (h.status === 'inapte_temporaire' && (this.isWeaponDueSoon(h.next_review_date) || this.isOverdue(h.next_review_date))) return true;
-        return false;
+      if (h.archived) return false;
+      if (h.status === 'pending') return true; // New agents
+      if (
+        h.status === 'inapte_temporaire' &&
+        (this.isWeaponDueSoon(h.next_review_date) || this.isOverdue(h.next_review_date))
+      )
+        return true;
+      return false;
     });
 
     // Latest activity (last 10 exams) - SORTED CHRONOLOGICALLY (Newest first)
     const latestExams = [...exams]
       .sort((a, b) => {
-          const dateA = safeDate(a.commission_date || a.exam_date) || 0;
-          const dateB = safeDate(b.commission_date || b.exam_date) || 0;
-          return dateB - dateA;
+        const dateA = safeDate(a.commission_date || a.exam_date) || 0;
+        const dateB = safeDate(b.commission_date || b.exam_date) || 0;
+        return dateB - dateA;
       })
       .slice(0, 10)
       .map((e) => {

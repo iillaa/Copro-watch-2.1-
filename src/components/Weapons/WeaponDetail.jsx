@@ -100,19 +100,19 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
 
         const remaining = await db.getWeaponExamsByHolder(holder.id);
         if (remaining.length > 0) {
-            remaining.sort((a,b) => new Date(b.exam_date) - new Date(a.exam_date));
-            const last = remaining[0];
-            await db.saveWeaponHolder({
-                ...holder,
-                status: last.final_decision,
-                next_review_date: last.next_review_date
-            });
+          remaining.sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
+          const last = remaining[0];
+          await db.saveWeaponHolder({
+            ...holder,
+            status: last.final_decision,
+            next_review_date: last.next_review_date,
+          });
         } else {
-            await db.saveWeaponHolder({
-                ...holder,
-                status: 'pending',
-                next_review_date: ''
-            });
+          await db.saveWeaponHolder({
+            ...holder,
+            status: 'pending',
+            next_review_date: '',
+          });
         }
 
         setSelectedIds(new Set());
@@ -138,22 +138,22 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
   const handleDeleteExam = async (examId) => {
     if (!window.confirm('Supprimer cet examen ?')) return;
     await db.deleteWeaponExam(examId);
-    
+
     const remaining = await db.getWeaponExamsByHolder(holder.id);
     if (remaining.length > 0) {
-        remaining.sort((a,b) => new Date(b.exam_date) - new Date(a.exam_date));
-        const last = remaining[0];
-        await db.saveWeaponHolder({
-            ...holder,
-            status: last.final_decision,
-            next_review_date: last.next_review_date
-        });
+      remaining.sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
+      const last = remaining[0];
+      await db.saveWeaponHolder({
+        ...holder,
+        status: last.final_decision,
+        next_review_date: last.next_review_date,
+      });
     } else {
-        await db.saveWeaponHolder({
-            ...holder,
-            status: 'pending',
-            next_review_date: ''
-        });
+      await db.saveWeaponHolder({
+        ...holder,
+        status: 'pending',
+        next_review_date: '',
+      });
     }
     loadData();
   };
@@ -219,51 +219,109 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
             <h2 style={{ margin: 0 }}>
               {holder.full_name}
               {holder.archived && (
-                <span style={{ fontSize: '0.5em', marginLeft: '10px', background: '#eee', padding: '2px 6px', borderRadius: '4px', color: '#666', verticalAlign: 'middle' }}>
+                <span
+                  style={{
+                    fontSize: '0.5em',
+                    marginLeft: '10px',
+                    background: '#eee',
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    color: '#666',
+                    verticalAlign: 'middle',
+                  }}
+                >
                   ARCHIVÉ
                 </span>
               )}
             </h2>
             <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-              <strong>Service RH:</strong> {deptName} • <strong>Poste:</strong> {holder.job_function}
+              <strong>Service RH:</strong> {deptName} • <strong>Poste:</strong>{' '}
+              {holder.job_function}
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
               Matricule: {holder.national_id}
             </p>
-            <div style={{ marginTop: '0.5rem', display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <span className={`badge ${isOverdue ? 'badge-red' : (holder.status === 'apte' ? 'badge-green' : 'badge-yellow')}`}>
-                {holder.status === 'apte' ? 'Aptitude Permanente' : `Prochaine Visite: ${logic.formatDateDisplay(holder.next_review_date)}`}
+            <div
+              style={{ marginTop: '0.5rem', display: 'flex', gap: '10px', alignItems: 'center' }}
+            >
+              <span
+                className={`badge ${
+                  isOverdue
+                    ? 'badge-red'
+                    : holder.status === 'apte'
+                    ? 'badge-green'
+                    : 'badge-yellow'
+                }`}
+              >
+                {holder.status === 'apte'
+                  ? 'Aptitude Permanente'
+                  : `Prochaine Visite: ${logic.formatDateDisplay(holder.next_review_date)}`}
               </span>
-              {isOverdue && <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.9rem' }}>⚠️ À Revoir</span>}
+              {isOverdue && (
+                <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                  ⚠️ À Revoir
+                </span>
+              )}
             </div>
           </div>
 
           <div style={{ display: 'flex', gap: '9px', flexWrap: 'wrap' }}>
-            <button className={`btn ${isSelectionMode ? 'btn-primary' : 'btn-outline'}`} onClick={toggleSelectionMode} title="Sélection multiple">
+            <button
+              className={`btn ${isSelectionMode ? 'btn-primary' : 'btn-outline'}`}
+              onClick={toggleSelectionMode}
+              title="Sélection multiple"
+            >
               <FaCheckSquare />
             </button>
             <button className="btn btn-primary" onClick={handleNewExam} disabled={holder.archived}>
               <FaFileMedical /> <span className="hide-mobile">Nouvel Examen</span>
             </button>
-            <button className="btn btn-outline" onClick={handleToggleArchive} style={{ color: holder.archived ? 'var(--success)' : 'var(--warning)', borderColor: holder.archived ? 'var(--success)' : 'var(--warning)' }}>
+            <button
+              className="btn btn-outline"
+              onClick={handleToggleArchive}
+              style={{
+                color: holder.archived ? 'var(--success)' : 'var(--warning)',
+                borderColor: holder.archived ? 'var(--success)' : 'var(--warning)',
+              }}
+            >
               {holder.archived ? <FaBoxOpen /> : <FaArchive />}
             </button>
-            <button className="btn btn-outline" onClick={() => setShowPrintModal(true)} title="Imprimer documents">
+            <button
+              className="btn btn-outline"
+              onClick={() => setShowPrintModal(true)}
+              title="Imprimer documents"
+            >
               <FaPrint /> <span className="hide-mobile">Docs</span>
             </button>
-            <button className="btn btn-outline" onClick={handleDeleteHolder} style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}>
+            <button
+              className="btn btn-outline"
+              onClick={handleDeleteHolder}
+              style={{ color: 'var(--danger)', borderColor: 'var(--danger)' }}
+            >
               <FaTrash />
             </button>
           </div>
         </div>
 
         {holder.archived && (
-          <div style={{ marginTop: '1rem', padding: '0.75rem', background: '#f8f9fa', border: '1px dashed #ccc', borderRadius: '4px', fontSize: '0.9rem', color: '#666' }}>
+          <div
+            style={{
+              marginTop: '1rem',
+              padding: '0.75rem',
+              background: '#f8f9fa',
+              border: '1px dashed #ccc',
+              borderRadius: '4px',
+              fontSize: '0.9rem',
+              color: '#666',
+            }}
+          >
             ℹ️ Ce dossier est archivé. Cliquez sur "Réactiver" pour le modifier.
           </div>
         )}
 
-        <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
+        <div
+          style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}
+        >
           <strong>Antécédents médicaux:</strong> {holder.medical_history || 'Aucun antécédent.'}
         </div>
       </div>
@@ -274,7 +332,13 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
         <div className="hybrid-container" style={{ minWidth: '700px' }}>
           <div className="hybrid-header" style={{ gridTemplateColumns: gridTemplate }}>
             <div style={{ textAlign: 'center' }}>
-              {isSelectionMode && <input type="checkbox" onChange={toggleSelectAll} checked={weapon_exams.length > 0 && selectedIds.size === weapon_exams.length} />}
+              {isSelectionMode && (
+                <input
+                  type="checkbox"
+                  onChange={toggleSelectAll}
+                  checked={weapon_exams.length > 0 && selectedIds.size === weapon_exams.length}
+                />
+              )}
             </div>
             <div>Date</div>
             <div>Type</div>
@@ -286,17 +350,49 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
           {weapon_exams.map((e) => {
             const isSelected = selectedIds.has(e.id);
             return (
-              <div key={e.id} className={`hybrid-row ${isSelected ? 'selected' : ''}`} style={{ gridTemplateColumns: gridTemplate }}>
+              <div
+                key={e.id}
+                className={`hybrid-row ${isSelected ? 'selected' : ''}`}
+                style={{ gridTemplateColumns: gridTemplate }}
+              >
                 <div style={{ textAlign: 'center' }}>
-                  {isSelectionMode && <input type="checkbox" checked={isSelected} onChange={() => toggleSelectOne(e.id)} />}
+                  {isSelectionMode && (
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => toggleSelectOne(e.id)}
+                    />
+                  )}
                 </div>
-                <div className="hybrid-cell" style={{ fontWeight: 800 }}>{logic.formatDateDisplay(e.exam_date)}</div>
+                <div className="hybrid-cell" style={{ fontWeight: 800 }}>
+                  {logic.formatDateDisplay(e.exam_date)}
+                </div>
                 <div className="hybrid-cell">{e.visit_reason}</div>
                 <div className="hybrid-cell">{renderStatusBadge(e.final_decision)}</div>
                 <div className="hybrid-cell">{logic.formatDateDisplay(e.next_review_date)}</div>
-                <div className="hybrid-actions" style={{ display: 'flex', gap: '9px', justifyContent: 'flex-end' }}>
-                  <button className="btn btn-outline btn-sm" onClick={() => handleOpenExam(e)} title="Voir Détails"><FaEye /></button>
-                  <button className="btn btn-outline btn-sm" onClick={() => handleDeleteExam(e.id)} style={{ color: 'var(--danger)', borderColor: 'var(--danger)', backgroundColor: '#fff1f2' }} title="Supprimer"><FaTrash /></button>
+                <div
+                  className="hybrid-actions"
+                  style={{ display: 'flex', gap: '9px', justifyContent: 'flex-end' }}
+                >
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => handleOpenExam(e)}
+                    title="Voir Détails"
+                  >
+                    <FaEye />
+                  </button>
+                  <button
+                    className="btn btn-outline btn-sm"
+                    onClick={() => handleDeleteExam(e.id)}
+                    style={{
+                      color: 'var(--danger)',
+                      borderColor: 'var(--danger)',
+                      backgroundColor: '#fff1f2',
+                    }}
+                    title="Supprimer"
+                  >
+                    <FaTrash />
+                  </button>
                 </div>
               </div>
             );
@@ -311,8 +407,21 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
         </div>
       </div>
 
-      {selectedIds.size > 0 && <BulkActionsToolbar selectedCount={selectedIds.size} onDelete={handleBatchDelete} onCancel={() => setSelectedIds(new Set())} />}
-      {showPrintModal && <BatchPrintModal count={1} onConfirm={handlePrintConfirm} onCancel={() => setShowPrintModal(false)} weaponMode={true} />}
+      {selectedIds.size > 0 && (
+        <BulkActionsToolbar
+          selectedCount={selectedIds.size}
+          onDelete={handleBatchDelete}
+          onCancel={() => setSelectedIds(new Set())}
+        />
+      )}
+      {showPrintModal && (
+        <BatchPrintModal
+          count={1}
+          onConfirm={handlePrintConfirm}
+          onCancel={() => setShowPrintModal(false)}
+          weaponMode={true}
+        />
+      )}
       {showExamForm && (
         <WeaponExamForm
           holder={holder}

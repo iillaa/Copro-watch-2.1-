@@ -97,7 +97,9 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     () => localStorage.getItem('worker_filter_dept') || ''
   );
   // [SURGICAL FIX] Initialize from LocalStorage
-  const [filterStatus, setFilterStatus] = useState(localStorage.getItem('worker_filter_status') || '');
+  const [filterStatus, setFilterStatus] = useState(
+    localStorage.getItem('worker_filter_status') || ''
+  );
 
   const [sortConfig, setSortConfig] = useState({
     key: 'full_name',
@@ -185,8 +187,8 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
         result = result.filter((w) => w.latest_status === 'apte_partielle');
       } else if (filterStatus === 'apte') {
         // [MODIFICATION] : On garde les aptes MAIS on exclut ceux en retard
-        result = result.filter((w) => 
-          w.latest_status === 'apte' && !logic.isOverdue(w.next_exam_due)
+        result = result.filter(
+          (w) => w.latest_status === 'apte' && !logic.isOverdue(w.next_exam_due)
         );
       }
     }
