@@ -328,8 +328,15 @@ export default function Settings({
   // --- WORKPLACE LOGIC ---
   const loadWorkplaces = async () => {
     try {
-      const places = await db.getWorkplaces();
-      setWorkplaces(places);
+      const [places, workers] = await Promise.all([db.getWorkplaces(), db.getWorkers()]);
+      
+      // Calculate count for each workplace
+      const placesWithCount = places.map((p) => ({
+        ...p,
+        count: workers.filter((w) => w.workplace_id === p.id && !w.archived).length,
+      }));
+      
+      setWorkplaces(placesWithCount);
     } catch (error) {
       console.error('Error loading workplaces:', error);
     }
@@ -847,13 +854,28 @@ export default function Settings({
                       borderRadius: '4px',
                     }}
                   >
-                    <div>
-                      <div style={{ fontWeight: 500 }}>{w.name}</div>
-                      {w.certificate_text && (
-                        <div style={{ fontSize: '0.75rem', color: '#666' }}>
-                          "{w.certificate_text}"
-                        </div>
-                      )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div>
+                        <div style={{ fontWeight: 500 }}>{w.name}</div>
+                        {w.certificate_text && (
+                          <div style={{ fontSize: '0.75rem', color: '#666' }}>
+                            "{w.certificate_text}"
+                          </div>
+                        )}
+                      </div>
+                      {/* [NEW] Badge showing agent count */}
+                      <span 
+                        style={{ 
+                          fontSize: '0.75rem', 
+                          background: '#e2e8f0', 
+                          color: '#475569',
+                          padding: '2px 8px', 
+                          borderRadius: '12px',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {w.count || 0} agents
+                      </span>
                     </div>
                     <button
                       className="btn btn-sm btn-outline"

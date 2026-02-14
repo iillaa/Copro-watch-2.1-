@@ -96,7 +96,9 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   const [filterDept, setFilterDept] = useState(
     () => localStorage.getItem('worker_filter_dept') || ''
   );
-  const [filterStatus, setFilterStatus] = useState(''); // '' = Tous, 'late', 'apte', 'inapte', 'due_soon'
+  const [filterStatus, setFilterStatus] = useState(
+    () => localStorage.getItem('worker_filter_status') || ''
+  );
 
   const [sortConfig, setSortConfig] = useState({
     key: 'full_name',
@@ -147,6 +149,10 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   useEffect(() => {
     localStorage.setItem('worker_filter_dept', filterDept);
   }, [filterDept]);
+
+  useEffect(() => {
+    localStorage.setItem('worker_filter_status', filterStatus);
+  }, [filterStatus]);
   // ==================================================================================
   // 3. FILTERING & SORTING ENGINE (useMemo)
   // ==================================================================================
