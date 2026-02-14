@@ -173,6 +173,16 @@ export const db = {
     await triggerBackupCheck();
   },
 
+  // [CLONED] Move logic adapted for Weapons
+  async moveWeaponHolders(holderIds, newDepartmentId) {
+    return await dbInstance.transaction('rw', dbInstance.weapon_holders, async () => {
+      const holders = await dbInstance.weapon_holders.bulkGet(Array.from(holderIds));
+      // Tweak: "workplace_id" becomes "department_id"
+      const updates = holders.map(h => ({ ...h, department_id: Number(newDepartmentId) }));
+      await dbInstance.weapon_holders.bulkPut(updates);
+    });
+  },
+
   // --- SETTINGS (FIXED) ---
   async getSettings() {
     const s = await dbInstance.settings.get('app_settings');

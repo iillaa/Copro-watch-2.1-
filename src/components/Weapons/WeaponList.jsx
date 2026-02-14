@@ -3,6 +3,7 @@ import { db } from '../../services/db';
 import { logic } from '../../services/logic';
 import backupService from '../../services/backup';
 import AddWeaponHolderForm from './AddWeaponHolderForm';
+import MoveWeaponHoldersModal from './MoveWeaponHoldersModal'; // [NEW]
 import { useToast } from '../Toast';
 import BulkActionsToolbar from '../BulkActionsToolbar';
 import BatchScheduleModal from '../BatchScheduleModal';
@@ -27,6 +28,8 @@ import {
   FaStethoscope,
   FaBalanceScale,
   FaPrint,
+  FaArchive,     // [NEW]
+  FaExchangeAlt, // [NEW]
 } from 'react-icons/fa';
 
 export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
@@ -52,6 +55,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showResultModal, setShowResultModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
+  const [showMoveModal, setShowMoveModal] = useState(false); // [NEW]
 
   const loadData = async () => {
     try {
@@ -93,7 +97,9 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
       const lower = deferredSearch.toLowerCase();
       result = result.filter((h) => 
         (h.full_name && h.full_name.toLowerCase().includes(lower)) ||
-        (h.national_id && String(h.national_id).toLowerCase().includes(lower))
+        (h.national_id && String(h.national_id).toLowerCase().includes(lower)) ||
+        (h.job_function && h.job_function.toLowerCase().includes(lower)) ||
+        (h.medical_history && h.medical_history.toLowerCase().includes(lower))
       );
     }
 
@@ -157,6 +163,39 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
     }
   };
 
+  // [NEW] Batch Archive Handler
+  const handleBatchArchive = async () => {
+    // 1. Identify the selected holders
+    const targets = holders.filter((h) => selectedIds.has(h.id));
+
+    // 2. Detect State: Are they ALL currently archived?
+    // If every selected holder is already archived, we assume you want to RESTORE them.
+    const areAllArchived = targets.length > 0 && targets.every((h) => h.archived);
+
+    // 3. Determine Action & New Status
+    const actionLabel = areAllArchived ? 'Restaurer' : 'Archiver';
+    const newStatus = !areAllArchived; // If all archived (true), set to false (active).
+
+    // 4. Confirm & Execute
+    if (window.confirm(`${actionLabel} ${selectedIds.size} agents ?`)) {
+      await Promise.all(targets.map((h) => db.saveWeaponHolder({ ...h, archived: newStatus })));
+
+      setSelectedIds(new Set());
+      // Keep Selection Mode ON (User Preference)
+      loadData();
+      showToast(`${selectedIds.size} agents ${actionLabel.toLowerCase()}s`, 'success');
+    }
+  };
+
+  // [NEW] Batch Move Confirm Handler
+  const handleBatchMoveConfirm = async (newDeptId) => {
+    await db.moveWeaponHolders(selectedIds, newDeptId);
+    showToast('Agents déplacés avec succès', 'success');
+    setShowMoveModal(false);
+    setSelectedIds(new Set());
+    loadData();
+  };
+
   const handleBatchScheduleConfirm = async (dateStr) => {
     await Promise.all(Array.from(selectedIds).map(async (id) => {
       await db.saveWeaponExam({
@@ -206,10 +245,21 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   };
 
   const handleBatchPrintConfirm = (docType, creationDate, options) => {
-    const targets = holders.filter(h => selectedIds.has(h.id)).map(h => ({
-        ...h,
-        deptName: departments.find(d => d.id === h.department_id)?.name || '-'
-    }));
+    // For Registre de Suivi: print ALL holders (not just selected)
+    let targets;
+    if (docType === 'weapon_registre') {
+      targets = holders
+        .filter(h => !h.archived)  // Only active holders
+        .map(h => ({
+          ...h,
+          deptName: departments.find(d => d.id === h.department_id)?.name || '-'
+        }));
+    } else {
+      targets = holders.filter(h => selectedIds.has(h.id)).map(h => ({
+          ...h,
+          deptName: departments.find(d => d.id === h.department_id)?.name || '-'
+      }));
+    }
     pdfService.generateBatchDoc(targets, docType, { ...options, date: creationDate });
     setShowPrintModal(false);
   };
@@ -282,7 +332,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
       <div className="card" style={{ padding: '0.75rem', display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem', overflowX: 'auto' }}>
         <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
           <FaSearch style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-          <input className="input" style={{ paddingLeft: '2.5rem', borderRadius: '50px' }} placeholder="Rechercher (Nom, Matricule)..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+          <input className="input" style={{ paddingLeft: '2.5rem', borderRadius: '50px' }} placeholder="Rechercher (Nom, Matricule, Poste, Antécédents)..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
         </div>
         <select className="input" style={{ width: 'auto', borderRadius: '50px' }} value={filterDept} onChange={(e) => setFilterDept(e.target.value)}>
           <option value="">Tous les services</option>
@@ -351,6 +401,8 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
         <BulkActionsToolbar
           selectedCount={selectedIds.size}
           onDelete={handleBatchDelete}
+          onArchive={handleBatchArchive} // [NEW]
+          onMove={() => setShowMoveModal(true)} // [NEW]
           onSchedule={() => setShowScheduleModal(true)}
           onResult={() => setShowResultModal(true)}
           onPrint={() => setShowPrintModal(true)}
@@ -363,6 +415,15 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           count={selectedIds.size}
           onConfirm={handleBatchScheduleConfirm}
           onCancel={() => setShowScheduleModal(false)}
+        />
+      )}
+
+      {/* [NEW] Move Modal */}
+      {showMoveModal && (
+        <MoveWeaponHoldersModal
+          departments={departments}
+          onConfirm={handleBatchMoveConfirm}
+          onCancel={() => setShowMoveModal(false)}
         />
       )}
 

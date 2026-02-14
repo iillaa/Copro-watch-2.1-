@@ -335,8 +335,12 @@ export default function Settings({
   // --- WORKPLACE LOGIC ---
   const loadWorkplaces = async () => {
     try {
-      const places = await db.getWorkplaces();
-      setWorkplaces(places);
+      const [places, workers] = await Promise.all([db.getWorkplaces(), db.getWorkers()]);
+      const placesWithCount = places.map((p) => ({
+        ...p,
+        count: workers.filter((w) => w.workplace_id === p.id && !w.archived).length,
+      }));
+      setWorkplaces(placesWithCount);
     } catch (error) {
       console.error('Error loading workplaces:', error);
     }
@@ -913,8 +917,20 @@ export default function Settings({
                       borderRadius: '4px',
                     }}
                   >
-                    <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                       <div style={{ fontWeight: 500 }}>{w.name}</div>
+                      <span
+                        style={{
+                          fontSize: '0.75rem',
+                          background: '#fef3c7',
+                          color: '#92400e',
+                          padding: '2px 8px',
+                          borderRadius: '12px',
+                          fontWeight: 'bold',
+                        }}
+                      >
+                        {w.count || 0} agents
+                      </span>
                       {w.certificate_text && (
                         <div style={{ fontSize: '0.75rem', color: '#666' }}>
                           "{w.certificate_text}"

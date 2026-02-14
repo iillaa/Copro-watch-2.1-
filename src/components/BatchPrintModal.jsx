@@ -7,6 +7,7 @@ import {
   FaUserMd,
   FaClock,
   FaCalendarDay,
+  FaBalanceScale,
 } from 'react-icons/fa';
 
 export default function BatchPrintModal({ count, onConfirm, onCancel, weaponMode = false }) {
@@ -84,6 +85,19 @@ export default function BatchPrintModal({ count, onConfirm, onCancel, weaponMode
 
             {weaponMode ? (
               <>
+                {/* [NEW] Registre de Suivi - Always available for weapons */}
+                <label style={radioStyle}>
+                  <input
+                    type="radio"
+                    name="doctype"
+                    value="weapon_registre"
+                    checked={docType === 'weapon_registre'}
+                    onChange={(e) => setDocType(e.target.value)}
+                  />
+                  <FaBalanceScale style={{ color: '#7c3aed' }} />
+                  <span>Registre de Suivi (Tableau Officiel)</span>
+                </label>
+
                 {count > 1 && (
                   <label style={radioStyle}>
                     <input

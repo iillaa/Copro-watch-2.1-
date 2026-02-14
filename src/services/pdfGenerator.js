@@ -52,6 +52,8 @@ export const pdfService = {
 
     if (docType === 'list_manager') {
       generateGroupedList(doc, workers, options);
+    } else if (docType === 'weapon_registre') {
+      generateWeaponRegistre(doc, workers, options);
     } else if (docType === 'weapon_convocation_list') {
       generateWeaponConvocationList(doc, workers, options);
     } else if (docType === 'weapon_convocation_individual') {
@@ -779,4 +781,127 @@ function drawWeaponConvocationIndividual(doc, agent, options) {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(9);
   doc.text(`Fait le : ${logic.formatDateDisplay(options.date)}`, leftMargin, 250);
+}
+
+// ==========================================
+// 8. REGISTRE DE SUIVI (PORT D'ARME) - PAYSAGE - LISTE UNIQUE
+// ==========================================
+function generateWeaponRegistre(doc, agents, options) {
+  // Landscape mode - Single unified list
+  const centerX = 148.5;
+  const leftMargin = 10;
+  
+  // HEADER - Only show once at the beginning
+  doc.setTextColor(0);
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  
+  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 12, { align: 'center' });
+  doc.setFontSize(9);
+  doc.text("MINISTERE DE L'INTERIEUR ET DES COLLECTIVITES TERRITORIALES", leftMargin, 18);
+  doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', leftMargin, 23);
+  doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, 28);
+  doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 33);
+  doc.text("COMMISSION MEDICALE D'APTITUDE AU PORT D'ARME", leftMargin, 38);
+
+  // TITLE
+  doc.setFontSize(14);
+  doc.text('REGISTRE DE SUIVI MEDICAL', centerX, 50, { align: 'center' });
+  doc.setFontSize(11);
+  doc.text(`Total des agents : ${agents.length}`, leftMargin, 60);
+  doc.text(`Date d'établissement : ${logic.formatDateDisplay(options.date)}`, 277, 60, { align: 'right' });
+
+  // TABLE HEADER
+  let y = 72;
+  doc.setFillColor(50, 50, 50);
+  doc.rect(leftMargin, y - 5, 277, 8, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  
+  doc.text('N°', leftMargin + 2, y);
+  doc.text('Matricule', leftMargin + 15, y);
+  doc.text('Nom et Prénom', leftMargin + 45, y);
+  doc.text('Service', leftMargin + 90, y);
+  doc.text('Grade/Poste', leftMargin + 130, y);
+  doc.text('Date Visite', leftMargin + 168, y);
+  doc.text('Décision', leftMargin + 198, y);
+  doc.text('Prochaine Visite', leftMargin + 228, y);
+  doc.text('Sign', leftMargin + 268, y);
+
+  // TABLE BODY - Single continuous list
+  y += 10;
+  doc.setTextColor(0, 0, 0);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+
+  let rowNum = 1;
+  agents.forEach((a) => {
+    if (y > 180) {
+      doc.addPage();
+      y = 20;
+      // Re-add header on new page
+      doc.setFillColor(50, 50, 50);
+      doc.rect(leftMargin, y - 5, 277, 8, 'F');
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('N°', leftMargin + 2, y);
+      doc.text('Matricule', leftMargin + 15, y);
+      doc.text('Nom et Prénom', leftMargin + 45, y);
+      doc.text('Service', leftMargin + 90, y);
+      doc.text('Grade/Poste', leftMargin + 130, y);
+      doc.text('Date Visite', leftMargin + 168, y);
+      doc.text('Décision', leftMargin + 198, y);
+      doc.text('Prochaine Visite', leftMargin + 228, y);
+      doc.text('Sign', leftMargin + 268, y);
+      y += 10;
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8);
+    }
+
+    // Alternate row colors
+    if (rowNum % 2 === 0) {
+      doc.setFillColor(245, 245, 245);
+      doc.rect(leftMargin, y - 4, 277, 8, 'F');
+    }
+
+    // Get latest exam date and decision
+    const lastExamDate = a.last_exam_date || a.exam_date || '-';
+    const decision = a.status === 'apte' ? 'APTE' : (a.status === 'inapte_definitif' ? 'INAPTE DÉF.' : (a.status === 'inapte_temporaire' ? 'INAPTE TEMP.' : '-'));
+    const nextDate = a.next_review_date || '-';
+
+    doc.text(String(rowNum), leftMargin + 2, y);
+    doc.text(String(a.national_id || '-'), leftMargin + 15, y);
+    doc.text(a.full_name || '-', leftMargin + 45, y);
+    doc.text(a.deptName || '-', leftMargin + 90, y);
+    doc.text(a.job_function || '-', leftMargin + 130, y);
+    doc.text(lastExamDate !== '-' ? logic.formatDateDisplay(lastExamDate) : '-', leftMargin + 168, y);
+    
+    // Decision with color
+    if (decision === 'APTE') {
+      doc.setTextColor(0, 120, 0);
+    } else if (decision.includes('INAPTE')) {
+      doc.setTextColor(200, 0, 0);
+    }
+    doc.text(decision, leftMargin + 198, y);
+    doc.setTextColor(0, 0, 0);
+    
+    doc.text(nextDate !== '-' ? logic.formatDateDisplay(nextDate) : '-', leftMargin + 228, y);
+    doc.line(leftMargin + 263, y - 2, leftMargin + 277, y - 2); // Signature line
+
+    y += 8;
+    rowNum++;
+  });
+
+  // FOOTER
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Le Médecin Chef', 250, 195);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(100);
+  doc.text('Document généré par Copro Watch', centerX, 205, { align: 'center' });
+  doc.setTextColor(0);
 }
