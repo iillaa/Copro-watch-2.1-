@@ -837,7 +837,11 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
           {/* SCROLLABLE TABLE WINDOW */}
           <div
             className="scroll-wrapper"
-            style={{ maxHeight: compactMode ? '75vh' : '60vh', paddingBottom: '120px' }}
+            // [FIX] Force boolean check: Handle true (boolean) OR 'true' (string)
+            style={{ 
+              maxHeight: (compactMode === true || compactMode === 'true') ? '75vh' : 'none', 
+              paddingBottom: '120px' 
+            }}
           >
             <div className="hybrid-container">
               {/* 1. STICKY HEADER ROW */}
