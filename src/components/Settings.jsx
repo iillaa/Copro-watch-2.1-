@@ -366,15 +366,26 @@ export default function Settings({
   };
 
   const deleteWorkplace = async (id) => {
-    if (window.confirm('Supprimer ce lieu de travail ?')) {
-      try {
-        await db.deleteWorkplace(id);
-        await loadWorkplaces();
-        showToast('Lieu supprimé.', 'success');
-      } catch (e) {
-        console.error(e);
-        showToast('Erreur lors de la suppression.', 'error');
+    const workers = await db.getWorkers();
+    const linkedWorkers = workers.filter((w) => w.workplace_id === id);
+    const count = linkedWorkers.length;
+
+    if (count > 0) {
+      if (!window.confirm(`ATTENTION: Ce lieu contient ${count} agent(s).\n\nConfirmer la suppression ?`)) {
+        return;
       }
+    } else {
+      if (!window.confirm('Supprimer ce lieu de travail ?')) {
+        return;
+      }
+    }
+    try {
+      await db.deleteWorkplace(id);
+      await loadWorkplaces();
+      showToast('Lieu supprimé.', 'success');
+    } catch (e) {
+      console.error(e);
+      showToast('Erreur lors de la suppression.', 'error');
     }
   };
 
