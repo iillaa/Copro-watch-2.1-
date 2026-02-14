@@ -423,6 +423,17 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
               Rien à signaler.
             </div>
           ) : (
+            // [SURGICAL FIX] Added Scroll Wrapper for Compact Mode
+            <div 
+              className="scroll-wrapper"
+              style={{
+                maxHeight: compactMode ? '510px' : 'none',
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                margin: 0,
+              }}
+            >
             <div className="hybrid-container">
               <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}>
                 <div>Nom</div>
@@ -469,6 +480,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
                 );
               })}
             </div>
+            </div>
           )}
         </div>
 
@@ -489,6 +501,17 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
               Aucun historique.
             </div>
           ) : (
+            // [SURGICAL FIX] Added Scroll Wrapper for Compact Mode
+            <div 
+              className="scroll-wrapper"
+              style={{
+                maxHeight: compactMode ? '510px' : 'none',
+                background: 'transparent',
+                border: 'none',
+                padding: 0,
+                margin: 0,
+              }}
+            >
             <div className="hybrid-container">
               <div className="hybrid-header" style={{ gridTemplateColumns: gridDashboard }}>
                 <div>Agent</div>
@@ -523,6 +546,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
                   </div>
                 </div>
               ))}
+            </div>
             </div>
           )}
         </div>

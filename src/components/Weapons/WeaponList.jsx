@@ -400,7 +400,8 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
         </label>
       </div>
 
-      <div className="scroll-wrapper" style={{ maxHeight: compactMode ? '75vh' : '60vh' }}>
+      {/* [SURGICAL FIX] Disable internal scroll when not in compact mode */}
+      <div className="scroll-wrapper" style={{ maxHeight: compactMode ? '75vh' : 'none' }}>
         <div className="hybrid-container">
           <div className="hybrid-header" style={{ gridTemplateColumns: gridTemplate }}>
             <div style={{ textAlign: 'center' }}>
