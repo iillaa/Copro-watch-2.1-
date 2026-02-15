@@ -132,10 +132,11 @@ export default function UniversalOCRModal({
         detected.push({
           id: Date.now() + Math.random(),
           national_id: match[1],
-          full_name: match[2].replace(/[|\[\]{};]/g, '').trim(), // Remove OCR noise chars
+          full_name: match[2].replace(/[|\[\]{};]/g, '').trim(),
+          original_name: match[2].replace(/[|\[\]{};]/g, '').trim(), // [NEW] Keep original
           department_id: '',
-          job_info: '', // Position (Worker) or Grade (Weapon)
-          isArabic: /[\u0600-\u06FF]/.test(match[2]), // Flag for auto-translate button
+          job_info: '',
+          isArabic: /[\u0600-\u06FF]/.test(match[2])
         });
       }
     });
@@ -146,10 +147,16 @@ export default function UniversalOCRModal({
     setCandidates(detected);
   };
 
-  const handleTransliterate = (id, arabicName) => {
-    const frenchName = transliterateArToFr(arabicName);
+  // [UPDATED] Always use original_name for translation
+  const handleTransliterate = (id, originalName) => {
+    const frenchName = transliterateArToFr(originalName);
     updateCandidate(id, 'full_name', frenchName);
-    updateCandidate(id, 'isArabic', false); // Hide button after use
+    // [REMOVED] updateCandidate(id, 'isArabic', false); <--- We keep this TRUE now
+  };
+
+  // [NEW] Revert to Original Arabic
+  const handleRevertArabic = (id, originalName) => {
+    updateCandidate(id, 'full_name', originalName);
   };
 
   const handleBulkImport = async () => {
@@ -357,29 +364,49 @@ export default function UniversalOCRModal({
                         />
                       </td>
                       <td style={{ padding: '8px' }}>
-                        <div style={{ display: 'flex', gap: '5px' }}>
-                          <input
-                            className="input"
-                            style={{ fontWeight: 600 }}
-                            value={c.full_name}
-                            onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)}
-                          />
-                          {/* Transliterate Button */}
-                          {c.isArabic && (
-                            <button
-                              className="btn btn-sm btn-outline"
-                              title="Traduire Arabe -> Français"
-                              onClick={() => handleTransliterate(c.id, c.full_name)}
-                              style={{
-                                padding: '4px 8px',
-                                borderColor: '#8b5cf6',
-                                color: '#8b5cf6',
-                              }}
-                            >
-                              <FaLanguage /> FR
-                            </button>
-                          )}
-                        </div>
+                          <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
+                            <input 
+                              className="input" 
+                              style={{fontWeight: 600}}
+                              value={c.full_name} 
+                              onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)} 
+                            />
+                            
+                            {/* [UPDATED] Dual Language Controls */}
+                            {c.isArabic && (
+                               <div style={{display: 'flex', flexDirection: 'column', gap: '2px'}}>
+                                 {/* ARABIC BUTTON (Revert) */}
+                                 <button 
+                                   className="btn btn-sm btn-outline" 
+                                   title="Garder en Arabe"
+                                   onClick={() => handleRevertArabic(c.id, c.original_name)}
+                                   style={{
+                                     padding: '0px 4px', 
+                                     fontSize: '0.65rem',
+                                     borderColor: '#10b981', color: '#10b981', // Green
+                                     background: c.full_name === c.original_name ? '#d1fae5' : 'white'
+                                   }}
+                                 >
+                                   ع
+                                 </button>
+
+                                 {/* FRENCH BUTTON (Translate) */}
+                                 <button 
+                                   className="btn btn-sm btn-outline" 
+                                   title="Traduire en Français"
+                                   onClick={() => handleTransliterate(c.id, c.original_name)}
+                                   style={{
+                                     padding: '0px 4px', 
+                                     fontSize: '0.65rem',
+                                     borderColor: '#8b5cf6', color: '#8b5cf6', // Purple
+                                     background: c.full_name !== c.original_name ? '#ede9fe' : 'white'
+                                   }}
+                                 >
+                                   FR
+                                 </button>
+                               </div>
+                            )}
+                          </div>
                       </td>
                       <td style={{ padding: '8px' }}>
                         <select
