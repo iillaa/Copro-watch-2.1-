@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import Tesseract from 'tesseract.js';
 import { db } from '../services/db';
 import {
@@ -7,11 +7,11 @@ import {
   FaSave,
   FaTimes,
   FaMagic,
-  FaLanguage,
   FaGlobeAfrica,
-  FaTrashAlt,
   FaEraser,
   FaPlus,
+  FaArrowsAltH,
+  FaArrowsAltV,
 } from 'react-icons/fa';
 
 // --- ALG-FR TRANSLITERATION ENGINE ---
@@ -78,27 +78,21 @@ export default function UniversalOCRModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
-  const [docLanguage, setDocLanguage] = useState('fra'); // 'fra' or 'ara'
+  const [docLanguage, setDocLanguage] = useState('fra');
 
-  // 2. STATE: THE GRID (Manual Zoning)
-  // vLines = Array of X-percentages (0.0 to 1.0) for Columns
-  // hLines = Array of Y-percentages (0.0 to 1.0) for Rows
+  // 2. STATE: THE GRID
   const [vLines, setVLines] = useState([0.2, 0.5, 0.8]);
   const [hLines, setHLines] = useState([]);
 
-  // Mapping: What is in each column? (Matches vLines + 1 regions)
-  // Default: Matricule | Nom | Service | Poste/Grade
   const [colMapping, setColMapping] = useState([
     'national_id',
     'full_name',
     'department_id',
     'job_info',
   ]);
-
   const [imgDimensions, setImgDimensions] = useState({ width: 0, height: 0 });
   const imageRef = useRef(null);
 
-  // Available Column Types
   const colOptions = [
     { val: 'national_id', label: 'Matricule' },
     { val: 'full_name', label: 'Nom & Prénom' },
@@ -113,7 +107,7 @@ export default function UniversalOCRModal({
       const url = URL.createObjectURL(e.target.files[0]);
       setImage(url);
       setCandidates([]);
-      setHLines([]); // Reset rows, keep columns
+      setHLines([]);
 
       const img = new Image();
       img.onload = () => setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight });
@@ -122,6 +116,7 @@ export default function UniversalOCRModal({
   };
 
   // 4. OCR EXECUTION
+ // [SURGICAL UPDATE] Force "Sparse Text" Mode to get Coordinates
   const runOCR = async () => {
     if (!image) return;
     setIsProcessing(true);
@@ -138,42 +133,77 @@ export default function UniversalOCRModal({
           }
           setStatusText(m.status);
         },
+        // [CRITICAL FIX] 
+        // PSM 11 = Sparse text. Find as much text as possible in no particular order.
+        // This forces Tesseract to isolate words and give them coordinates.
+        tessedit_pageseg_mode: '11', 
       });
 
-      // Use the GRID parser
       parseDataToCandidates(data);
     } catch (err) {
       console.error(err);
-      alert('Erreur OCR: ' + err.message);
+      alert('Erreur OCR: ' + (err.message || "Impossible de lire l'image"));
     } finally {
       setIsProcessing(false);
     }
   };
 
-  // 5. THE LOGIC: GRID PARSER
+  // 5. THE LOGIC: GRID PARSER (DEEP SEARCH VERSION)
   const parseDataToCandidates = (data) => {
-    const { words } = data;
+    // [FIX] Deep Search Strategy: Iterate all levels to find words
+    let words = [];
+
+    // Level 1: Direct words
+    if (data.words && data.words.length > 0) {
+      words = data.words;
+    }
+    // Level 2: Inside Lines
+    else if (data.lines && data.lines.length > 0) {
+      words = data.lines.flatMap((l) => l.words || []);
+    }
+    // Level 3: Inside Paragraphs (Deepest)
+    else if (data.paragraphs && data.paragraphs.length > 0) {
+      words = data.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words || []));
+    }
+    // Level 4: Inside Blocks (Rare)
+    else if (data.blocks && data.blocks.length > 0) {
+      words = data.blocks.flatMap((b) =>
+        b.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words || []))
+      );
+    }
+
+    // [DEBUG] Check what we found
+    console.log(`OCR Found ${words.length} words`, words);
+
+    if (words.length === 0) {
+      // If we have raw text but no coordinates, we can't use the grid
+      if (data.text && data.text.trim().length > 5) {
+        alert(
+          'Le texte a été lu mais sans coordonnées (positions). Essayez de prendre la photo de plus près.'
+        );
+      } else {
+        alert("Aucun texte n'a été détecté. Vérifiez l'éclairage et la netteté.");
+      }
+      return;
+    }
+
     const detected = [];
 
     // A. Sort Lines to define Zones
     const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
 
-    // If user added H-Lines, use them. If not, try to Auto-Detect rows (fallback)
-    let finalHLines = [...hLines];
-    if (finalHLines.length === 0) {
-      // Auto-detect rows based on words Y position if no manual lines
-      // (Simple heuristic: separate lines by 20px gaps)
-      // For now, we assume user adds lines or we treat whole image as one big block if empty
-    }
+    // If user added H-Lines, use them. If not, fallback to using the whole image height as one block
+    // (This allows column-only scanning if rows aren't needed)
+    let finalHLines = hLines.length > 0 ? hLines : [];
     const sortedH = [0, ...finalHLines, 1].sort((a, b) => a - b);
 
-    // B. Iterate Rows (Intervals between H-Lines)
+    // B. Iterate Rows
     for (let r = 0; r < sortedH.length - 1; r++) {
       const yStart = sortedH[r] * imgDimensions.height;
       const yEnd = sortedH[r + 1] * imgDimensions.height;
 
-      // Ignore tiny rows (noise < 20px height)
-      if (yEnd - yStart < 20) continue;
+      // Ignore tiny slices (< 15px)
+      if (yEnd - yStart < 15) continue;
 
       let candidate = {
         id: Date.now() + Math.random(),
@@ -186,7 +216,7 @@ export default function UniversalOCRModal({
       };
       let hasData = false;
 
-      // C. Iterate Columns (Intervals between V-Lines)
+      // C. Iterate Columns
       for (let c = 0; c < sortedV.length - 1; c++) {
         const xStart = sortedV[c] * imgDimensions.width;
         const xEnd = sortedV[c + 1] * imgDimensions.width;
@@ -194,10 +224,14 @@ export default function UniversalOCRModal({
 
         if (fieldType === 'ignore') continue;
 
-        // D. Collect words inside this Cell (Box Intersection)
+        // D. Collect words inside this Cell
         const cellWords = words.filter((w) => {
+          if (!w || !w.bbox) return false;
+          // Calculate Center Point of the word
           const wx = (w.bbox.x0 + w.bbox.x1) / 2;
           const wy = (w.bbox.y0 + w.bbox.y1) / 2;
+
+          // Check if Center Point is inside the Box
           return wx >= xStart && wx < xEnd && wy >= yStart && wy < yEnd;
         });
 
@@ -205,13 +239,11 @@ export default function UniversalOCRModal({
         const cellText = cellWords
           .map((w) => w.text)
           .join(' ')
-          .replace(/[|\[\]{};:_*!@#$%^&()]/g, '') // Keep basic punctuation but remove OCR noise
+          .replace(/[|\[\]{};:_*!@#$%^&()]/g, '') // Remove heavy noise
           .trim();
 
         if (cellText) {
           candidate[fieldType] = cellText.toUpperCase();
-
-          // Special Handling for Names (Arabic/French)
           if (fieldType === 'full_name') {
             candidate.original_name = candidate[fieldType];
             candidate.isArabic = /[\u0600-\u06FF]/.test(candidate[fieldType]);
@@ -226,7 +258,7 @@ export default function UniversalOCRModal({
     setCandidates(detected);
   };
 
-  // 6. TRANSLATION HELPERS
+  // 6. HELPER FUNCTIONS
   const handleTransliterate = (id, originalName) => {
     const frenchName = transliterateArToFr(originalName);
     updateCandidate(id, 'full_name', frenchName);
@@ -236,7 +268,6 @@ export default function UniversalOCRModal({
     updateCandidate(id, 'full_name', originalName);
   };
 
-  // 7. DATA MANAGEMENT
   const updateCandidate = (id, field, value) => {
     setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
   };
@@ -281,7 +312,7 @@ export default function UniversalOCRModal({
       <div
         className="modal"
         style={{
-          maxWidth: '1100px', // Wider for the Grid Editor
+          maxWidth: '1100px',
           width: '98%',
           maxHeight: '95vh',
           display: 'flex',
@@ -305,7 +336,7 @@ export default function UniversalOCRModal({
               Scan Intelligent : Mode Grille
             </h3>
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>
-              Tracez les lignes pour séparer les colonnes (Bleu) et les lignes (Rouge).
+              Ajoutez des lignes avec les boutons, déplacez avec les poignées.
             </p>
           </div>
           <button onClick={onClose} className="btn-close">
@@ -333,7 +364,6 @@ export default function UniversalOCRModal({
                 alignItems: 'center',
               }}
             >
-              {/* File Input */}
               <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer' }}>
                 <FaCamera /> {image ? 'Changer' : 'Photo'}
                 <input
@@ -344,7 +374,6 @@ export default function UniversalOCRModal({
                 />
               </label>
 
-              {/* Lang Toggle */}
               <div
                 style={{
                   display: 'flex',
@@ -379,18 +408,23 @@ export default function UniversalOCRModal({
                   <div
                     style={{ borderLeft: '1px solid #ccc', height: '20px', margin: '0 5px' }}
                   ></div>
+
+                  {/* BUTTON: Add Column (Blue) */}
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => setVLines([...vLines, 0.5])}
                   >
-                    <FaPlus /> Col (Bleu)
+                    <FaPlus /> Colonne (Bleu)
                   </button>
+
+                  {/* BUTTON: Add Row (Red) */}
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => setHLines([...hLines, 0.5])}
                   >
                     <FaPlus /> Ligne (Rouge)
                   </button>
+
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => {
@@ -425,7 +459,7 @@ export default function UniversalOCRModal({
                   background: '#333',
                 }}
               >
-                {/* 1. COLUMN HEADERS (Above Image) */}
+                {/* 1. COLUMN HEADERS */}
                 <div
                   style={{
                     display: 'flex',
@@ -475,20 +509,8 @@ export default function UniversalOCRModal({
                 </div>
 
                 {/* 2. IMAGE INTERACTIVE AREA */}
-                <div
-                  style={{
-                    position: 'relative',
-                    minWidth: '800px',
-                    cursor: 'crosshair',
-                    userSelect: 'none',
-                  }}
-                  onClick={(e) => {
-                    // Click image to add Horizontal Line (Row)
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    const yPct = (e.clientY - rect.top) / rect.height;
-                    setHLines([...hLines, yPct]);
-                  }}
-                >
+                {/* [CHANGED] No onClick on container = No accidental lines */}
+                <div style={{ position: 'relative', minWidth: '800px', userSelect: 'none' }}>
                   <img
                     ref={imageRef}
                     src={image}
@@ -496,100 +518,177 @@ export default function UniversalOCRModal({
                     alt="Scan"
                   />
 
-                  {/* DRAW VERTICAL LINES (Columns - Blue) */}
+                  {/* --- VERTICAL LINES (Columns - Blue) --- */}
                   {vLines.map((x, i) => (
                     <div
                       key={`v-${i}`}
-                      onMouseDown={(e) => {
-                        e.stopPropagation();
-                        const parent = e.currentTarget.parentElement;
-                        const onMove = (mv) => {
-                          const rect = parent.getBoundingClientRect();
-                          const newX = (mv.clientX - rect.left) / rect.width;
-                          const newV = [...vLines];
-                          newV[i] = Math.max(0, Math.min(1, newX));
-                          setVLines(newV);
-                        };
-                        const onUp = () => {
-                          window.removeEventListener('mousemove', onMove);
-                          window.removeEventListener('mouseup', onUp);
-                        };
-                        window.addEventListener('mousemove', onMove);
-                        window.addEventListener('mouseup', onUp);
-                      }}
                       style={{
                         position: 'absolute',
                         top: 0,
                         bottom: 0,
                         left: `${x * 100}%`,
-                        width: '4px',
+                        width: '2px',
                         background: '#3b82f6',
-                        cursor: 'ew-resize',
                         zIndex: 20,
-                        borderLeft: '1px solid white',
-                        borderRight: '1px solid white',
                       }}
-                      title="Glisser pour ajuster la colonne"
-                    />
+                    >
+                      {/* Handle (Bottom) */}
+                      <div
+                        onMouseDown={(e) => {
+                          e.stopPropagation(); // Stop event bubbling
+                          const parent = e.currentTarget.parentElement.parentElement;
+                          const onMove = (mv) => {
+                            const rect = parent.getBoundingClientRect();
+                            const newX = (mv.clientX - rect.left) / rect.width;
+                            const newV = [...vLines];
+                            newV[i] = Math.max(0, Math.min(1, newX));
+                            setVLines(newV);
+                          };
+                          const onUp = () => {
+                            window.removeEventListener('mousemove', onMove);
+                            window.removeEventListener('mouseup', onUp);
+                          };
+                          window.addEventListener('mousemove', onMove);
+                          window.addEventListener('mouseup', onUp);
+                        }}
+                        // Also support Touch events for mobile
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          const parent = e.currentTarget.parentElement.parentElement;
+                          const onMove = (mv) => {
+                            const touch = mv.touches[0];
+                            const rect = parent.getBoundingClientRect();
+                            const newX = (touch.clientX - rect.left) / rect.width;
+                            const newV = [...vLines];
+                            newV[i] = Math.max(0, Math.min(1, newX));
+                            setVLines(newV);
+                          };
+                          const onEnd = () => {
+                            window.removeEventListener('touchmove', onMove);
+                            window.removeEventListener('touchend', onEnd);
+                          };
+                          window.addEventListener('touchmove', onMove);
+                          window.addEventListener('touchend', onEnd);
+                        }}
+                        style={{
+                          position: 'absolute',
+                          bottom: '-15px',
+                          left: '-10px',
+                          width: '20px',
+                          height: '20px',
+                          background: '#3b82f6',
+                          borderRadius: '4px',
+                          cursor: 'col-resize',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                          fontSize: '10px',
+                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                          border: '2px solid white',
+                        }}
+                      >
+                        <FaArrowsAltH />
+                      </div>
+                    </div>
                   ))}
 
-                  {/* DRAW HORIZONTAL LINES (Rows - Red) */}
+                  {/* --- HORIZONTAL LINES (Rows - Red) --- */}
                   {hLines.map((y, i) => (
                     <div
                       key={`h-${i}`}
-                      onMouseDown={(e) => {
-                        e.stopPropagation();
-                        const parent = e.currentTarget.parentElement;
-                        const onMove = (mv) => {
-                          const rect = parent.getBoundingClientRect();
-                          const newY = (mv.clientY - rect.top) / rect.height;
-                          const newH = [...hLines];
-                          newH[i] = Math.max(0, Math.min(1, newY));
-                          setHLines(newH);
-                        };
-                        const onUp = () => {
-                          window.removeEventListener('mousemove', onMove);
-                          window.removeEventListener('mouseup', onUp);
-                        };
-                        window.addEventListener('mousemove', onMove);
-                        window.addEventListener('mouseup', onUp);
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setHLines(hLines.filter((_, idx) => idx !== i)); // Delete on double click
-                      }}
                       style={{
                         position: 'absolute',
                         left: 0,
                         right: 0,
                         top: `${y * 100}%`,
-                        height: '4px',
+                        height: '2px',
                         background: '#ef4444',
-                        cursor: 'ns-resize',
                         zIndex: 10,
-                        borderTop: '1px solid white',
-                        borderBottom: '1px solid white',
                       }}
-                      title="Glisser pour ajuster la ligne (Double-clic pour supprimer)"
-                    />
+                    >
+                      {/* Handle (Right) */}
+                      <div
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          const parent = e.currentTarget.parentElement.parentElement;
+                          const onMove = (mv) => {
+                            const rect = parent.getBoundingClientRect();
+                            const newY = (mv.clientY - rect.top) / rect.height;
+                            const newH = [...hLines];
+                            newH[i] = Math.max(0, Math.min(1, newY));
+                            setHLines(newH);
+                          };
+                          const onUp = () => {
+                            window.removeEventListener('mousemove', onMove);
+                            window.removeEventListener('mouseup', onUp);
+                          };
+                          window.addEventListener('mousemove', onMove);
+                          window.addEventListener('mouseup', onUp);
+                        }}
+                        onTouchStart={(e) => {
+                          e.stopPropagation();
+                          const parent = e.currentTarget.parentElement.parentElement;
+                          const onMove = (mv) => {
+                            const touch = mv.touches[0];
+                            const rect = parent.getBoundingClientRect();
+                            const newY = (touch.clientY - rect.top) / rect.height;
+                            const newH = [...hLines];
+                            newH[i] = Math.max(0, Math.min(1, newY));
+                            setHLines(newH);
+                          };
+                          const onEnd = () => {
+                            window.removeEventListener('touchmove', onMove);
+                            window.removeEventListener('touchend', onEnd);
+                          };
+                          window.addEventListener('touchmove', onMove);
+                          window.addEventListener('touchend', onEnd);
+                        }}
+                        onDoubleClick={(e) => {
+                          e.stopPropagation();
+                          setHLines(hLines.filter((_, idx) => idx !== i));
+                        }}
+                        style={{
+                          position: 'absolute',
+                          right: '0',
+                          top: '-10px',
+                          width: '20px',
+                          height: '20px',
+                          background: '#ef4444',
+                          borderRadius: '4px',
+                          cursor: 'row-resize',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          color: 'white',
+                          fontSize: '10px',
+                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                          border: '2px solid white',
+                        }}
+                        title="Double-clic pour supprimer"
+                      >
+                        <FaArrowsAltV />
+                      </div>
+                    </div>
                   ))}
                 </div>
+
                 <div
                   style={{
                     background: '#333',
                     color: '#ccc',
-                    padding: '5px',
+                    padding: '10px',
                     fontSize: '0.7rem',
                     display: 'flex',
                     justifyContent: 'space-between',
+                    alignItems: 'center',
                   }}
                 >
                   <span>
-                    🟦 <strong>Colonnes (Bleu)</strong> : Glissez pour séparer les champs.
+                    🟦 <strong>Colonnes</strong> : Utilisez les boutons pour ajouter.
                   </span>
                   <span>
-                    🟥 <strong>Lignes (Rouge)</strong> : Cliquez sur l'image pour séparer les
-                    travailleurs.
+                    🟥 <strong>Lignes</strong> : Utilisez les boutons pour ajouter.
                   </span>
                 </div>
               </div>
@@ -625,7 +724,6 @@ export default function UniversalOCRModal({
                       background: 'var(--primary)',
                       height: '100%',
                       borderRadius: '4px',
-                      transition: 'width 0.2s',
                     }}
                   ></div>
                 </div>
@@ -675,33 +773,28 @@ export default function UniversalOCRModal({
                             value={c.full_name}
                             onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)}
                           />
-                          {/* Dual Language Controls */}
                           {c.isArabic && (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
                               <button
                                 className="btn btn-sm btn-outline"
-                                title="Garder en Arabe"
                                 onClick={() => handleRevertArabic(c.id, c.original_name)}
                                 style={{
                                   padding: '0px 4px',
                                   fontSize: '0.65rem',
                                   borderColor: '#10b981',
                                   color: '#10b981',
-                                  background: c.full_name === c.original_name ? '#d1fae5' : 'white',
                                 }}
                               >
                                 ع
                               </button>
                               <button
                                 className="btn btn-sm btn-outline"
-                                title="Traduire en Français"
                                 onClick={() => handleTransliterate(c.id, c.original_name)}
                                 style={{
                                   padding: '0px 4px',
                                   fontSize: '0.65rem',
                                   borderColor: '#8b5cf6',
                                   color: '#8b5cf6',
-                                  background: c.full_name !== c.original_name ? '#ede9fe' : 'white',
                                 }}
                               >
                                 FR
