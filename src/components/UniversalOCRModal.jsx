@@ -167,6 +167,9 @@ export default function UniversalOCRModal({
         rowCanvas.height = rowHeight;
         const rowCtx = rowCanvas.getContext('2d');
 
+        // Enhance contrast for better OCR
+        rowCtx.filter = 'grayscale(1) contrast(1.5)';
+
         // Draw the strip
         rowCtx.drawImage(
           masterCanvas,
@@ -174,15 +177,38 @@ export default function UniversalOCRModal({
           0, 0, masterCanvas.width, rowHeight       // Dest
         );
 
-        // 4. Run OCR on Strip
-        // PSM 6 (Sparse Text Block) is robust for table rows
-        await worker.setParameters({ tessedit_pageseg_mode: '6' });
+        // 4. Run OCR on Strip with Padding (Crucial for Tesseract)
+        const padding = 20;
+        const paddedCanvas = document.createElement('canvas');
+        paddedCanvas.width = rowCanvas.width + padding * 2;
+        paddedCanvas.height = rowCanvas.height + padding * 2;
+        const pCtx = paddedCanvas.getContext('2d');
+        pCtx.fillStyle = '#FFFFFF';
+        pCtx.fillRect(0, 0, paddedCanvas.width, paddedCanvas.height);
+        pCtx.drawImage(rowCanvas, padding, padding);
 
-        // Pass canvas directly for efficiency
-        const { data } = await worker.recognize(rowCanvas);
+        // Try PSM 7 (Single Line) first - best for horizontal strips
+        await worker.setParameters({ tessedit_pageseg_mode: '7' });
+        let result = await worker.recognize(paddedCanvas);
+        let data = result.data;
+
+        // If very few words found, fallback to PSM 6 (Sparse Text Block)
+        if (!data.words || data.words.length < 2) {
+          await worker.setParameters({ tessedit_pageseg_mode: '6' });
+          result = await worker.recognize(paddedCanvas);
+          data = result.data;
+        }
 
         // 5. Parse Data for this Slice
-        const words = data.words || [];
+        // Adjust coordinates back to original image space (remove padding)
+        const words = (data.words || []).map((w) => ({
+          ...w,
+          bbox: {
+            ...w.bbox,
+            x0: w.bbox.x0 - padding,
+            x1: w.bbox.x1 - padding,
+          },
+        }));
 
         let candidate = {
           id: Date.now() + Math.random(),
@@ -236,7 +262,9 @@ export default function UniversalOCRModal({
         setCandidates(allCandidates);
       } else {
         console.warn('⚠️ No candidates found with slicing.');
-        alert("Aucune donnée trouvée. Vérifiez le quadrillage ou l'éclairage.");
+        alert(
+          `Aucune donnée trouvée.\n\nConseils:\n1. Vérifiez que les lignes rouges séparent bien chaque ligne de texte.\n2. Vérifiez que les colonnes bleues encadrent bien le texte.`
+        );
       }
 
     } catch (err) {
