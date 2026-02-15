@@ -17,7 +17,6 @@ import {
 // --- ALG-FR TRANSLITERATION ENGINE ---
 const transliterateArToFr = (text) => {
   if (!text) return '';
-
   const map = {
     ا: 'A',
     أ: 'A',
@@ -56,7 +55,6 @@ const transliterateArToFr = (text) => {
     '-': '-',
     '.': '.',
   };
-
   return text
     .split('')
     .map((char) => map[char] || char)
@@ -100,154 +98,159 @@ export default function UniversalOCRModal({
     { val: 'ignore', label: 'Ignorer' },
   ];
 
-  // 2. IMAGE LOADING (WITH SANITIZER)
+  // 2. IMAGE LOADING
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const url = URL.createObjectURL(e.target.files[0]);
-      // We load it into an Image object first to get real dimensions
       const img = new Image();
       img.onload = () => {
         setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight });
         setImage(url);
       };
       img.src = url;
-
       setCandidates([]);
       setHLines([]);
     }
   };
 
-  // 3. OCR EXECUTION
+  // 3. THE SELF-HEALING OCR ENGINE
   const runOCR = async () => {
     if (!image) return;
     setIsProcessing(true);
     setCandidates([]);
     setProgress(0);
+    setStatusText('Initialisation...');
+
+    let worker = null;
 
     try {
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
 
-      // [FIX] PRE-PROCESS IMAGE ON CANVAS
-      // This fixes the mobile rotation issue by drawing what you see onto a fresh canvas
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const imgEl = imageRef.current; // Get the actual <img> DOM element
+      // Initialize Tesseract v5
+      worker = await Tesseract.createWorker(langs);
 
-      // Set canvas to match the displayed image dimensions (or natural)
-      canvas.width = imgEl.naturalWidth;
-      canvas.height = imgEl.naturalHeight;
-      ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
-      const cleanImage = canvas.toDataURL('image/jpeg');
+      // B. Prepare the "Master Canvas" (Fixes Rotation & Scaling)
+      const masterCanvas = document.createElement('canvas');
+      const ctx = masterCanvas.getContext('2d');
+      const imgEl = imageRef.current;
+      masterCanvas.width = imgEl.naturalWidth;
+      masterCanvas.height = imgEl.naturalHeight;
+      ctx.drawImage(imgEl, 0, 0);
 
-      const { data } = await Tesseract.recognize(cleanImage, langs, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            setProgress(parseInt(m.progress * 100));
+      // C. TRY GRID STRATEGY
+      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+      let detected = [];
+
+      // Only run Grid if User Defined Rows (Red Lines)
+      if (hLines.length > 0) {
+        const rowCount = sortedH.length - 1;
+
+        for (let r = 0; r < rowCount; r++) {
+          const yStart = Math.floor(sortedH[r] * masterCanvas.height);
+          const yEnd = Math.floor(sortedH[r + 1] * masterCanvas.height);
+          const rowHeight = yEnd - yStart;
+
+          if (rowHeight < 20) continue;
+
+          // Update Status
+          const pct = Math.round(((r + 1) / rowCount) * 100);
+          setProgress(pct);
+          setStatusText(`Lecture ligne ${r + 1}/${rowCount} (Mode Grille)...`);
+
+          // 1. Slice the Row
+          const rowCanvas = document.createElement('canvas');
+          rowCanvas.width = masterCanvas.width;
+          rowCanvas.height = rowHeight;
+          const rowCtx = rowCanvas.getContext('2d');
+          rowCtx.drawImage(
+            masterCanvas,
+            0,
+            yStart,
+            masterCanvas.width,
+            rowHeight,
+            0,
+            0,
+            masterCanvas.width,
+            rowHeight
+          );
+
+          // 2. OCR the Row Strip
+          // [FIX] PSM 6 (Block) is better for sparse tables than PSM 7 (Line)
+          await worker.setParameters({ tessedit_pageseg_mode: '6' });
+          const { data } = await worker.recognize(rowCanvas.toDataURL('image/jpeg'));
+
+          // 3. Map Words to Blue Columns
+          let candidate = createEmptyCandidate();
+          let hasData = false;
+          const words = data.words || [];
+
+          words.forEach((w) => {
+            if (w.confidence < 30) return; // Lowered confidence threshold
+
+            const xCenter = (w.bbox.x0 + w.bbox.x1) / 2;
+            const xPct = xCenter / masterCanvas.width;
+
+            for (let c = 0; c < sortedV.length - 1; c++) {
+              if (xPct >= sortedV[c] && xPct < sortedV[c + 1]) {
+                const fieldType = colMapping[c] || 'ignore';
+                if (fieldType !== 'ignore') {
+                  const cleanWord = w.text.replace(/[|\[\]{};:_*!@#$%^&()]/g, '').trim();
+                  if (cleanWord) {
+                    candidate[fieldType] =
+                      (candidate[fieldType] ? candidate[fieldType] + ' ' : '') +
+                      cleanWord.toUpperCase();
+                    hasData = true;
+                  }
+                }
+                break;
+              }
+            }
+          });
+
+          if (candidate.full_name) {
+            candidate.original_name = candidate.full_name;
+            candidate.isArabic = /[\u0600-\u06FF]/.test(candidate.full_name);
           }
-          setStatusText(m.status);
-        },
-        tessedit_pageseg_mode: '11', // Sparse Text Mode
-      });
 
-      // CHECK FOR COORDINATES
-      let hasCoordinates = false;
-      if (data.words && data.words.length > 0) hasCoordinates = true;
-      else if (data.lines && data.lines.some((l) => l.words && l.words.length > 0))
-        hasCoordinates = true;
-
-      if (hasCoordinates) {
-        console.log('✅ Mode Grille activé (Coordonnées trouvées)');
-        parseDataToCandidates(data);
-      } else {
-        // FALLBACK
-        console.warn('⚠️ Pas de coordonnées. Passage au mode Texte.');
-        if (data.text && data.text.length > 10) {
-          parseTextToCandidates(data.text);
-        } else {
-          alert("Aucun texte détecté. Vérifiez l'éclairage.");
+          if (hasData) detected.push(candidate);
         }
       }
+
+      // D. RESCUE MODE (Fallback)
+      // If Grid failed (0 results) OR User didn't draw rows, try reading full page
+      if (detected.length === 0) {
+        setStatusText('Mode Grille vide. Tentative de lecture globale...');
+        console.warn('Grid yielded 0 results. Switching to Full Page Text Mode.');
+
+        await worker.setParameters({ tessedit_pageseg_mode: '3' }); // Auto Mode
+        const { data: fullData } = await worker.recognize(masterCanvas.toDataURL('image/jpeg'));
+
+        // Use the Regex Parser on the full text
+        const textCandidates = parseTextToCandidatesLogic(fullData.text);
+        if (textCandidates.length > 0) {
+          detected = textCandidates;
+          alert(
+            "Attention : Le découpage par ligne a échoué. L'application a basculé en mode lecture automatique (Text Mode)."
+          );
+        } else {
+          alert("Échec total : Aucun texte lisible trouvé. Vérifiez la netteté de l'image.");
+        }
+      }
+
+      setCandidates(detected);
     } catch (err) {
       console.error(err);
-      alert('Erreur OCR: ' + (err.message || "Impossible de lire l'image"));
+      alert('Erreur critique: ' + err.message);
     } finally {
+      if (worker) await worker.terminate();
       setIsProcessing(false);
+      setStatusText('');
     }
   };
 
-  // 4A. GRID PARSER
-  const parseDataToCandidates = (data) => {
-    // Deep search for words
-    let words = [];
-    if (data.words && data.words.length > 0) words = data.words;
-    else if (data.lines) words = data.lines.flatMap((l) => l.words || []);
-    // Try Paragraphs too
-    if (words.length === 0 && data.paragraphs) {
-      words = data.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words || []));
-    }
-
-    const detected = [];
-    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-    let finalHLines = hLines.length > 0 ? hLines : [];
-    const sortedH = [0, ...finalHLines, 1].sort((a, b) => a - b);
-
-    // If no Horizontal lines, just do one big pass (unless user wants auto-rows, but manual is safer)
-    const rowCount = sortedH.length > 1 ? sortedH.length - 1 : 1;
-    const useRows = sortedH.length > 1;
-
-    for (let r = 0; r < rowCount; r++) {
-      const yStart = useRows ? sortedH[r] * imgDimensions.height : 0;
-      const yEnd = useRows ? sortedH[r + 1] * imgDimensions.height : imgDimensions.height;
-
-      if (yEnd - yStart < 15) continue;
-
-      let candidate = {
-        id: Date.now() + Math.random(),
-        national_id: '',
-        full_name: '',
-        department_id: '',
-        job_info: '',
-        original_name: '',
-        isArabic: false,
-      };
-      let hasData = false;
-
-      for (let c = 0; c < sortedV.length - 1; c++) {
-        const xStart = sortedV[c] * imgDimensions.width;
-        const xEnd = sortedV[c + 1] * imgDimensions.width;
-        const fieldType = colMapping[c] || 'ignore';
-
-        if (fieldType === 'ignore') continue;
-
-        const cellWords = words.filter((w) => {
-          if (!w || !w.bbox) return false;
-          const wx = (w.bbox.x0 + w.bbox.x1) / 2;
-          const wy = (w.bbox.y0 + w.bbox.y1) / 2;
-          return wx >= xStart && wx < xEnd && wy >= yStart && wy < yEnd;
-        });
-
-        const cellText = cellWords
-          .map((w) => w.text)
-          .join(' ')
-          .replace(/[|\[\]{};:_*!@#$%^&()]/g, '')
-          .trim();
-
-        if (cellText) {
-          candidate[fieldType] = cellText.toUpperCase();
-          if (fieldType === 'full_name') {
-            candidate.original_name = candidate[fieldType];
-            candidate.isArabic = /[\u0600-\u06FF]/.test(candidate[fieldType]);
-          }
-          hasData = true;
-        }
-      }
-      if (hasData) detected.push(candidate);
-    }
-    setCandidates(detected);
-  };
-
-  // 4B. FALLBACK PARSER (Added to fix "not defined" error)
-  const parseTextToCandidates = (text) => {
+  // HELPER: Standalone Regex Parser (Logic Only)
+  const parseTextToCandidatesLogic = (text) => {
     const lines = text.split('\n');
     const detected = [];
 
@@ -273,6 +276,7 @@ export default function UniversalOCRModal({
             'GRADE',
             'PAGE',
             'LISTE',
+            'N°',
           ];
           if (!forbidden.includes(upper)) nameParts.push(token);
         }
@@ -280,7 +284,6 @@ export default function UniversalOCRModal({
 
       if (nameParts.length > 0) {
         const fullName = nameParts.join(' ').replace(/['"]/g, '');
-        const hasArabic = /[\u0600-\u06FF]/.test(fullName);
         detected.push({
           id: Date.now() + Math.random(),
           national_id: matricule || '?',
@@ -288,41 +291,40 @@ export default function UniversalOCRModal({
           original_name: fullName.toUpperCase(),
           department_id: '',
           job_info: '',
-          isArabic: hasArabic,
+          isArabic: /[\u0600-\u06FF]/.test(fullName),
         });
       }
     });
-
-    if (detected.length > 0) {
-      console.log('Fallback successful');
-    } else {
-      alert('Mode Texte (Secours) : Aucune donnée trouvée.');
-    }
-    setCandidates(detected);
+    return detected;
   };
 
-  // 5. HELPER FUNCTIONS
+  // HELPER: Create Empty Object
+  const createEmptyCandidate = () => ({
+    id: Date.now() + Math.random(),
+    national_id: '',
+    full_name: '',
+    department_id: '',
+    job_info: '',
+    original_name: '',
+    isArabic: false,
+  });
+
   const handleTransliterate = (id, originalName) => {
     const frenchName = transliterateArToFr(originalName);
     updateCandidate(id, 'full_name', frenchName);
   };
-
   const handleRevertArabic = (id, originalName) => {
     updateCandidate(id, 'full_name', originalName);
   };
-
   const updateCandidate = (id, field, value) => {
     setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
   };
-
   const removeCandidate = (id) => {
     setCandidates((prev) => prev.filter((c) => c.id !== id));
   };
-
   const handleBulkImport = async () => {
     if (candidates.length === 0) return;
     const valid = candidates.filter((c) => c.full_name || c.national_id);
-
     for (const c of valid) {
       const data = {
         full_name: c.full_name || 'Inconnu',
@@ -332,7 +334,6 @@ export default function UniversalOCRModal({
         status: mode === 'worker' ? 'active' : 'pending',
         created_at: new Date().toISOString(),
       };
-
       if (mode === 'worker') {
         data.position = c.job_info || 'N/A';
         await db.saveWorker(data);
@@ -370,10 +371,10 @@ export default function UniversalOCRModal({
         >
           <div>
             <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <FaCamera color="var(--primary)" /> Scan Intelligent (Grid + Canvas)
+              <FaCamera color="var(--primary)" /> Scan Intelligent
             </h3>
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>
-              Tracez les lignes pour guider l'IA.
+              Tracez les lignes. Si cela échoue, le mode automatique prendra le relais.
             </p>
           </div>
           <button onClick={onClose} className="btn-close">
@@ -544,7 +545,6 @@ export default function UniversalOCRModal({
 
                 {/* IMAGE AREA */}
                 <div style={{ position: 'relative', minWidth: '800px', userSelect: 'none' }}>
-                  {/* Ref attached to IMG for Canvas extraction */}
                   <img
                     ref={imageRef}
                     src={image}
@@ -710,7 +710,7 @@ export default function UniversalOCRModal({
                   }}
                 >
                   <span>
-                    <FaSpinner className="spin" /> Analyse... {statusText}
+                    <FaSpinner className="spin" /> {statusText}
                   </span>{' '}
                   <span>{progress}%</span>
                 </div>
@@ -728,6 +728,7 @@ export default function UniversalOCRModal({
                       background: 'var(--primary)',
                       height: '100%',
                       borderRadius: '4px',
+                      transition: 'width 0.3s',
                     }}
                   ></div>
                 </div>
