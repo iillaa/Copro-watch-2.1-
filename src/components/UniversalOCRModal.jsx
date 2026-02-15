@@ -72,7 +72,7 @@ export default function UniversalOCRModal({
   onImportSuccess,
   departments,
 }) {
-  // 1. STATE: CORE
+  // 1. STATE
   const [image, setImage] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -80,10 +80,9 @@ export default function UniversalOCRModal({
   const [statusText, setStatusText] = useState('');
   const [docLanguage, setDocLanguage] = useState('fra');
 
-  // 2. STATE: THE GRID
+  // Grid State
   const [vLines, setVLines] = useState([0.2, 0.5, 0.8]);
   const [hLines, setHLines] = useState([]);
-
   const [colMapping, setColMapping] = useState([
     'national_id',
     'full_name',
@@ -101,22 +100,24 @@ export default function UniversalOCRModal({
     { val: 'ignore', label: 'Ignorer' },
   ];
 
-  // 3. IMAGE LOADING
+  // 2. IMAGE LOADING (WITH SANITIZER)
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const url = URL.createObjectURL(e.target.files[0]);
-      setImage(url);
+      // We load it into an Image object first to get real dimensions
+      const img = new Image();
+      img.onload = () => {
+        setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight });
+        setImage(url);
+      };
+      img.src = url;
+
       setCandidates([]);
       setHLines([]);
-
-      const img = new Image();
-      img.onload = () => setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-      img.src = url;
     }
   };
 
-  // 4. OCR EXECUTION
- // [HYBRID UPDATE] Try Grid (Coords) -> Fallback to Text (Regex)
+  // 3. OCR EXECUTION
   const runOCR = async () => {
     if (!image) return;
     setIsProcessing(true);
@@ -126,7 +127,19 @@ export default function UniversalOCRModal({
     try {
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
 
-      const { data } = await Tesseract.recognize(image, langs, {
+      // [FIX] PRE-PROCESS IMAGE ON CANVAS
+      // This fixes the mobile rotation issue by drawing what you see onto a fresh canvas
+      const canvas = document.createElement('canvas');
+      const ctx = canvas.getContext('2d');
+      const imgEl = imageRef.current; // Get the actual <img> DOM element
+
+      // Set canvas to match the displayed image dimensions (or natural)
+      canvas.width = imgEl.naturalWidth;
+      canvas.height = imgEl.naturalHeight;
+      ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+      const cleanImage = canvas.toDataURL('image/jpeg');
+
+      const { data } = await Tesseract.recognize(cleanImage, langs, {
         logger: (m) => {
           if (m.status === 'recognizing text') {
             setProgress(parseInt(m.progress * 100));
@@ -136,25 +149,24 @@ export default function UniversalOCRModal({
         tessedit_pageseg_mode: '11', // Sparse Text Mode
       });
 
-      // 1. CHECK FOR COORDINATES
-      // Deep search for any words with bounding boxes
+      // CHECK FOR COORDINATES
       let hasCoordinates = false;
       if (data.words && data.words.length > 0) hasCoordinates = true;
-      else if (data.lines && data.lines.some(l => l.words && l.words.length > 0)) hasCoordinates = true;
+      else if (data.lines && data.lines.some((l) => l.words && l.words.length > 0))
+        hasCoordinates = true;
 
       if (hasCoordinates) {
-        console.log("✅ Mode Grille activé (Coordonnées trouvées)");
+        console.log('✅ Mode Grille activé (Coordonnées trouvées)');
         parseDataToCandidates(data);
       } else {
-        // 2. FALLBACK: TEXT MODE
-        console.warn("⚠️ Pas de coordonnées. Passage au mode Texte (Regex).");
+        // FALLBACK
+        console.warn('⚠️ Pas de coordonnées. Passage au mode Texte.');
         if (data.text && data.text.length > 10) {
-           parseTextToCandidates(data.text); // <--- We need to add this function below
+          parseTextToCandidates(data.text);
         } else {
-           alert("Aucun texte détecté. Vérifiez l'éclairage et la netteté.");
+          alert("Aucun texte détecté. Vérifiez l'éclairage.");
         }
       }
-
     } catch (err) {
       console.error(err);
       alert('Erreur OCR: ' + (err.message || "Impossible de lire l'image"));
@@ -163,61 +175,30 @@ export default function UniversalOCRModal({
     }
   };
 
-  // 5. THE LOGIC: GRID PARSER (DEEP SEARCH VERSION)
+  // 4A. GRID PARSER
   const parseDataToCandidates = (data) => {
-    // [FIX] Deep Search Strategy: Iterate all levels to find words
+    // Deep search for words
     let words = [];
-
-    // Level 1: Direct words
-    if (data.words && data.words.length > 0) {
-      words = data.words;
-    }
-    // Level 2: Inside Lines
-    else if (data.lines && data.lines.length > 0) {
-      words = data.lines.flatMap((l) => l.words || []);
-    }
-    // Level 3: Inside Paragraphs (Deepest)
-    else if (data.paragraphs && data.paragraphs.length > 0) {
+    if (data.words && data.words.length > 0) words = data.words;
+    else if (data.lines) words = data.lines.flatMap((l) => l.words || []);
+    // Try Paragraphs too
+    if (words.length === 0 && data.paragraphs) {
       words = data.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words || []));
-    }
-    // Level 4: Inside Blocks (Rare)
-    else if (data.blocks && data.blocks.length > 0) {
-      words = data.blocks.flatMap((b) =>
-        b.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words || []))
-      );
-    }
-
-    // [DEBUG] Check what we found
-    console.log(`OCR Found ${words.length} words`, words);
-
-    if (words.length === 0) {
-      // If we have raw text but no coordinates, we can't use the grid
-      if (data.text && data.text.trim().length > 5) {
-        alert(
-          'Le texte a été lu mais sans coordonnées (positions). Essayez de prendre la photo de plus près.'
-        );
-      } else {
-        alert("Aucun texte n'a été détecté. Vérifiez l'éclairage et la netteté.");
-      }
-      return;
     }
 
     const detected = [];
-
-    // A. Sort Lines to define Zones
     const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-
-    // If user added H-Lines, use them. If not, fallback to using the whole image height as one block
-    // (This allows column-only scanning if rows aren't needed)
     let finalHLines = hLines.length > 0 ? hLines : [];
     const sortedH = [0, ...finalHLines, 1].sort((a, b) => a - b);
 
-    // B. Iterate Rows
-    for (let r = 0; r < sortedH.length - 1; r++) {
-      const yStart = sortedH[r] * imgDimensions.height;
-      const yEnd = sortedH[r + 1] * imgDimensions.height;
+    // If no Horizontal lines, just do one big pass (unless user wants auto-rows, but manual is safer)
+    const rowCount = sortedH.length > 1 ? sortedH.length - 1 : 1;
+    const useRows = sortedH.length > 1;
 
-      // Ignore tiny slices (< 15px)
+    for (let r = 0; r < rowCount; r++) {
+      const yStart = useRows ? sortedH[r] * imgDimensions.height : 0;
+      const yEnd = useRows ? sortedH[r + 1] * imgDimensions.height : imgDimensions.height;
+
       if (yEnd - yStart < 15) continue;
 
       let candidate = {
@@ -231,7 +212,6 @@ export default function UniversalOCRModal({
       };
       let hasData = false;
 
-      // C. Iterate Columns
       for (let c = 0; c < sortedV.length - 1; c++) {
         const xStart = sortedV[c] * imgDimensions.width;
         const xEnd = sortedV[c + 1] * imgDimensions.width;
@@ -239,22 +219,17 @@ export default function UniversalOCRModal({
 
         if (fieldType === 'ignore') continue;
 
-        // D. Collect words inside this Cell
         const cellWords = words.filter((w) => {
           if (!w || !w.bbox) return false;
-          // Calculate Center Point of the word
           const wx = (w.bbox.x0 + w.bbox.x1) / 2;
           const wy = (w.bbox.y0 + w.bbox.y1) / 2;
-
-          // Check if Center Point is inside the Box
           return wx >= xStart && wx < xEnd && wy >= yStart && wy < yEnd;
         });
 
-        // E. Assemble Text
         const cellText = cellWords
           .map((w) => w.text)
           .join(' ')
-          .replace(/[|\[\]{};:_*!@#$%^&()]/g, '') // Remove heavy noise
+          .replace(/[|\[\]{};:_*!@#$%^&()]/g, '')
           .trim();
 
         if (cellText) {
@@ -266,14 +241,67 @@ export default function UniversalOCRModal({
           hasData = true;
         }
       }
-
       if (hasData) detected.push(candidate);
     }
-
     setCandidates(detected);
   };
 
-  // 6. HELPER FUNCTIONS
+  // 4B. FALLBACK PARSER (Added to fix "not defined" error)
+  const parseTextToCandidates = (text) => {
+    const lines = text.split('\n');
+    const detected = [];
+
+    lines.forEach((line) => {
+      const cleanLine = line.replace(/[|\[\]{};:.,_*!@#$%^&()]/g, ' ').trim();
+      if (cleanLine.length < 3) return;
+
+      const tokens = cleanLine.split(/\s+/);
+      let matricule = '';
+      let nameParts = [];
+
+      tokens.forEach((token) => {
+        if (/^\d{2,15}$/.test(token) && !matricule) {
+          matricule = token;
+        } else if (/[a-zA-ZÀ-ÿ\u0600-\u06FF]{2,}/.test(token)) {
+          const upper = token.toUpperCase();
+          const forbidden = [
+            'MAT',
+            'MATRICULE',
+            'NOM',
+            'PRENOM',
+            'SERVICE',
+            'GRADE',
+            'PAGE',
+            'LISTE',
+          ];
+          if (!forbidden.includes(upper)) nameParts.push(token);
+        }
+      });
+
+      if (nameParts.length > 0) {
+        const fullName = nameParts.join(' ').replace(/['"]/g, '');
+        const hasArabic = /[\u0600-\u06FF]/.test(fullName);
+        detected.push({
+          id: Date.now() + Math.random(),
+          national_id: matricule || '?',
+          full_name: fullName.toUpperCase(),
+          original_name: fullName.toUpperCase(),
+          department_id: '',
+          job_info: '',
+          isArabic: hasArabic,
+        });
+      }
+    });
+
+    if (detected.length > 0) {
+      console.log('Fallback successful');
+    } else {
+      alert('Mode Texte (Secours) : Aucune donnée trouvée.');
+    }
+    setCandidates(detected);
+  };
+
+  // 5. HELPER FUNCTIONS
   const handleTransliterate = (id, originalName) => {
     const frenchName = transliterateArToFr(originalName);
     updateCandidate(id, 'full_name', frenchName);
@@ -296,26 +324,21 @@ export default function UniversalOCRModal({
     const valid = candidates.filter((c) => c.full_name || c.national_id);
 
     for (const c of valid) {
+      const data = {
+        full_name: c.full_name || 'Inconnu',
+        national_id: c.national_id || '?',
+        department_id: c.department_id ? parseInt(c.department_id) : null,
+        archived: false,
+        status: mode === 'worker' ? 'active' : 'pending',
+        created_at: new Date().toISOString(),
+      };
+
       if (mode === 'worker') {
-        await db.saveWorker({
-          full_name: c.full_name || 'Inconnu',
-          national_id: c.national_id || '?',
-          department_id: c.department_id ? parseInt(c.department_id) : null,
-          position: c.job_info || 'N/A',
-          status: 'active',
-          archived: false,
-          created_at: new Date().toISOString(),
-        });
+        data.position = c.job_info || 'N/A';
+        await db.saveWorker(data);
       } else {
-        await db.saveWeaponHolder({
-          full_name: c.full_name || 'Inconnu',
-          national_id: c.national_id || '?',
-          department_id: c.department_id ? parseInt(c.department_id) : null,
-          job_function: c.job_info || 'Agent',
-          status: 'pending',
-          archived: false,
-          next_review_date: '',
-        });
+        data.job_function = c.job_info || 'Agent';
+        await db.saveWeaponHolder(data);
       }
     }
     onImportSuccess(valid.length);
@@ -334,7 +357,7 @@ export default function UniversalOCRModal({
           flexDirection: 'column',
         }}
       >
-        {/* --- HEADER --- */}
+        {/* HEADER */}
         <div
           style={{
             display: 'flex',
@@ -347,11 +370,10 @@ export default function UniversalOCRModal({
         >
           <div>
             <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <FaCamera color="var(--primary)" />
-              Scan Intelligent : Mode Grille
+              <FaCamera color="var(--primary)" /> Scan Intelligent (Grid + Canvas)
             </h3>
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>
-              Ajoutez des lignes avec les boutons, déplacez avec les poignées.
+              Tracez les lignes pour guider l'IA.
             </p>
           </div>
           <button onClick={onClose} className="btn-close">
@@ -359,7 +381,7 @@ export default function UniversalOCRModal({
           </button>
         </div>
 
-        {/* --- CONTROLS & EDITOR --- */}
+        {/* CONTROLS */}
         <div style={{ padding: '0 0.5rem 1rem' }}>
           <div
             style={{
@@ -369,7 +391,6 @@ export default function UniversalOCRModal({
               border: '1px solid #e2e8f0',
             }}
           >
-            {/* Toolbar */}
             <div
               style={{
                 display: 'flex',
@@ -423,23 +444,20 @@ export default function UniversalOCRModal({
                   <div
                     style={{ borderLeft: '1px solid #ccc', height: '20px', margin: '0 5px' }}
                   ></div>
-
-                  {/* BUTTON: Add Column (Blue) */}
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => setVLines([...vLines, 0.5])}
                   >
-                    <FaPlus /> Colonne (Bleu)
+                    {' '}
+                    <FaPlus /> Col (Bleu){' '}
                   </button>
-
-                  {/* BUTTON: Add Row (Red) */}
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => setHLines([...hLines, 0.5])}
                   >
-                    <FaPlus /> Ligne (Rouge)
+                    {' '}
+                    <FaPlus /> Ligne (Rouge){' '}
                   </button>
-
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => {
@@ -448,7 +466,8 @@ export default function UniversalOCRModal({
                     }}
                     style={{ color: 'red', borderColor: 'red' }}
                   >
-                    <FaEraser /> Reset
+                    {' '}
+                    <FaEraser /> Reset{' '}
                   </button>
 
                   {!isProcessing && (
@@ -474,7 +493,7 @@ export default function UniversalOCRModal({
                   background: '#333',
                 }}
               >
-                {/* 1. COLUMN HEADERS */}
+                {/* COLUMN HEADERS */}
                 <div
                   style={{
                     display: 'flex',
@@ -523,9 +542,9 @@ export default function UniversalOCRModal({
                   })()}
                 </div>
 
-                {/* 2. IMAGE INTERACTIVE AREA */}
-                {/* [CHANGED] No onClick on container = No accidental lines */}
+                {/* IMAGE AREA */}
                 <div style={{ position: 'relative', minWidth: '800px', userSelect: 'none' }}>
+                  {/* Ref attached to IMG for Canvas extraction */}
                   <img
                     ref={imageRef}
                     src={image}
@@ -533,7 +552,7 @@ export default function UniversalOCRModal({
                     alt="Scan"
                   />
 
-                  {/* --- VERTICAL LINES (Columns - Blue) --- */}
+                  {/* VERTICAL LINES (Columns - Blue) */}
                   {vLines.map((x, i) => (
                     <div
                       key={`v-${i}`}
@@ -547,43 +566,40 @@ export default function UniversalOCRModal({
                         zIndex: 20,
                       }}
                     >
-                      {/* Handle (Bottom) */}
                       <div
                         onMouseDown={(e) => {
-                          e.stopPropagation(); // Stop event bubbling
-                          const parent = e.currentTarget.parentElement.parentElement;
-                          const onMove = (mv) => {
-                            const rect = parent.getBoundingClientRect();
-                            const newX = (mv.clientX - rect.left) / rect.width;
-                            const newV = [...vLines];
-                            newV[i] = Math.max(0, Math.min(1, newX));
-                            setVLines(newV);
+                          e.stopPropagation();
+                          const p = e.currentTarget.parentElement.parentElement;
+                          const move = (m) => {
+                            const rect = p.getBoundingClientRect();
+                            const nx = (m.clientX - rect.left) / rect.width;
+                            const nv = [...vLines];
+                            nv[i] = Math.max(0, Math.min(1, nx));
+                            setVLines(nv);
                           };
-                          const onUp = () => {
-                            window.removeEventListener('mousemove', onMove);
-                            window.removeEventListener('mouseup', onUp);
+                          const up = () => {
+                            window.removeEventListener('mousemove', move);
+                            window.removeEventListener('mouseup', up);
                           };
-                          window.addEventListener('mousemove', onMove);
-                          window.addEventListener('mouseup', onUp);
+                          window.addEventListener('mousemove', move);
+                          window.addEventListener('mouseup', up);
                         }}
-                        // Also support Touch events for mobile
                         onTouchStart={(e) => {
                           e.stopPropagation();
-                          const parent = e.currentTarget.parentElement.parentElement;
-                          const onMove = (mv) => {
-                            const touch = mv.touches[0];
-                            const rect = parent.getBoundingClientRect();
-                            const newX = (touch.clientX - rect.left) / rect.width;
-                            const newV = [...vLines];
-                            newV[i] = Math.max(0, Math.min(1, newX));
-                            setVLines(newV);
+                          const p = e.currentTarget.parentElement.parentElement;
+                          const move = (m) => {
+                            const rect = p.getBoundingClientRect();
+                            const nx = (m.touches[0].clientX - rect.left) / rect.width;
+                            const nv = [...vLines];
+                            nv[i] = Math.max(0, Math.min(1, nx));
+                            setVLines(nv);
                           };
-                          const onEnd = () => {
-                            window.removeEventListener('touchmove', onMove);
-                            window.removeEventListener('touchend', onEnd);
+                          const end = () => {
+                            window.removeEventListener('touchmove', move);
+                            window.removeEventListener('touchend', end);
                           };
-                          window.addEventListener('touchmove', onMove);
-                          window.addEventListener('touchend', onEnd);
+                          window.addEventListener('touchmove', move);
+                          window.addEventListener('touchend', end);
                         }}
                         style={{
                           position: 'absolute',
@@ -598,17 +614,15 @@ export default function UniversalOCRModal({
                           alignItems: 'center',
                           justifyContent: 'center',
                           color: 'white',
-                          fontSize: '10px',
-                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
                           border: '2px solid white',
                         }}
                       >
-                        <FaArrowsAltH />
+                        <FaArrowsAltH size={12} />
                       </div>
                     </div>
                   ))}
 
-                  {/* --- HORIZONTAL LINES (Rows - Red) --- */}
+                  {/* HORIZONTAL LINES (Rows - Red) */}
                   {hLines.map((y, i) => (
                     <div
                       key={`h-${i}`}
@@ -622,42 +636,40 @@ export default function UniversalOCRModal({
                         zIndex: 10,
                       }}
                     >
-                      {/* Handle (Right) */}
                       <div
                         onMouseDown={(e) => {
                           e.stopPropagation();
-                          const parent = e.currentTarget.parentElement.parentElement;
-                          const onMove = (mv) => {
-                            const rect = parent.getBoundingClientRect();
-                            const newY = (mv.clientY - rect.top) / rect.height;
-                            const newH = [...hLines];
-                            newH[i] = Math.max(0, Math.min(1, newY));
-                            setHLines(newH);
+                          const p = e.currentTarget.parentElement.parentElement;
+                          const move = (m) => {
+                            const rect = p.getBoundingClientRect();
+                            const ny = (m.clientY - rect.top) / rect.height;
+                            const nh = [...hLines];
+                            nh[i] = Math.max(0, Math.min(1, ny));
+                            setHLines(nh);
                           };
-                          const onUp = () => {
-                            window.removeEventListener('mousemove', onMove);
-                            window.removeEventListener('mouseup', onUp);
+                          const up = () => {
+                            window.removeEventListener('mousemove', move);
+                            window.removeEventListener('mouseup', up);
                           };
-                          window.addEventListener('mousemove', onMove);
-                          window.addEventListener('mouseup', onUp);
+                          window.addEventListener('mousemove', move);
+                          window.addEventListener('mouseup', up);
                         }}
                         onTouchStart={(e) => {
                           e.stopPropagation();
-                          const parent = e.currentTarget.parentElement.parentElement;
-                          const onMove = (mv) => {
-                            const touch = mv.touches[0];
-                            const rect = parent.getBoundingClientRect();
-                            const newY = (touch.clientY - rect.top) / rect.height;
-                            const newH = [...hLines];
-                            newH[i] = Math.max(0, Math.min(1, newY));
-                            setHLines(newH);
+                          const p = e.currentTarget.parentElement.parentElement;
+                          const move = (m) => {
+                            const rect = p.getBoundingClientRect();
+                            const ny = (m.touches[0].clientY - rect.top) / rect.height;
+                            const nh = [...hLines];
+                            nh[i] = Math.max(0, Math.min(1, ny));
+                            setHLines(nh);
                           };
-                          const onEnd = () => {
-                            window.removeEventListener('touchmove', onMove);
-                            window.removeEventListener('touchend', onEnd);
+                          const end = () => {
+                            window.removeEventListener('touchmove', move);
+                            window.removeEventListener('touchend', end);
                           };
-                          window.addEventListener('touchmove', onMove);
-                          window.addEventListener('touchend', onEnd);
+                          window.addEventListener('touchmove', move);
+                          window.addEventListener('touchend', end);
                         }}
                         onDoubleClick={(e) => {
                           e.stopPropagation();
@@ -676,40 +688,17 @@ export default function UniversalOCRModal({
                           alignItems: 'center',
                           justifyContent: 'center',
                           color: 'white',
-                          fontSize: '10px',
-                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
                           border: '2px solid white',
                         }}
-                        title="Double-clic pour supprimer"
                       >
-                        <FaArrowsAltV />
+                        <FaArrowsAltV size={12} />
                       </div>
                     </div>
                   ))}
                 </div>
-
-                <div
-                  style={{
-                    background: '#333',
-                    color: '#ccc',
-                    padding: '10px',
-                    fontSize: '0.7rem',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                  }}
-                >
-                  <span>
-                    🟦 <strong>Colonnes</strong> : Utilisez les boutons pour ajouter.
-                  </span>
-                  <span>
-                    🟥 <strong>Lignes</strong> : Utilisez les boutons pour ajouter.
-                  </span>
-                </div>
               </div>
             )}
 
-            {/* Progress Bar */}
             {isProcessing && (
               <div style={{ marginTop: '1rem' }}>
                 <div
@@ -721,8 +710,8 @@ export default function UniversalOCRModal({
                   }}
                 >
                   <span>
-                    <FaSpinner className="spin" /> Analyse en cours... {statusText}
-                  </span>
+                    <FaSpinner className="spin" /> Analyse... {statusText}
+                  </span>{' '}
                   <span>{progress}%</span>
                 </div>
                 <div
@@ -747,7 +736,7 @@ export default function UniversalOCRModal({
           </div>
         </div>
 
-        {/* --- RESULTS TABLE --- */}
+        {/* RESULTS TABLE */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
           {candidates.length > 0 && (
             <div className="table-container">
@@ -860,7 +849,7 @@ export default function UniversalOCRModal({
           )}
         </div>
 
-        {/* --- FOOTER --- */}
+        {/* FOOTER */}
         <div
           style={{
             borderTop: '1px solid #eee',
