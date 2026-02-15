@@ -11,6 +11,7 @@ import BatchPrintModal from './BatchPrintModal'; // [NEW]
 import BatchResultModal from './BatchResultModal'; // [NEW]
 import { exportWorkersToExcel } from '../services/excelExport';
 import { useToast } from './Toast'; // [NEW] Import Toast Hook
+import UniversalOCRModal from './UniversalOCRModal'; // [NEW] Import
 import {
   FaPlus,
   FaSearch,
@@ -24,6 +25,7 @@ import {
   FaSortDown,
   FaUserPlus,
   FaCheckSquare, // [NEW] Icon for Toggle
+  FaCamera,
 } from 'react-icons/fa';
 
 // [SURGICAL ADDITION] Fix #5: Loading Skeleton
@@ -118,6 +120,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   );
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showMoveModal, setShowMoveModal] = useState(false);
+  const [showOCRModal, setShowOCRModal] = useState(false); // [NEW]
 
   // ==================================================================================
   // 2. DATA LOADING & EFFECTS
@@ -697,6 +700,15 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
             <FaCheckSquare />
           </button>
 
+{/* [NEW] SCAN BUTTON */}
+          <button
+            className="btn btn-outline"
+            onClick={() => setShowOCRModal(true)}
+            title="Scanner une liste papier (OCR)"
+          >
+            <FaCamera /> <span className="hide-mobile">Scan</span>
+          </button>
+
           {/* [NEW] EXCEL BUTTON (For Administration) */}
           <button
             className="btn btn-outline"
@@ -1088,7 +1100,20 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
           onCancel={() => setShowResultModal(false)}
         />
       )}
+{/* [NEW] OCR Modal for Workers */}
+      {showOCRModal && (
+        <UniversalOCRModal
+          mode="worker" // <--- Tells it to save to Worker DB
+          departments={departments}
+          onClose={() => setShowOCRModal(false)}
+          onImportSuccess={(count) => {
+            loadData();
+            showToast(`${count} travailleurs importés !`, 'success');
+          }}
+        />
+      )}
 
+  
       {/* [NEW] TOAST CONTAINER */}
       <ToastContainer />
     </div>

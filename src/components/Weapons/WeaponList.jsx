@@ -11,6 +11,8 @@ import BatchPrintModal from '../BatchPrintModal';
 import BatchResultModal from '../BatchResultModal';
 import { exportWeaponsToExcel } from '../../services/excelExport';
 import { pdfService } from '../../services/pdfGenerator';
+import UniversalOCRModal from '../UniversalOCRModal'; // [NEW]
+
 import {
   FaPlus,
   FaSearch,
@@ -30,6 +32,7 @@ import {
   FaPrint,
   FaArchive, // [NEW]
   FaExchangeAlt, // [NEW]
+  FaCamera,
 } from 'react-icons/fa';
 
 export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
@@ -59,6 +62,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const [showResultModal, setShowResultModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false); // [NEW]
+  const [showOCRModal, setShowOCRModal] = useState(false); // [NEW]
 
   const loadData = async () => {
     try {
@@ -367,6 +371,17 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
             <FaFileUpload />
             <input type="file" onChange={handleImport} style={{ display: 'none' }} accept=".json" />
           </label>
+
+          {/* [NEW] SCAN BUTTON - PASTE HERE */}
+          <button
+            className="btn btn-outline"
+            onClick={() => setShowOCRModal(true)}
+            title="Scanner une liste (OCR)"
+            style={{ padding: '0.8rem 1rem' }}
+          >
+            <FaCamera /> <span className="hide-mobile">Scan</span>
+          </button>
+
           <button
             className="btn btn-outline"
             style={{ color: '#107C41', borderColor: '#107C41', padding: '0.8rem 1rem' }}
@@ -374,6 +389,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           >
             <FaFileExcel /> <span className="hide-mobile">Excel</span>
           </button>
+
           <button
             className="btn btn-primary"
             style={{ padding: '0.8rem 1rem' }}
@@ -685,6 +701,18 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           onSave={() => {
             setShowForm(false);
             loadData();
+          }}
+        />
+      )}
+      {/* [NEW] OCR Modal for Weapons */}
+      {showOCRModal && (
+        <UniversalOCRModal
+          mode="weapon" // <--- Crucial: Sets the target database
+          departments={departments}
+          onClose={() => setShowOCRModal(false)}
+          onImportSuccess={(count) => {
+            loadData();
+            showToast(`${count} agents importés !`, 'success');
           }}
         />
       )}
