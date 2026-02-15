@@ -162,24 +162,38 @@ export default function UniversalOCRModal({
 
         if (rowHeight < 15) continue; // Skip too small slices
 
-        // 3. Create Slice Canvas
+        // 3. Create Slice Canvas (Scaled 2x for better resolution)
+        const scale = 2;
         const rowCanvas = document.createElement('canvas');
-        rowCanvas.width = masterCanvas.width; // Keep full width to preserve X coords
-        rowCanvas.height = rowHeight;
+        rowCanvas.width = masterCanvas.width * scale;
+        rowCanvas.height = rowHeight * scale;
         const rowCtx = rowCanvas.getContext('2d');
 
-        // Enhance contrast for better OCR (Reduced from 1.5 to avoid washout)
-        rowCtx.filter = 'grayscale(1) contrast(1.2)';
-
-        // Draw the strip
+        // Draw scaled image
         rowCtx.drawImage(
           masterCanvas,
           0, yStart, masterCanvas.width, rowHeight, // Source
-          0, 0, masterCanvas.width, rowHeight       // Dest
+          0, 0, rowCanvas.width, rowCanvas.height   // Dest
         );
 
-        // 4. Run OCR on Strip with Padding (Crucial for Tesseract)
-        const padding = 20;
+        // Apply Binarization (Thresholding) manually for max contrast
+        // This forces pixels to be either black or white, removing gray noise
+        const imgData = rowCtx.getImageData(0, 0, rowCanvas.width, rowCanvas.height);
+        const d = imgData.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const r = d[i];
+          const g = d[i+1];
+          const b = d[i+2];
+          // Standard luminance formula
+          const v = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          // Threshold at 128 (can be adjusted, but 128 is standard)
+          const val = v >= 128 ? 255 : 0;
+          d[i] = d[i+1] = d[i+2] = val;
+        }
+        rowCtx.putImageData(imgData, 0, 0);
+
+        // 4. Run OCR on Strip with Padding
+        const padding = 20 * scale;
         const paddedCanvas = document.createElement('canvas');
         paddedCanvas.width = rowCanvas.width + padding * 2;
         paddedCanvas.height = rowCanvas.height + padding * 2;
@@ -188,7 +202,7 @@ export default function UniversalOCRModal({
         pCtx.fillRect(0, 0, paddedCanvas.width, paddedCanvas.height);
         pCtx.drawImage(rowCanvas, padding, padding);
 
-        // Use PSM 6 (Sparse Text Block) - Safe default for mixed content
+        // Use PSM 6 (Sparse Text Block)
         await worker.setParameters({ tessedit_pageseg_mode: '6' });
         const result = await worker.recognize(paddedCanvas);
         const data = result.data;
@@ -197,13 +211,13 @@ export default function UniversalOCRModal({
         const rawWords = data.words || [];
         totalWordsFound += rawWords.length;
 
-        // Adjust coordinates back to original image space (remove padding)
+        // Adjust coordinates back to original image space (remove padding AND scale)
         const words = rawWords.map((w) => ({
           ...w,
           bbox: {
             ...w.bbox,
-            x0: w.bbox.x0 - padding,
-            x1: w.bbox.x1 - padding,
+            x0: (w.bbox.x0 - padding) / scale,
+            x1: (w.bbox.x1 - padding) / scale,
           },
         }));
 
