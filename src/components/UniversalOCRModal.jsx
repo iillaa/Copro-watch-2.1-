@@ -149,6 +149,7 @@ export default function UniversalOCRModal({
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
 
       let allCandidates = [];
+      let totalWordsFound = 0;
       const totalSlices = sortedH.length - 1;
 
       for (let r = 0; r < totalSlices; r++) {
@@ -167,8 +168,8 @@ export default function UniversalOCRModal({
         rowCanvas.height = rowHeight;
         const rowCtx = rowCanvas.getContext('2d');
 
-        // Enhance contrast for better OCR
-        rowCtx.filter = 'grayscale(1) contrast(1.5)';
+        // Enhance contrast for better OCR (Reduced from 1.5 to avoid washout)
+        rowCtx.filter = 'grayscale(1) contrast(1.2)';
 
         // Draw the strip
         rowCtx.drawImage(
@@ -187,21 +188,17 @@ export default function UniversalOCRModal({
         pCtx.fillRect(0, 0, paddedCanvas.width, paddedCanvas.height);
         pCtx.drawImage(rowCanvas, padding, padding);
 
-        // Try PSM 7 (Single Line) first - best for horizontal strips
-        await worker.setParameters({ tessedit_pageseg_mode: '7' });
-        let result = await worker.recognize(paddedCanvas);
-        let data = result.data;
-
-        // If very few words found, fallback to PSM 6 (Sparse Text Block)
-        if (!data.words || data.words.length < 2) {
-          await worker.setParameters({ tessedit_pageseg_mode: '6' });
-          result = await worker.recognize(paddedCanvas);
-          data = result.data;
-        }
+        // Use PSM 6 (Sparse Text Block) - Safe default for mixed content
+        await worker.setParameters({ tessedit_pageseg_mode: '6' });
+        const result = await worker.recognize(paddedCanvas);
+        const data = result.data;
 
         // 5. Parse Data for this Slice
+        const rawWords = data.words || [];
+        totalWordsFound += rawWords.length;
+
         // Adjust coordinates back to original image space (remove padding)
-        const words = (data.words || []).map((w) => ({
+        const words = rawWords.map((w) => ({
           ...w,
           bbox: {
             ...w.bbox,
@@ -262,9 +259,16 @@ export default function UniversalOCRModal({
         setCandidates(allCandidates);
       } else {
         console.warn('⚠️ No candidates found with slicing.');
-        alert(
-          `Aucune donnée trouvée.\n\nConseils:\n1. Vérifiez que les lignes rouges séparent bien chaque ligne de texte.\n2. Vérifiez que les colonnes bleues encadrent bien le texte.`
-        );
+        // Diagnostic Alert
+        if (totalWordsFound > 0) {
+          alert(
+            `Texte détecté (${totalWordsFound} mots) mais ignoré par le filtrage.\n\nSolution : Ajustez les lignes BLEUES (Colonnes) pour qu'elles passent BIEN au milieu des espaces blancs, sans couper le texte.`
+          );
+        } else {
+          alert(
+            `Aucun texte détecté.\n\nConseils :\n1. L'image est-elle nette ?\n2. Le contraste est-il suffisant ?\n3. Essayez de redessiner les lignes rouges.`
+          );
+        }
       }
 
     } catch (err) {
