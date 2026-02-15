@@ -117,133 +117,139 @@ export default function UniversalOCRModal({
     }
   };
 
-  // 3. OCR EXECUTION
+  // 3. OCR EXECUTION (Slicing Strategy)
   const runOCR = async () => {
     if (!image) return;
     setIsProcessing(true);
     setCandidates([]);
     setProgress(0);
+    setStatusText('Initialisation...');
+
+    let worker = null;
 
     try {
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
 
-      // [FIX] PRE-PROCESS IMAGE ON CANVAS
-      // This fixes the mobile rotation issue by drawing what you see onto a fresh canvas
-      const canvas = document.createElement('canvas');
-      const ctx = canvas.getContext('2d');
-      const imgEl = imageRef.current; // Get the actual <img> DOM element
+      // Initialize Worker
+      worker = await Tesseract.createWorker(langs);
 
-      // Set canvas to match the displayed image dimensions (or natural)
-      canvas.width = imgEl.naturalWidth;
-      canvas.height = imgEl.naturalHeight;
-      ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
-      const cleanImage = canvas.toDataURL('image/jpeg');
+      // 1. Create Master Canvas (Clean Image)
+      const masterCanvas = document.createElement('canvas');
+      const ctx = masterCanvas.getContext('2d');
+      const imgEl = imageRef.current;
 
-      const { data } = await Tesseract.recognize(cleanImage, langs, {
-        logger: (m) => {
-          if (m.status === 'recognizing text') {
-            setProgress(parseInt(m.progress * 100));
+      // Ensure we use natural dimensions
+      masterCanvas.width = imgEl.naturalWidth;
+      masterCanvas.height = imgEl.naturalHeight;
+      ctx.drawImage(imgEl, 0, 0, masterCanvas.width, masterCanvas.height);
+
+      // 2. Loop through User's Horizontal Lines (Percentages)
+      // Use hLines if present, otherwise default to full image (0 to 1)
+      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+
+      let allCandidates = [];
+      const totalSlices = sortedH.length - 1;
+
+      for (let r = 0; r < totalSlices; r++) {
+        setProgress(Math.round(((r) / totalSlices) * 100));
+        setStatusText(`Lecture ligne ${r + 1}/${totalSlices}...`);
+
+        const yStart = Math.floor(sortedH[r] * masterCanvas.height);
+        const yEnd = Math.floor(sortedH[r + 1] * masterCanvas.height);
+        const rowHeight = yEnd - yStart;
+
+        if (rowHeight < 15) continue; // Skip too small slices
+
+        // 3. Create Slice Canvas
+        const rowCanvas = document.createElement('canvas');
+        rowCanvas.width = masterCanvas.width; // Keep full width to preserve X coords
+        rowCanvas.height = rowHeight;
+        const rowCtx = rowCanvas.getContext('2d');
+
+        // Draw the strip
+        rowCtx.drawImage(
+          masterCanvas,
+          0, yStart, masterCanvas.width, rowHeight, // Source
+          0, 0, masterCanvas.width, rowHeight       // Dest
+        );
+
+        // 4. Run OCR on Strip
+        // PSM 6 (Sparse Text Block) is robust for table rows
+        await worker.setParameters({ tessedit_pageseg_mode: '6' });
+
+        // Pass canvas directly for efficiency
+        const { data } = await worker.recognize(rowCanvas);
+
+        // 5. Parse Data for this Slice
+        const words = data.words || [];
+
+        let candidate = {
+          id: Date.now() + Math.random(),
+          national_id: '',
+          full_name: '',
+          department_id: '',
+          job_info: '',
+          original_name: '',
+          isArabic: false,
+        };
+        let hasData = false;
+
+        for (let c = 0; c < sortedV.length - 1; c++) {
+          const xStart = sortedV[c] * masterCanvas.width;
+          const xEnd = sortedV[c + 1] * masterCanvas.width;
+          const fieldType = colMapping[c] || 'ignore';
+
+          if (fieldType === 'ignore') continue;
+
+          const cellWords = words.filter((w) => {
+            if (!w || !w.bbox) return false;
+            const wx = (w.bbox.x0 + w.bbox.x1) / 2;
+            // X coords are preserved in the slice
+            return wx >= xStart && wx < xEnd;
+          });
+
+          const cellText = cellWords
+            .map((w) => w.text)
+            .join(' ')
+            .replace(/[|\[\]{};:_*!@#$%^&()]/g, '')
+            .trim();
+
+          if (cellText) {
+            candidate[fieldType] = cellText.toUpperCase();
+            if (fieldType === 'full_name') {
+              candidate.original_name = candidate[fieldType];
+              candidate.isArabic = /[\u0600-\u06FF]/.test(candidate[fieldType]);
+            }
+            hasData = true;
           }
-          setStatusText(m.status);
-        },
-        tessedit_pageseg_mode: '11', // Sparse Text Mode
-      });
+        }
 
-      // CHECK FOR COORDINATES
-      let hasCoordinates = false;
-      if (data.words && data.words.length > 0) hasCoordinates = true;
-      else if (data.lines && data.lines.some((l) => l.words && l.words.length > 0))
-        hasCoordinates = true;
-
-      if (hasCoordinates) {
-        console.log('✅ Mode Grille activé (Coordonnées trouvées)');
-        parseDataToCandidates(data);
-      } else {
-        // FALLBACK
-        console.warn('⚠️ Pas de coordonnées. Passage au mode Texte.');
-        if (data.text && data.text.length > 10) {
-          parseTextToCandidates(data.text);
-        } else {
-          alert("Aucun texte détecté. Vérifiez l'éclairage.");
+        if (hasData) {
+          allCandidates.push(candidate);
         }
       }
+
+      // Update State
+      if (allCandidates.length > 0) {
+        console.log(`✅ Slicing OCR Complete: Found ${allCandidates.length} candidates.`);
+        setCandidates(allCandidates);
+      } else {
+        console.warn('⚠️ No candidates found with slicing.');
+        alert("Aucune donnée trouvée. Vérifiez le quadrillage ou l'éclairage.");
+      }
+
     } catch (err) {
       console.error(err);
       alert('Erreur OCR: ' + (err.message || "Impossible de lire l'image"));
     } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // 4A. GRID PARSER
-  const parseDataToCandidates = (data) => {
-    // Deep search for words
-    let words = [];
-    if (data.words && data.words.length > 0) words = data.words;
-    else if (data.lines) words = data.lines.flatMap((l) => l.words || []);
-    // Try Paragraphs too
-    if (words.length === 0 && data.paragraphs) {
-      words = data.paragraphs.flatMap((p) => p.lines.flatMap((l) => l.words || []));
-    }
-
-    const detected = [];
-    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-    let finalHLines = hLines.length > 0 ? hLines : [];
-    const sortedH = [0, ...finalHLines, 1].sort((a, b) => a - b);
-
-    // If no Horizontal lines, just do one big pass (unless user wants auto-rows, but manual is safer)
-    const rowCount = sortedH.length > 1 ? sortedH.length - 1 : 1;
-    const useRows = sortedH.length > 1;
-
-    for (let r = 0; r < rowCount; r++) {
-      const yStart = useRows ? sortedH[r] * imgDimensions.height : 0;
-      const yEnd = useRows ? sortedH[r + 1] * imgDimensions.height : imgDimensions.height;
-
-      if (yEnd - yStart < 15) continue;
-
-      let candidate = {
-        id: Date.now() + Math.random(),
-        national_id: '',
-        full_name: '',
-        department_id: '',
-        job_info: '',
-        original_name: '',
-        isArabic: false,
-      };
-      let hasData = false;
-
-      for (let c = 0; c < sortedV.length - 1; c++) {
-        const xStart = sortedV[c] * imgDimensions.width;
-        const xEnd = sortedV[c + 1] * imgDimensions.width;
-        const fieldType = colMapping[c] || 'ignore';
-
-        if (fieldType === 'ignore') continue;
-
-        const cellWords = words.filter((w) => {
-          if (!w || !w.bbox) return false;
-          const wx = (w.bbox.x0 + w.bbox.x1) / 2;
-          const wy = (w.bbox.y0 + w.bbox.y1) / 2;
-          return wx >= xStart && wx < xEnd && wy >= yStart && wy < yEnd;
-        });
-
-        const cellText = cellWords
-          .map((w) => w.text)
-          .join(' ')
-          .replace(/[|\[\]{};:_*!@#$%^&()]/g, '')
-          .trim();
-
-        if (cellText) {
-          candidate[fieldType] = cellText.toUpperCase();
-          if (fieldType === 'full_name') {
-            candidate.original_name = candidate[fieldType];
-            candidate.isArabic = /[\u0600-\u06FF]/.test(candidate[fieldType]);
-          }
-          hasData = true;
-        }
+      if (worker) {
+        await worker.terminate();
       }
-      if (hasData) detected.push(candidate);
+      setIsProcessing(false);
+      setProgress(100);
+      setStatusText('Terminé');
     }
-    setCandidates(detected);
   };
 
   // 4B. FALLBACK PARSER (Added to fix "not defined" error)
