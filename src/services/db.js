@@ -385,42 +385,57 @@ export const db = {
     }
   },
   // [NEW] JANITOR FUNCTION
-  async cleanupOrphans() {
+  // Optimized to reduce memory usage by using primaryKeys() and each()
+  async cleanupOrphans(database = dbInstance) {
     console.log('🧹 Starting Cleanup...');
     let deletedExams = 0;
     let deletedWater = 0;
 
     // 1. Clean Exams (Ghost Workers)
-    const workerIds = new Set((await dbInstance.workers.toArray()).map((w) => w.id));
-    const allExams = await dbInstance.exams.toArray();
-    const orphanExamIds = allExams.filter((e) => !workerIds.has(e.worker_id)).map((e) => e.id);
+    // PERFORMANCE: Use primaryKeys() to avoid loading full objects
+    const workerIds = new Set(await database.workers.toCollection().primaryKeys());
+    const orphanExamIds = [];
+
+    // PERFORMANCE: Use each() to iterate without loading all exams into memory
+    await database.exams.each((exam) => {
+      if (!workerIds.has(exam.worker_id)) {
+        orphanExamIds.push(exam.id);
+      }
+    });
 
     if (orphanExamIds.length > 0) {
-      await dbInstance.exams.bulkDelete(orphanExamIds);
+      await database.exams.bulkDelete(orphanExamIds);
       deletedExams = orphanExamIds.length;
     }
 
     // 2. Clean Water Logs (Ghost Locations)
-    const deptIds = new Set((await dbInstance.departments.toArray()).map((d) => d.id));
-    const waterDeptIds = new Set((await dbInstance.water_departments.toArray()).map((d) => d.id));
-    const allWater = await dbInstance.water_analyses.toArray();
+    // PERFORMANCE: Use primaryKeys()
+    const deptIds = new Set(await database.departments.toCollection().primaryKeys());
+    const waterDeptIds = new Set(await database.water_departments.toCollection().primaryKeys());
+    const orphanWaterIds = [];
 
-    const orphanWaterIds = allWater
-      .filter((log) => {
-        // Rule 1: If it has a department_id, that ID must exist
-        if (log.department_id && !deptIds.has(log.department_id)) return true;
-        // Rule 2: If it has a structure_id, that ID must exist
-        if (log.structure_id && !waterDeptIds.has(log.structure_id)) return true;
-        return false;
-      })
-      .map((l) => l.id);
+    await database.water_analyses.each((log) => {
+      // Rule 1: If it has a department_id, that ID must exist
+      if (log.department_id && !deptIds.has(log.department_id)) {
+        orphanWaterIds.push(log.id);
+        return;
+      }
+      // Rule 2: If it has a structure_id, that ID must exist
+      if (log.structure_id && !waterDeptIds.has(log.structure_id)) {
+        orphanWaterIds.push(log.id);
+      }
+    });
 
     if (orphanWaterIds.length > 0) {
-      await dbInstance.water_analyses.bulkDelete(orphanWaterIds);
+      await database.water_analyses.bulkDelete(orphanWaterIds);
       deletedWater = orphanWaterIds.length;
     }
 
-    await triggerBackupCheck();
+    // Only trigger backup if using the real DB instance (avoids side effects in tests)
+    if (database === dbInstance) {
+      await triggerBackupCheck();
+    }
+
     return { exams: deletedExams, water: deletedWater };
   },
 };
