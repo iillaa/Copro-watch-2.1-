@@ -116,7 +116,7 @@ export default function UniversalOCRModal({
   };
 
   // 4. OCR EXECUTION
- // [SURGICAL UPDATE] Force "Sparse Text" Mode to get Coordinates
+ // [HYBRID UPDATE] Try Grid (Coords) -> Fallback to Text (Regex)
   const runOCR = async () => {
     if (!image) return;
     setIsProcessing(true);
@@ -133,13 +133,28 @@ export default function UniversalOCRModal({
           }
           setStatusText(m.status);
         },
-        // [CRITICAL FIX] 
-        // PSM 11 = Sparse text. Find as much text as possible in no particular order.
-        // This forces Tesseract to isolate words and give them coordinates.
-        tessedit_pageseg_mode: '11', 
+        tessedit_pageseg_mode: '11', // Sparse Text Mode
       });
 
-      parseDataToCandidates(data);
+      // 1. CHECK FOR COORDINATES
+      // Deep search for any words with bounding boxes
+      let hasCoordinates = false;
+      if (data.words && data.words.length > 0) hasCoordinates = true;
+      else if (data.lines && data.lines.some(l => l.words && l.words.length > 0)) hasCoordinates = true;
+
+      if (hasCoordinates) {
+        console.log("✅ Mode Grille activé (Coordonnées trouvées)");
+        parseDataToCandidates(data);
+      } else {
+        // 2. FALLBACK: TEXT MODE
+        console.warn("⚠️ Pas de coordonnées. Passage au mode Texte (Regex).");
+        if (data.text && data.text.length > 10) {
+           parseTextToCandidates(data.text); // <--- We need to add this function below
+        } else {
+           alert("Aucun texte détecté. Vérifiez l'éclairage et la netteté.");
+        }
+      }
+
     } catch (err) {
       console.error(err);
       alert('Erreur OCR: ' + (err.message || "Impossible de lire l'image"));
