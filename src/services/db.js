@@ -391,9 +391,15 @@ export const db = {
     let deletedWater = 0;
 
     // 1. Clean Exams (Ghost Workers)
-    const workerIds = new Set((await dbInstance.workers.toArray()).map((w) => w.id));
-    const allExams = await dbInstance.exams.toArray();
-    const orphanExamIds = allExams.filter((e) => !workerIds.has(e.worker_id)).map((e) => e.id);
+    // ⚡ Bolt Optimization: Use primaryKeys() and each() to reduce memory usage
+    const workerIds = new Set(await dbInstance.workers.toCollection().primaryKeys());
+
+    const orphanExamIds = [];
+    await dbInstance.exams.each((exam) => {
+      if (!workerIds.has(exam.worker_id)) {
+        orphanExamIds.push(exam.id);
+      }
+    });
 
     if (orphanExamIds.length > 0) {
       await dbInstance.exams.bulkDelete(orphanExamIds);
@@ -401,19 +407,21 @@ export const db = {
     }
 
     // 2. Clean Water Logs (Ghost Locations)
-    const deptIds = new Set((await dbInstance.departments.toArray()).map((d) => d.id));
-    const waterDeptIds = new Set((await dbInstance.water_departments.toArray()).map((d) => d.id));
-    const allWater = await dbInstance.water_analyses.toArray();
+    // ⚡ Bolt Optimization: Load only IDs
+    const deptIds = new Set(await dbInstance.departments.toCollection().primaryKeys());
+    const waterDeptIds = new Set(await dbInstance.water_departments.toCollection().primaryKeys());
 
-    const orphanWaterIds = allWater
-      .filter((log) => {
-        // Rule 1: If it has a department_id, that ID must exist
-        if (log.department_id && !deptIds.has(log.department_id)) return true;
-        // Rule 2: If it has a structure_id, that ID must exist
-        if (log.structure_id && !waterDeptIds.has(log.structure_id)) return true;
-        return false;
-      })
-      .map((l) => l.id);
+    const orphanWaterIds = [];
+    // ⚡ Bolt Optimization: Stream records instead of loading all at once
+    await dbInstance.water_analyses.each((log) => {
+      let isOrphan = false;
+      // Rule 1: If it has a department_id, that ID must exist
+      if (log.department_id && !deptIds.has(log.department_id)) isOrphan = true;
+      // Rule 2: If it has a structure_id, that ID must exist
+      else if (log.structure_id && !waterDeptIds.has(log.structure_id)) isOrphan = true;
+
+      if (isOrphan) orphanWaterIds.push(log.id);
+    });
 
     if (orphanWaterIds.length > 0) {
       await dbInstance.water_analyses.bulkDelete(orphanWaterIds);
