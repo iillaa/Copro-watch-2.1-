@@ -14,6 +14,9 @@ import {
   FaClipboardList,
   FaArrowsAltH,
   FaArrowsAltV,
+  FaList,
+  FaImage,
+  FaEye,
 } from 'react-icons/fa';
 
 // --- ALG-FR TRANSLITERATION ENGINE ---
@@ -72,7 +75,8 @@ export default function UniversalOCRModal({
   onImportSuccess,
   departments,
 }) {
-  // 1. STATE
+  // ========== STATE ==========
+  const [activeTab, setActiveTab] = useState('scan'); // 'scan' | 'results'
   const [image, setImage] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -81,17 +85,15 @@ export default function UniversalOCRModal({
   const [docLanguage, setDocLanguage] = useState('fra');
   const [debugMode, setDebugMode] = useState(false);
 
-  // LOGGING SYSTEM
+  // LOGS: Full Array + Scroll
   const [logs, setLogs] = useState([]);
   const addLog = (msg) => {
     const time = new Date().toLocaleTimeString();
-    const logLine = `[${time}] ${msg}`;
-    console.log(logLine);
-    setLogs((prev) => [...prev, logLine]);
+    setLogs((prev) => [...prev, `[${time}] ${msg}`]);
   };
 
   // Grid State
-  const [vLines, setVLines] = useState([0.2, 0.5, 0.8]);
+  const [vLines, setVLines] = useState([0.25, 0.5, 0.75]);
   const [hLines, setHLines] = useState([]);
   const [colMapping, setColMapping] = useState([
     'national_id',
@@ -99,6 +101,7 @@ export default function UniversalOCRModal({
     'department_id',
     'job_info',
   ]);
+
   const [imgDimensions, setImgDimensions] = useState({ width: 0, height: 0 });
   const imageRef = useRef(null);
   const canvasRef = useRef(null);
@@ -111,112 +114,103 @@ export default function UniversalOCRModal({
     { val: 'ignore', label: 'Ignorer' },
   ];
 
-  // 2. IMAGE LOADING (SANITIZER)
+  // ========== IMAGE LOADING ==========
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      addLog(`[LOAD] File selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
       const reader = new FileReader();
-
       reader.onload = (event) => {
         const img = new Image();
         img.onload = () => {
-          // Create a canvas to "bake" the rotation/dimensions
+          if (!img.width || !img.height) {
+            alert('Erreur: Image invalide.');
+            return;
+          }
           const canvas = document.createElement('canvas');
           let width = img.width;
           let height = img.height;
 
-          addLog(`[LOAD] Native Dimensions: ${width}x${height}`);
-
-          // Cap resolution to 2000px width for stability
-          if (width > 2000) {
-            const scale = 2000 / width;
-            width = 2000;
-            height = height * scale;
-            addLog(`[LOAD] Resizing to: ${width}x${Math.round(height)} for performance`);
+          // Cap resolution for Global Scan stability (Tesseract crash prevention)
+          if (width > 2500) {
+            const scale = 2500 / width;
+            width = 2500;
+            height = Math.round(height * scale);
           }
 
           canvas.width = width;
           canvas.height = height;
-
           const ctx = canvas.getContext('2d');
+          // Fill white (Fix transparent PNGs returning black/0 words)
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
 
-          const cleanUrl = canvas.toDataURL('image/jpeg', 0.9);
-          addLog(`[LOAD] Image sanitized and ready.`);
+          const cleanUrl = canvas.toDataURL('image/jpeg', 0.95);
 
           setImage(cleanUrl);
           setImgDimensions({ width, height });
           setCandidates([]);
           setHLines([]);
+          setActiveTab('scan');
+
+          setLogs([]); // Reset logs
+          addLog(`[LOAD] Image chargée. Dimensions: ${width}x${height}px`);
         };
-        img.onerror = () => addLog('[ERROR] Failed to load image object.');
         img.src = event.target.result;
       };
       reader.readAsDataURL(file);
     }
   };
 
-  // 3. DEBUGGER: VISUALIZE GRID
+  // ========== VISUAL DEBUGGER ==========
   const drawDebugGrid = () => {
-    addLog('[DEBUG] Drawing Visual Grid...');
     const canvas = canvasRef.current;
-
     if (!canvas || !imageRef.current) {
-      addLog('[ERROR] Canvas or Image ref missing. Is the image loaded?');
+      addLog('[DEBUG ERROR] Impossible de dessiner (Canvas/Image manquant)');
       return;
     }
-
     const ctx = canvas.getContext('2d');
-
-    // Match dimensions strictly to internal state
     canvas.width = imgDimensions.width;
     canvas.height = imgDimensions.height;
 
-    // Draw Image
     try {
       ctx.drawImage(imageRef.current, 0, 0, canvas.width, canvas.height);
     } catch (e) {
-      addLog('[ERROR] Error drawing image to debug canvas: ' + e.message);
       return;
     }
 
-    // Draw Rows (Red)
     const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-    ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-    ctx.lineWidth = 5;
 
+    // Draw Rows
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+    ctx.lineWidth = 4;
     for (let r = 0; r < sortedH.length - 1; r++) {
       const y = sortedH[r] * canvas.height;
       const h = (sortedH[r + 1] - sortedH[r]) * canvas.height;
       ctx.strokeRect(0, y, canvas.width, h);
-
       ctx.fillStyle = 'red';
       ctx.font = 'bold 30px monospace';
-      ctx.fillText(`ROW ${r + 1} (y=${Math.round(y)})`, 20, y + 40);
+      ctx.fillText(`ROW ${r + 1} (Y=${Math.round(y)})`, 20, y + 40);
     }
 
-    // Draw Columns (Blue)
+    // Draw Cols
     ctx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
     vLines.forEach((v, i) => {
       const x = v * canvas.width;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, canvas.height);
-      ctx.stroke();
-
+      ctx.strokeRect(x, 0, 2, canvas.height);
       ctx.fillStyle = 'blue';
-      ctx.fillText(`COL ${i + 1} (${Math.round(v * 100)}%)`, x + 10, 80);
+      ctx.fillText(`C${i + 1}`, x + 5, 60);
     });
-    addLog('[DEBUG] Grid drawn. Check the yellow box below.');
+
+    addLog('[DEBUG] Grille dessinée dans le cadre jaune.');
   };
 
-  // 4. OCR ENGINE: HEAVY LOGGING
+  // ========== MAIN OCR ENGINE ==========
   const runOCR = async () => {
     if (!image) return;
-    setLogs([]);
-    addLog('🚀 === STARTING OCR PROCESS ===');
-    addLog(`[CONFIG] Image Size: ${imgDimensions.width}x${imgDimensions.height}`);
+    setLogs([]); // Clear previous logs
+    addLog('🚀 ========== OCR START ==========');
+    addLog(`[CONFIG] Résolution: ${imgDimensions.width}x${imgDimensions.height}`);
 
     if (debugMode) {
       drawDebugGrid();
@@ -226,214 +220,227 @@ export default function UniversalOCRModal({
     setIsProcessing(true);
     setCandidates([]);
     setProgress(0);
-    setStatusText('Initialisation...');
+    setStatusText('Démarrage Tesseract...');
 
     let worker = null;
-
     try {
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
-      addLog(`[TESSERACT] Initializing Worker for languages: ${langs}`);
+      addLog(`[TESSERACT] Chargement langue: ${langs}`);
 
-      worker = await Tesseract.createWorker(langs);
-      addLog('[TESSERACT] Worker Ready.');
+      worker = await Tesseract.createWorker(langs, 1, {
+        logger: (m) => {
+          if (m.status.includes('download'))
+            addLog(`[DL] ${m.status}: ${Math.round(m.progress * 100)}%`);
+          if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100));
+        },
+      });
 
-      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+      // PSM 11 = Sparse Text (Force coordinates)
+      // PSM 6 = Block Text (Better for full tables)
+      // We start with 11 to try and get coordinates for the grid
+      await worker.setParameters({
+        tessedit_pageseg_mode: '11',
+        preserve_interword_spaces: '1',
+      });
+
+      setStatusText('Scan Global...');
+      addLog('[SCAN] Lancement de la reconnaissance...');
+
+      const { data } = await worker.recognize(image);
+
+      // --- DEEP EXTRACTION LOGIC ---
+      let allWords = data.words || [];
+      // If root is empty, dig deeper
+      if (allWords.length === 0 && data.lines) {
+        allWords = data.lines.flatMap((l) => l.words || []);
+      }
+
+      addLog(`[SCAN] Terminé. ${allWords.length} mots avec coordonnées trouvés.`);
+
+      // Detailed diagnostics for 0 words
+      if (allWords.length === 0) {
+        addLog(`[DIAGNOSTIC] 0 mots trouvés. Causes possibles:`);
+        addLog(`  1. Image floue ou trop petite.`);
+        addLog(`  2. PSM 11 a échoué (structure complexe).`);
+        addLog(
+          `  3. Texte brut trouvé ? ${data.text ? 'OUI (' + data.text.length + ' chars)' : 'NON'}`
+        );
+        if (data.text) addLog(`[PREVIEW] "${data.text.substring(0, 50)}..."`);
+      }
+
       let detected = [];
 
-      addLog(
-        `[GRID] Config: ${sortedH.length - 1} Rows defined, ${sortedV.length - 1} Columns defined.`
-      );
-      addLog(`[GRID] Columns (X%): ${sortedV.map((v) => (v * 100).toFixed(1) + '%').join(', ')}`);
-
-      // STRATEGY: Native Rectangle Slicing
-      if (hLines.length > 0) {
-        const rowCount = sortedH.length - 1;
-
-        for (let r = 0; r < rowCount; r++) {
-          const yStart = Math.floor(sortedH[r] * imgDimensions.height);
-          const height = Math.floor((sortedH[r + 1] - sortedH[r]) * imgDimensions.height);
-
-          addLog(`\n--- ROW ${r + 1} ANALYSIS ---`);
-          addLog(`[SLICE] Y-Start: ${yStart}px, Height: ${height}px`);
-
-          if (height < 20) {
-            addLog('[SKIP] Row too short (<20px). Likely noise.');
-            continue;
-          }
-
-          const pct = Math.round(((r + 1) / rowCount) * 100);
-          setProgress(pct);
-          setStatusText(`Lecture ligne ${r + 1}/${rowCount}...`);
-
-          // USE NATIVE TESSERACT RECTANGLE
-          const rect = {
-            top: yStart,
-            left: 0,
-            width: imgDimensions.width,
-            height: height,
-          };
-
-          const { data } = await worker.recognize(image, {
-            rectangle: rect,
-            tessedit_pageseg_mode: '6', // Block mode
-          });
-
-          // SAFETY CHECK
-          const words = data.words || [];
-          addLog(`[OCR] Found ${words.length} words in this strip.`);
-
-          if (words.length === 0) {
-            addLog(`[OCR WARNING] Empty strip? Raw text: "${data.text.trim()}"`);
-          } else {
-            const preview = data.text.replace(/\n/g, ' ').substring(0, 60);
-            addLog(`[OCR PREVIEW] "${preview}..."`);
-          }
-
-          // MAP WORDS TO COLUMNS
-          let candidate = createEmptyCandidate();
-          let hasData = false;
-
-          words.forEach((w) => {
-            if (w.confidence < 40) {
-              // addLog(`[FILTER] Ignored low conf word: "${w.text}" (${w.confidence}%)`);
-              return;
-            }
-
-            // Calculate relative position within the STRIP
-            // NOTE: bbox is relative to the RECTANGLE, not the whole image in some versions,
-            // but usually relative to the input image if using 'rectangle'.
-            // Let's debug coordinates.
-            const xCenter = (w.bbox.x0 + w.bbox.x1) / 2;
-            const xPct = xCenter / imgDimensions.width;
-
-            // addLog(`[MAP] Word "${w.text}" center X=${Math.round(xCenter)}px (${(xPct*100).toFixed(1)}%)`);
-
-            let matched = false;
-            for (let c = 0; c < sortedV.length - 1; c++) {
-              const startPct = sortedV[c];
-              const endPct = sortedV[c + 1];
-
-              if (xPct >= startPct && xPct < endPct) {
-                const fieldType = colMapping[c] || 'ignore';
-                if (fieldType !== 'ignore') {
-                  const cleanWord = w.text.replace(/[|\[\]{};:_*!@#$%^&()]/g, '').trim();
-                  if (cleanWord) {
-                    candidate[fieldType] =
-                      (candidate[fieldType] ? candidate[fieldType] + ' ' : '') +
-                      cleanWord.toUpperCase();
-                    hasData = true;
-                    matched = true;
-                  }
-                }
-                break;
-              }
-            }
-            // if(!matched) addLog(`[UNMATCHED] "${w.text}" at ${(xPct*100).toFixed(1)}% (Outside defined cols?)`);
-          });
-
-          if (hasData) {
-            if (candidate.full_name) {
-              candidate.original_name = candidate.full_name;
-              candidate.isArabic = /[\u0600-\u06FF]/.test(candidate.full_name);
-            }
-            addLog(`[SUCCESS] Extracted: ${JSON.stringify(candidate)}`);
-            detected.push(candidate);
-          } else {
-            addLog('[FAIL] Row processed but map yielded no valid data.');
-          }
-        }
+      // STRATEGY A: GEOMETRIC GRID
+      // Only runs if User defined rows AND we have coordinates
+      if (hLines.length > 0 && allWords.length > 0) {
+        addLog('[MODE] 📐 Grille Géométrique (High Precision)');
+        detected = filterWordsByGrid(allWords, imgDimensions.width, imgDimensions.height);
       }
-      // FALLBACK: Full Page
+      // STRATEGY B: FALLBACK TEXT
       else {
-        addLog('\n[FALLBACK] No Red Lines. Switching to Full Page Mode (PSM 3).');
-        setStatusText('Lecture globale (Auto)...');
-        await worker.setParameters({ tessedit_pageseg_mode: '3' });
-        const { data } = await worker.recognize(image);
-        addLog(`[FALLBACK] Full page OCR complete. Text length: ${data.text.length}`);
+        addLog('[MODE] 📝 Analyse Texte Fallback (Mode Secours)');
+        if (hLines.length > 0)
+          addLog("[WARN] La grille a été ignorée car Tesseract n'a pas donné de coordonnées.");
 
-        detected = parseTextToCandidatesLogic(data.text);
-        addLog(`[FALLBACK] Regex Parser found ${detected.length} candidates.`);
-      }
-
-      if (detected.length === 0) {
-        addLog('\n[CRITICAL] Final Result is EMPTY.');
-        alert(
-          'Aucune donnée trouvée. Vérifiez les logs pour voir si les colonnes (Bleu) sont bien alignées avec le texte.'
-        );
-      } else {
-        addLog(`\n🏁 FINISHED. Found ${detected.length} candidates.`);
+        const rawText = data.text || '';
+        detected = parseTextToCandidates(rawText);
       }
 
       setCandidates(detected);
+
+      if (detected.length > 0) {
+        addLog(`[SUCCESS] ${detected.length} fiches extraites.`);
+        setActiveTab('results'); // Switch tab
+      } else {
+        addLog('[FAIL] Aucun candidat extrait après analyse.');
+        alert('Aucune donnée trouvée. Vérifiez les logs.');
+      }
     } catch (err) {
-      console.error(err);
-      addLog(`[EXCEPTION] ${err.message}`);
-      alert('Erreur: ' + err.message);
+      addLog(`[CRASH] ${err.message}`);
+      alert(`Erreur: ${err.message}`);
     } finally {
       if (worker) await worker.terminate();
       setIsProcessing(false);
-      setStatusText('');
     }
   };
 
-  // LOGIC HELPERS
-  const parseTextToCandidatesLogic = (text) => {
-    const lines = text.split('\n');
-    const detected = [];
-    lines.forEach((line) => {
-      const cleanLine = line.replace(/[|\[\]{};:.,_*!@#$%^&()]/g, ' ').trim();
-      if (cleanLine.length < 3) return;
-      const tokens = cleanLine.split(/\s+/);
-      let matricule = '';
-      let nameParts = [];
-      tokens.forEach((token) => {
-        if (/^\d{2,15}$/.test(token) && !matricule) matricule = token;
-        else if (/[a-zA-ZÀ-ÿ\u0600-\u06FF]{2,}/.test(token)) {
-          const upper = token.toUpperCase();
-          if (!['MAT', 'MATRICULE', 'NOM', 'PRENOM', 'SERVICE', 'GRADE'].includes(upper))
-            nameParts.push(token);
+  // --- FILTERING LOGIC (Detailed Logs) ---
+  const filterWordsByGrid = (words, scanWidth, scanHeight) => {
+    const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+    const results = [];
+
+    addLog(
+      `[FILTER] Application de la grille: ${sortedH.length - 1} Lignes, ${
+        sortedV.length - 1
+      } Colonnes`
+    );
+
+    for (let r = 0; r < sortedH.length - 1; r++) {
+      const yMin = Math.floor(sortedH[r] * scanHeight);
+      const yMax = Math.floor(sortedH[r + 1] * scanHeight);
+
+      // 1. Log Row Boundaries
+      // addLog(`--- Ligne ${r+1}: Y=${yMin} à ${yMax} ---`);
+
+      if (yMax - yMin < 20) {
+        addLog(`[Ligne ${r + 1}] Ignorée (trop petite < 20px)`);
+        continue;
+      }
+
+      // 2. Filter Words by Y
+      const rowWords = words.filter((w) => {
+        const centerY = (w.bbox.y0 + w.bbox.y1) / 2;
+        return centerY >= yMin && centerY < yMax && w.confidence > 40;
+      });
+
+      if (rowWords.length === 0) {
+        // Verbose: Explain why it's empty
+        // const nearbyWords = words.filter(w => Math.abs(w.bbox.y0 - yMin) < 50);
+        // addLog(`[Ligne ${r+1}] Vide. (Mots proches trouvés à Y=${nearbyWords.length > 0 ? nearbyWords[0].bbox.y0 : 'Aucun'})`);
+        continue;
+      }
+
+      let candidate = createEmptyCandidate();
+      let hasData = false;
+
+      // Sort words Left -> Right
+      rowWords.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+
+      // 3. Map to Columns
+      rowWords.forEach((w) => {
+        const centerX = (w.bbox.x0 + w.bbox.x1) / 2;
+        const xPct = centerX / scanWidth;
+
+        for (let c = 0; c < sortedV.length - 1; c++) {
+          if (xPct >= sortedV[c] && xPct < sortedV[c + 1]) {
+            const field = colMapping[c];
+            if (field && field !== 'ignore') {
+              const txt = w.text
+                .replace(/[|\[\]{};:*!@#$%^&()]/g, '')
+                .trim()
+                .toUpperCase();
+              candidate[field] = (candidate[field] ? candidate[field] + ' ' : '') + txt;
+              hasData = true;
+            }
+            break;
+          }
         }
       });
-      if (nameParts.length > 0) {
-        const fullName = nameParts.join(' ').replace(/['"]/g, '');
-        detected.push({
-          id: Date.now() + Math.random(),
-          national_id: matricule || '?',
-          full_name: fullName.toUpperCase(),
-          original_name: fullName.toUpperCase(),
-          department_id: '',
-          job_info: '',
-          isArabic: /[\u0600-\u06FF]/.test(fullName),
-        });
+
+      if (hasData) {
+        cleanCandidate(candidate);
+        addLog(`[Ligne ${r + 1}] OK: ${candidate.national_id} | ${candidate.full_name}`);
+        results.push(candidate);
+      } else {
+        addLog(`[Ligne ${r + 1}] Mots trouvés mais mapping colonne échoué.`);
       }
-    });
-    return detected;
+    }
+    return results;
   };
 
+  const parseTextToCandidates = (text) => {
+    addLog('[PARSER] Analyse du texte brut (Ligne par ligne)...');
+    const lines = text.split('\n');
+    const results = [];
+    lines.forEach((line) => {
+      const tokens = line.trim().split(/\s+/);
+      let matricule = '',
+        nameParts = [];
+      tokens.forEach((t) => {
+        let clean = t.replace(/[^\w\d]/g, '').toUpperCase();
+        // Typo fix
+        if (/^[lIi]A/.test(clean)) clean = clean.replace(/^[lIi]/, '7');
+        if (/^T[A-Z]/.test(clean)) clean = clean.replace(/^T/, '7');
+
+        if ((/^\d{2,15}$/.test(clean) || /^\d+[A-Z]+\d+$/.test(clean)) && !matricule) {
+          matricule = clean;
+        } else if (clean.length > 1 && !['MAT', 'NOM', 'PRENOM'].includes(clean)) {
+          nameParts.push(t);
+        }
+      });
+
+      if (nameParts.length > 0) {
+        let job = '';
+        let name = nameParts.join(' ');
+        // Smart Split: Last word is Job?
+        if (colMapping.includes('job_info') && nameParts.length > 1) {
+          job = nameParts.pop();
+          name = nameParts.join(' ');
+        }
+
+        let cand = createEmptyCandidate();
+        cand.national_id = matricule || '?';
+        cand.full_name = name.toUpperCase();
+        cand.job_info = job.toUpperCase();
+        cleanCandidate(cand);
+        results.push(cand);
+      }
+    });
+    return results;
+  };
+
+  // --- HELPERS ---
   const createEmptyCandidate = () => ({
-    id: Date.now() + Math.random(),
+    id: Math.random(),
     national_id: '',
     full_name: '',
     department_id: '',
     job_info: '',
-    original_name: '',
     isArabic: false,
   });
 
-  const handleTransliterate = (id, originalName) => {
-    const frenchName = transliterateArToFr(originalName);
-    updateCandidate(id, 'full_name', frenchName);
+  const cleanCandidate = (c) => {
+    if (c.national_id) c.national_id = c.national_id.replace(/^[lIiT]A/, '7A').replace(/O/g, '0');
+    c.isArabic = /[\u0600-\u06FF]/.test(c.full_name);
+    if (c.isArabic) c.original_name = c.full_name;
   };
-  const handleRevertArabic = (id, originalName) => {
-    updateCandidate(id, 'full_name', originalName);
+
+  const updateCandidate = (id, field, val) => {
+    setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: val } : c)));
   };
-  const updateCandidate = (id, field, value) => {
-    setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: value } : c)));
-  };
-  const removeCandidate = (id) => {
-    setCandidates((prev) => prev.filter((c) => c.id !== id));
-  };
+  const removeCandidate = (id) => setCandidates((prev) => prev.filter((c) => c.id !== id));
+
   const handleBulkImport = async () => {
     if (candidates.length === 0) return;
     const valid = candidates.filter((c) => c.full_name || c.national_id);
@@ -442,7 +449,6 @@ export default function UniversalOCRModal({
         full_name: c.full_name || 'Inconnu',
         national_id: c.national_id || '?',
         department_id: c.department_id ? parseInt(c.department_id) : null,
-        archived: false,
         status: mode === 'worker' ? 'active' : 'pending',
         created_at: new Date().toISOString(),
       };
@@ -476,34 +482,76 @@ export default function UniversalOCRModal({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: '1rem',
+            padding: '1rem',
             borderBottom: '1px solid #eee',
-            paddingBottom: '1rem',
           }}
         >
-          <div>
-            <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <FaCamera color="var(--primary)" /> Scan Intelligent (Debug V2)
-            </h3>
-            <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>
-              Tracez les lignes. Consultez les logs en bas si ça échoue.
-            </p>
-          </div>
+          <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <FaCamera color="var(--primary)" /> Smart Scan (Pro Debug)
+          </h3>
           <button onClick={onClose} className="btn-close">
             ×
           </button>
         </div>
 
-        {/* CONTROLS */}
-        <div style={{ padding: '0 0.5rem 1rem' }}>
-          <div
+        {/* TABS (NAVIGATION) */}
+        <div style={{ display: 'flex', borderBottom: '1px solid #ddd', background: '#f8fafc' }}>
+          <button
+            onClick={() => setActiveTab('scan')}
             style={{
-              background: '#f8fafc',
-              padding: '1rem',
-              borderRadius: '8px',
-              border: '1px solid #e2e8f0',
+              flex: 1,
+              padding: '12px',
+              border: 'none',
+              background: activeTab === 'scan' ? 'white' : 'transparent',
+              fontWeight: activeTab === 'scan' ? 'bold' : 'normal',
+              borderBottom: activeTab === 'scan' ? '3px solid var(--primary)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
             }}
           >
+            <FaImage /> 1. Image & Grille
+          </button>
+          <button
+            onClick={() => setActiveTab('results')}
+            disabled={candidates.length === 0}
+            style={{
+              flex: 1,
+              padding: '12px',
+              border: 'none',
+              background: activeTab === 'results' ? 'white' : 'transparent',
+              fontWeight: activeTab === 'results' ? 'bold' : 'normal',
+              borderBottom: activeTab === 'results' ? '3px solid var(--primary)' : 'none',
+              cursor: candidates.length > 0 ? 'pointer' : 'not-allowed',
+              color: candidates.length > 0 ? 'black' : '#ccc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            <FaList /> 2. Résultats{' '}
+            {candidates.length > 0 && (
+              <span
+                style={{
+                  background: 'var(--primary)',
+                  color: 'white',
+                  borderRadius: '10px',
+                  padding: '2px 6px',
+                  fontSize: '0.7rem',
+                }}
+              >
+                {candidates.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* TAB CONTENT: SCANNER */}
+        {activeTab === 'scan' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
             <div
               style={{
                 display: 'flex',
@@ -514,7 +562,7 @@ export default function UniversalOCRModal({
               }}
             >
               <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer' }}>
-                <FaCamera /> {image ? 'Changer' : 'Photo'}
+                <FaCamera /> {image ? 'Changer Image' : 'Charger Image'}
                 <input
                   type="file"
                   accept="image/*"
@@ -523,67 +571,44 @@ export default function UniversalOCRModal({
                 />
               </label>
 
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px',
-                  background: 'white',
-                  padding: '5px 10px',
-                  borderRadius: '4px',
-                  border: '1px solid #ddd',
-                }}
+              <select
+                className="input"
+                style={{ width: 'auto' }}
+                value={docLanguage}
+                onChange={(e) => setDocLanguage(e.target.value)}
               >
-                <FaGlobeAfrica color="#666" />
-                <select
-                  className="input"
-                  style={{
-                    width: 'auto',
-                    padding: '2px',
-                    border: 'none',
-                    background: 'transparent',
-                    fontSize: '0.8rem',
-                  }}
-                  value={docLanguage}
-                  onChange={(e) => setDocLanguage(e.target.value)}
-                >
-                  <option value="fra">🇫🇷 Français</option>
-                  <option value="ara">🇩🇿 Arabe</option>
-                </select>
-              </div>
+                <option value="fra">🇫🇷 Français</option>
+                <option value="ara">🇩🇿 Arabe</option>
+              </select>
 
               {image && (
                 <>
                   <div
-                    style={{ borderLeft: '1px solid #ccc', height: '20px', margin: '0 5px' }}
+                    style={{ width: '1px', height: '20px', background: '#ccc', margin: '0 5px' }}
                   ></div>
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => setVLines([...vLines, 0.5])}
                   >
-                    {' '}
-                    <FaPlus /> Col (Bleu){' '}
+                    + Col
                   </button>
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => setHLines([...hLines, 0.5])}
                   >
-                    {' '}
-                    <FaPlus /> Ligne (Rouge){' '}
+                    + Ligne
                   </button>
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => {
-                      setVLines([]);
+                      setVLines([0.25, 0.5, 0.75]);
                       setHLines([]);
                     }}
-                    style={{ color: 'red', borderColor: 'red' }}
+                    style={{ color: 'red' }}
                   >
-                    {' '}
-                    <FaEraser /> Reset{' '}
+                    Reset
                   </button>
 
-                  {/* DEBUG TOGGLE */}
                   <label
                     className="btn btn-sm"
                     style={{
@@ -602,7 +627,7 @@ export default function UniversalOCRModal({
                       onChange={(e) => setDebugMode(e.target.checked)}
                       style={{ display: 'none' }}
                     />
-                    <FaBug /> Debug {debugMode ? 'ON' : 'OFF'}
+                    <FaBug /> Debug
                   </label>
 
                   {!isProcessing && (
@@ -618,50 +643,40 @@ export default function UniversalOCRModal({
               )}
             </div>
 
-            {/* EDITOR CANVAS */}
+            {/* CANVAS EDITOR */}
             {image && (
               <div
                 style={{
-                  overflowX: 'auto',
-                  border: '1px solid #cbd5e1',
-                  borderRadius: '4px',
-                  background: '#333',
                   position: 'relative',
+                  overflowX: 'auto',
+                  border: '1px solid #ccc',
+                  background: '#333',
                 }}
               >
-                {/* HIDDEN CANVAS FOR DEBUGGING */}
+                {/* Debug Canvas */}
                 <canvas
                   ref={canvasRef}
-                  style={{
-                    display: debugMode ? 'block' : 'none',
-                    width: '100%',
-                    maxWidth: '800px',
-                    border: '2px solid yellow',
-                    margin: '10px auto',
-                  }}
+                  style={{ display: debugMode ? 'block' : 'none', width: '100%', maxWidth: '100%' }}
                 />
 
-                {/* NORMAL EDITOR */}
+                {/* Interactive Editor */}
                 <div
                   style={{
                     position: 'relative',
-                    minWidth: '800px',
-                    userSelect: 'none',
+                    minWidth: '600px',
                     display: debugMode ? 'none' : 'block',
                   }}
                 >
-                  {/* COLUMN HEADERS */}
+                  {/* Col Headers */}
                   <div
                     style={{
                       display: 'flex',
-                      width: '100%',
-                      background: '#e0f2fe',
-                      borderBottom: '1px solid #93c5fd',
                       position: 'absolute',
-                      top: '-30px',
+                      top: 0,
                       left: 0,
                       right: 0,
                       height: '30px',
+                      zIndex: 30,
                     }}
                   >
                     {(() => {
@@ -670,31 +685,31 @@ export default function UniversalOCRModal({
                         <div
                           key={i}
                           style={{
+                            position: 'absolute',
+                            left: `${x * 100}%`,
                             width: `${(sortedV[i + 1] - x) * 100}%`,
-                            padding: '4px',
-                            borderRight: '1px solid #93c5fd',
                             textAlign: 'center',
                           }}
                         >
                           <select
                             className="input"
                             style={{
-                              fontSize: '0.75rem',
-                              padding: '2px',
+                              fontSize: '0.7rem',
+                              padding: 0,
                               height: '24px',
-                              width: '100%',
-                              background: 'white',
+                              width: '95%',
+                              background: 'rgba(255,255,255,0.9)',
                             }}
                             value={colMapping[i] || 'ignore'}
                             onChange={(e) => {
-                              const newMap = [...colMapping];
-                              newMap[i] = e.target.value;
-                              setColMapping(newMap);
+                              const n = [...colMapping];
+                              n[i] = e.target.value;
+                              setColMapping(n);
                             }}
                           >
-                            {colOptions.map((opt) => (
-                              <option key={opt.val} value={opt.val}>
-                                {opt.label}
+                            {colOptions.map((o) => (
+                              <option key={o.val} value={o.val}>
+                                {o.label}
                               </option>
                             ))}
                           </select>
@@ -706,16 +721,11 @@ export default function UniversalOCRModal({
                   <img
                     ref={imageRef}
                     src={image}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      pointerEvents: 'none',
-                      marginTop: '30px',
-                    }}
+                    style={{ display: 'block', width: '100%', marginTop: '30px' }}
                     alt="Scan"
                   />
 
-                  {/* VERTICAL LINES (Columns - Blue) */}
+                  {/* Lines Overlay */}
                   {vLines.map((x, i) => (
                     <div
                       key={`v-${i}`}
@@ -730,40 +740,6 @@ export default function UniversalOCRModal({
                       }}
                     >
                       <div
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          const p = e.currentTarget.parentElement.parentElement;
-                          const move = (m) => {
-                            const rect = p.getBoundingClientRect();
-                            const nx = (m.clientX - rect.left) / rect.width;
-                            const nv = [...vLines];
-                            nv[i] = Math.max(0, Math.min(1, nx));
-                            setVLines(nv);
-                          };
-                          const up = () => {
-                            window.removeEventListener('mousemove', move);
-                            window.removeEventListener('mouseup', up);
-                          };
-                          window.addEventListener('mousemove', move);
-                          window.addEventListener('mouseup', up);
-                        }}
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
-                          const p = e.currentTarget.parentElement.parentElement;
-                          const move = (m) => {
-                            const rect = p.getBoundingClientRect();
-                            const nx = (m.touches[0].clientX - rect.left) / rect.width;
-                            const nv = [...vLines];
-                            nv[i] = Math.max(0, Math.min(1, nx));
-                            setVLines(nv);
-                          };
-                          const end = () => {
-                            window.removeEventListener('touchmove', move);
-                            window.removeEventListener('touchend', end);
-                          };
-                          window.addEventListener('touchmove', move);
-                          window.addEventListener('touchend', end);
-                        }}
                         style={{
                           position: 'absolute',
                           bottom: '-15px',
@@ -771,21 +747,26 @@ export default function UniversalOCRModal({
                           width: '20px',
                           height: '20px',
                           background: '#3b82f6',
-                          borderRadius: '4px',
-                          cursor: 'col-resize',
+                          color: 'white',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          color: 'white',
-                          border: '2px solid white',
+                          borderRadius: '50%',
+                          cursor: 'col-resize',
+                        }}
+                        onTouchMove={(e) => {
+                          const rect =
+                            e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+                          const nx = (e.touches[0].clientX - rect.left) / rect.width;
+                          const nv = [...vLines];
+                          nv[i] = Math.max(0, Math.min(1, nx));
+                          setVLines(nv);
                         }}
                       >
-                        <FaArrowsAltH size={12} />
+                        <FaArrowsAltH size={10} />
                       </div>
                     </div>
                   ))}
-
-                  {/* HORIZONTAL LINES (Rows - Red) */}
                   {hLines.map((y, i) => (
                     <div
                       key={`h-${i}`}
@@ -796,50 +777,10 @@ export default function UniversalOCRModal({
                         top: `calc(${y * 100}% + 30px)`,
                         height: '2px',
                         background: '#ef4444',
-                        zIndex: 10,
+                        zIndex: 20,
                       }}
                     >
                       <div
-                        onMouseDown={(e) => {
-                          e.stopPropagation();
-                          const p = e.currentTarget.parentElement.parentElement;
-                          const move = (m) => {
-                            const rect = p.getBoundingClientRect();
-                            const imgHeight = rect.height - 30;
-                            const ny = (m.clientY - rect.top - 30) / imgHeight;
-                            const nh = [...hLines];
-                            nh[i] = Math.max(0, Math.min(1, ny));
-                            setHLines(nh);
-                          };
-                          const up = () => {
-                            window.removeEventListener('mousemove', move);
-                            window.removeEventListener('mouseup', up);
-                          };
-                          window.addEventListener('mousemove', move);
-                          window.addEventListener('mouseup', up);
-                        }}
-                        onTouchStart={(e) => {
-                          e.stopPropagation();
-                          const p = e.currentTarget.parentElement.parentElement;
-                          const move = (m) => {
-                            const rect = p.getBoundingClientRect();
-                            const imgHeight = rect.height - 30;
-                            const ny = (m.touches[0].clientY - rect.top - 30) / imgHeight;
-                            const nh = [...hLines];
-                            nh[i] = Math.max(0, Math.min(1, ny));
-                            setHLines(nh);
-                          };
-                          const end = () => {
-                            window.removeEventListener('touchmove', move);
-                            window.removeEventListener('touchend', end);
-                          };
-                          window.addEventListener('touchmove', move);
-                          window.addEventListener('touchend', end);
-                        }}
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          setHLines(hLines.filter((_, idx) => idx !== i));
-                        }}
                         style={{
                           position: 'absolute',
                           right: '0',
@@ -847,16 +788,25 @@ export default function UniversalOCRModal({
                           width: '20px',
                           height: '20px',
                           background: '#ef4444',
-                          borderRadius: '4px',
-                          cursor: 'row-resize',
+                          color: 'white',
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'center',
-                          color: 'white',
-                          border: '2px solid white',
+                          borderRadius: '50%',
+                          cursor: 'row-resize',
                         }}
+                        onTouchMove={(e) => {
+                          const rect =
+                            e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+                          const imgH = rect.height - 30;
+                          const ny = (e.touches[0].clientY - rect.top - 30) / imgH;
+                          const nh = [...hLines];
+                          nh[i] = Math.max(0, Math.min(1, ny));
+                          setHLines(nh);
+                        }}
+                        onDoubleClick={() => setHLines(hLines.filter((_, idx) => idx !== i))}
                       >
-                        <FaArrowsAltV size={12} />
+                        <FaArrowsAltV size={10} />
                       </div>
                     </div>
                   ))}
@@ -864,86 +814,89 @@ export default function UniversalOCRModal({
               </div>
             )}
 
+            {/* Progress */}
             {isProcessing && (
-              <div style={{ marginTop: '1rem' }}>
+              <div
+                style={{
+                  marginTop: '1rem',
+                  background: '#e0f2fe',
+                  padding: '10px',
+                  borderRadius: '4px',
+                  color: '#0369a1',
+                }}
+              >
                 <div
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    fontSize: '0.8rem',
-                    marginBottom: '4px',
-                  }}
+                  style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '5px' }}
                 >
                   <span>
                     <FaSpinner className="spin" /> {statusText}
                   </span>{' '}
-                  <span>{progress}%</span>
+                  <b>{progress}%</b>
                 </div>
-                <div
-                  style={{
-                    width: '100%',
-                    background: '#e2e8f0',
-                    height: '8px',
-                    borderRadius: '4px',
-                  }}
-                >
+                <div style={{ height: '6px', background: '#bae6fd', borderRadius: '3px' }}>
                   <div
                     style={{
                       width: `${progress}%`,
-                      background: 'var(--primary)',
                       height: '100%',
-                      borderRadius: '4px',
-                      transition: 'width 0.3s',
+                      background: '#0284c7',
+                      borderRadius: '3px',
+                      transition: 'width 0.2s',
                     }}
                   ></div>
                 </div>
               </div>
             )}
-          </div>
-        </div>
 
-        {/* LOGS PANEL */}
-        {logs.length > 0 && (
-          <div
-            style={{
-              border: '1px solid #ddd',
-              background: '#2d3748',
-              color: '#a0aec0',
-              padding: '10px',
-              margin: '0 0.5rem',
-              maxHeight: '150px',
-              overflowY: 'auto',
-              borderRadius: '4px',
-              fontFamily: 'monospace',
-              fontSize: '0.7rem',
-            }}
-          >
-            <div
-              style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-                marginBottom: '5px',
-              }}
-            >
-              <strong>Logs du système OCR:</strong>
-              <button
-                onClick={() => navigator.clipboard.writeText(logs.join('\n'))}
-                className="btn btn-xs btn-outline"
-                style={{ color: 'white', borderColor: 'white' }}
+            {/* Logs - FULL SCROLLABLE */}
+            {logs.length > 0 && (
+              <div
+                style={{
+                  marginTop: '10px',
+                  padding: '10px',
+                  background: '#1e293b',
+                  color: '#94a3b8',
+                  fontSize: '0.7rem',
+                  maxHeight: '200px',
+                  overflowY: 'auto',
+                  borderRadius: '4px',
+                  fontFamily: 'monospace',
+                }}
               >
-                <FaClipboardList /> Copier logs
-              </button>
-            </div>
-            {logs.map((l, i) => (
-              <div key={i}>{l}</div>
-            ))}
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    marginBottom: '5px',
+                    borderBottom: '1px solid #334155',
+                    paddingBottom: '5px',
+                  }}
+                >
+                  <b>Console OCR</b>
+                  <button
+                    onClick={() => navigator.clipboard.writeText(logs.join('\n'))}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: 'inherit',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <FaClipboardList />
+                  </button>
+                </div>
+                {logs.map((l, i) => (
+                  <div key={i} style={{ marginBottom: '2px' }}>
+                    {l}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
-        {/* RESULTS TABLE */}
-        <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
-          {candidates.length > 0 && (
+        {/* TAB CONTENT: RESULTS TABLE */}
+        {activeTab === 'results' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
             <div className="table-container">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
                 <thead
@@ -952,15 +905,15 @@ export default function UniversalOCRModal({
                     top: 0,
                     background: 'white',
                     zIndex: 10,
-                    boxShadow: '0 2px 5px rgba(0,0,0,0.05)',
+                    borderBottom: '2px solid #eee',
                   }}
                 >
-                  <tr style={{ textAlign: 'left', color: '#64748b' }}>
+                  <tr style={{ color: '#64748b' }}>
                     <th style={{ padding: '10px' }}>Matricule</th>
-                    <th style={{ padding: '10px' }}>Nom (Détecté)</th>
+                    <th style={{ padding: '10px' }}>Nom</th>
                     <th style={{ padding: '10px' }}>Service</th>
                     <th style={{ padding: '10px' }}>{mode === 'worker' ? 'Poste' : 'Grade'}</th>
-                    <th style={{ padding: '10px' }}></th>
+                    <th></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -969,48 +922,18 @@ export default function UniversalOCRModal({
                       <td style={{ padding: '8px' }}>
                         <input
                           className="input"
-                          style={{ fontFamily: 'monospace', fontSize: '0.9rem', width: '100px' }}
                           value={c.national_id}
                           onChange={(e) => updateCandidate(c.id, 'national_id', e.target.value)}
+                          style={{ width: '80px', fontFamily: 'monospace' }}
                         />
                       </td>
                       <td style={{ padding: '8px' }}>
-                        <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
-                          <input
-                            className="input"
-                            style={{ fontWeight: 600 }}
-                            value={c.full_name}
-                            onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)}
-                          />
-                          {c.isArabic && (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                              <button
-                                className="btn btn-sm btn-outline"
-                                onClick={() => handleRevertArabic(c.id, c.original_name)}
-                                style={{
-                                  padding: '0px 4px',
-                                  fontSize: '0.65rem',
-                                  borderColor: '#10b981',
-                                  color: '#10b981',
-                                }}
-                              >
-                                ع
-                              </button>
-                              <button
-                                className="btn btn-sm btn-outline"
-                                onClick={() => handleTransliterate(c.id, c.original_name)}
-                                style={{
-                                  padding: '0px 4px',
-                                  fontSize: '0.65rem',
-                                  borderColor: '#8b5cf6',
-                                  color: '#8b5cf6',
-                                }}
-                              >
-                                FR
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <input
+                          className="input"
+                          value={c.full_name}
+                          onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)}
+                          style={{ fontWeight: 'bold' }}
+                        />
                       </td>
                       <td style={{ padding: '8px' }}>
                         <select
@@ -1018,7 +941,7 @@ export default function UniversalOCRModal({
                           value={c.department_id}
                           onChange={(e) => updateCandidate(c.id, 'department_id', e.target.value)}
                         >
-                          <option value="">-- Service --</option>
+                          <option value="">-</option>
                           {departments.map((d) => (
                             <option key={d.id} value={d.id}>
                               {d.name}
@@ -1033,15 +956,10 @@ export default function UniversalOCRModal({
                           onChange={(e) => updateCandidate(c.id, 'job_info', e.target.value)}
                         />
                       </td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>
+                      <td style={{ padding: '8px' }}>
                         <button
                           onClick={() => removeCandidate(c.id)}
-                          style={{
-                            color: 'var(--danger)',
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                          }}
+                          style={{ color: 'red', background: 'none', border: 'none' }}
                         >
                           <FaTimes />
                         </button>
@@ -1051,28 +969,28 @@ export default function UniversalOCRModal({
                 </tbody>
               </table>
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
         {/* FOOTER */}
-        <div
-          style={{
-            borderTop: '1px solid #eee',
-            padding: '1rem',
-            textAlign: 'right',
-            background: '#f8fafc',
-          }}
-        >
-          {candidates.length > 0 ? (
-            <button onClick={handleBulkImport} className="btn btn-primary">
-              <FaSave /> Enregistrer {candidates.length} fiches
+        {activeTab === 'results' && candidates.length > 0 && (
+          <div
+            style={{
+              padding: '1rem',
+              borderTop: '1px solid #eee',
+              background: 'white',
+              textAlign: 'right',
+            }}
+          >
+            <button
+              onClick={handleBulkImport}
+              className="btn btn-primary"
+              style={{ width: '100%' }}
+            >
+              <FaSave /> Sauvegarder {candidates.length} fiches
             </button>
-          ) : (
-            <button onClick={onClose} className="btn btn-outline">
-              Fermer
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );
