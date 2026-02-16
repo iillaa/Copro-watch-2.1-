@@ -1,155 +1,32 @@
-Here is the exact code modification guide for your src/components/UniversalOCRModal.jsx file.
+Voici la solution en 3 étapes pour télécharger les bons fichiers "cerveaux" (Modèles) et les mettre au bon endroit.
 
-Step 1: Add the Import
-At the very top of the file, add the import for the new library.
-(Note: Since client-side-ocr documentation varies, if createOCREngine isn't found, try importing OcrEngine or check the package README).
+Étape 1 : Créer le dossier
+Ouvrez votre terminal (dans Termux ou VS Code) à la racine du projet et créez le dossier :
 
-JavaScript
-// Add this to your imports at the top
-import { createOCREngine } from 'client-side-ocr'; 
-import { useState, useRef, useEffect } from 'react';
-// ... rest of imports
-Step 2: Add the Engine State
-Inside the component UniversalOCRModal, add a state variable to track which engine is selected.
+Bash
+mkdir -p public/models
+Étape 2 : Télécharger les 3 fichiers obligatoires
+Exécutez ces 3 commandes l'une après l'autre pour télécharger les modèles directement depuis les dépôts officiels (HuggingFace/GitHub) vers votre dossier public/models.
 
-JavaScript
-export default function UniversalOCRModal({ mode = 'worker', onClose, onImportSuccess, departments }) {
-  // ... existing state ...
-  const [activeTab, setActiveTab] = useState('scan');
-  
-  // ADD THIS LINE:
-  const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle'
+1. Le Détecteur (Repère où est le texte) :
 
-  // ... rest of state
-Step 3: Rename runOCR to runTesseractOCR
-Find your existing const runOCR = async () => { ... } function.
-Rename it to runTesseractOCR. Do not change the code inside it yet.
+Bash
+curl -L -o public/models/det.onnx https://github.com/RapidAI/RapidOCR/releases/download/v1.1.0/ch_PP-OCRv4_det_infer.onnx
+2. Le Reconnaisseur Arabe (Lit le texte) :
 
-JavaScript
-// RENAME THIS FUNCTION
-const runTesseractOCR = async () => {
-    // ... keep all existing Tesseract logic ...
-};
-Step 4: Add the new runPaddleOCR Function
-Paste this new function below runTesseractOCR. This is the logic that uses your new library and models.
+Bash
+curl -L -o public/models/rec_ara.onnx https://github.com/RapidAI/RapidOCR/releases/download/v1.1.0/arabic_PP-OCRv3_rec_infer.onnx
+3. Le Dictionnaire (La liste des lettres Arabes) :
 
-JavaScript
-  // --- NEW ENGINE: PADDLE OCR (The "Turbo" Mode) ---
-  const runPaddleOCR = async () => {
-    if (!image || !imageRef.current) return;
-    setIsProcessing(true);
-    setLogs([]);
-    addLog('[PADDLE] Initialisation du moteur Neural (WASM)...');
-    setProgress(10);
+Bash
+curl -L -o public/models/keys_ara.txt https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/release/2.6/ppocr/utils/dict/arabic_dict.txt
+(Note : Si curl ne marche pas, vous pouvez télécharger ces liens manuellement et renommer les fichiers comme indiqué ci-dessus).
 
-    try {
-      // 1. Initialize Engine (Points to your public/models folder)
-      const ocr = await createOCREngine({ 
-        models: {
-          det: '/models/det.onnx',      // Must match your file in public/models/
-          rec: '/models/rec_ara.onnx',  // Must match your file in public/models/
-          dic: '/models/keys_ara.txt'   // Must match your file in public/models/
-        }
-      });
-      
-      addLog('[PADDLE] Moteur chargé. Analyse de l\'image complète...');
-      setProgress(30);
+Étape 3 : Vérification
+Allez voir dans votre dossier public/models. Vous devez avoir exactement ces 3 fichiers avec des tailles similaires :
 
-      // 2. Run OCR on the WHOLE image (Paddle is smart, no cropping needed)
-      const result = await ocr.detect(imageRef.current);
-      setProgress(80);
+det.onnx (~4.6 Mo)
 
-      // 3. Adapt Paddle results to your Grid System
-      // Paddle returns: { text: "...", box: [x,y,w,h], score: 0.99 }
-      // We map it to: { text: "...", bbox: {x0, y0, x1, y1} }
-      const adaptedWords = result.map(item => ({
-        text: item.text,
-        confidence: item.score * 100,
-        bbox: {
-          x0: item.box[0], // Left
-          y0: item.box[1], // Top
-          x1: item.box[0] + item.box[2], // Right = Left + Width
-          y1: item.box[1] + item.box[3]  // Bottom = Top + Height
-        }
-      }));
+rec_ara.onnx (~2.5 Mo)
 
-      addLog(`[PADDLE] ${adaptedWords.length} éléments détectés. Application de la grille...`);
-
-      // 4. Use your EXISTING grid logic (filterWordsByGrid) to sort words
-      const candidates = filterWordsByGrid(adaptedWords, imgDimensions.width, imgDimensions.height);
-      
-      setCandidates(candidates);
-      setActiveTab('results');
-      addLog(`[SUCCESS] Analyse Paddle terminée.`);
-
-    } catch (e) {
-      addLog(`[ERREUR PADDLE] ${e.message}`);
-      console.error(e);
-      alert("Erreur PaddleOCR: Vérifiez que les modèles sont dans /public/models/");
-    } finally {
-      setIsProcessing(false);
-      setProgress(100);
-    }
-  };
-Step 5: Add the "Master Switch"
-Add this simple handler function to decide which engine to run when you click GO.
-
-JavaScript
-  const handleGo = () => {
-    if (ocrEngine === 'paddle') {
-      runPaddleOCR();
-    } else {
-      runTesseractOCR();
-    }
-  };
-Step 6: Update the UI (Buttons)
-Find the section where the GO button is (inside {image && ...}). Replace the existing button code with this Toggle + GO block.
-
-JavaScript
-                  {/* --- ENGINE TOGGLE SWITCH --- */}
-                  <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '6px', padding: '2px', marginRight: '10px' }}>
-                    <button
-                      onClick={() => setOcrEngine('tesseract')}
-                      style={{
-                        background: ocrEngine === 'tesseract' ? 'white' : 'transparent',
-                        color: ocrEngine === 'tesseract' ? '#0f172a' : '#64748b',
-                        border: '1px solid',
-                        borderColor: ocrEngine === 'tesseract' ? '#cbd5e1' : 'transparent',
-                        borderRadius: '4px',
-                        padding: '4px 12px',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      Tesseract (Safe)
-                    </button>
-                    <button
-                      onClick={() => setOcrEngine('paddle')}
-                      style={{
-                        background: ocrEngine === 'paddle' ? 'var(--primary)' : 'transparent',
-                        color: ocrEngine === 'paddle' ? 'white' : '#64748b',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '4px 12px',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s'
-                      }}
-                    >
-                      Paddle AI (Turbo)
-                    </button>
-                  </div>
-
-                  {/* --- MAIN GO BUTTON --- */}
-                  {!isProcessing && (
-                    <button
-                      onClick={handleGo} // UPDATED: Calls the switch function
-                      className="btn btn-success btn-sm"
-                      style={{ marginLeft: 'auto', fontWeight: 'bold' }}
-                    >
-                      <FaMagic /> GO
-                    </button>
-                  )}
+keys_ara.txt (~10 Ko)

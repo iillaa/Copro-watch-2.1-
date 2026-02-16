@@ -1,53 +1,19 @@
 import { useState, useRef, useEffect } from 'react';
 import Tesseract from 'tesseract.js';
-import { createOCREngine } from 'client-side-ocr';
+import Ocr from '@gutenye/ocr-browser';
+import * as ort from 'onnxruntime-web';
+
+// 1. MATCH YOUR VERSION (Change 1.19.0 to whatever 'npm list' showed)
+const ORT_VERSION = '1.24.1'; 
+const CDN_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+
+// 2. FORCE PATHS BEFORE THE LIBRARY LOADS
+ort.env.wasm.wasmPaths = CDN_URL;
+// This tells the engine to use the main thread to fetch WASM, 
+// which avoids the "Worker 404" problem.
+ort.env.wasm.proxy = true; 
+
 import { db } from '../services/db';
-
-// --- GRID MAPPING LOGIC (FOR PADDLE) ---
-const filterWordsByGrid = (words, imgW, imgH, vLines, hLines, colMapping, isRTL) => {
-  const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-  const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-  const results = [];
-
-  for (let r = 0; r < sortedH.length - 1; r++) {
-    const rowY0 = sortedH[r] * imgH;
-    const rowY1 = sortedH[r + 1] * imgH;
-    let candidate = {
-      id: Math.random(),
-      national_id: '',
-      full_name: '',
-      department_id: '',
-      job_info: '',
-      isArabic: false,
-    };
-    let hasData = false;
-
-    for (let c = 0; c < sortedV.length - 1; c++) {
-      const colIndex = isRTL ? sortedV.length - 2 - c : c;
-      const field = colMapping[colIndex];
-      if (!field || field === 'ignore') continue;
-
-      const colX0 = sortedV[colIndex] * imgW;
-      const colX1 = sortedV[colIndex + 1] * imgW;
-
-      const cellWords = words.filter((w) => {
-        const midX = (w.bbox.x0 + w.bbox.x1) / 2;
-        const midY = (w.bbox.y0 + w.bbox.y1) / 2;
-        return midX >= colX0 && midX <= colX1 && midY >= rowY0 && midY <= rowY1;
-      });
-
-      if (cellWords.length > 0) {
-        const sortedCellWords = cellWords.sort((a, b) => a.bbox.x0 - b.bbox.x0);
-        candidate[field] = sortedCellWords.map((w) => w.text).join(' ');
-        hasData = true;
-      }
-    }
-    if (hasData) {
-      results.push(candidate);
-    }
-  }
-  return results;
-};
 import {
   FaCamera,
   FaSpinner,
@@ -66,46 +32,16 @@ import {
   FaEye,
 } from 'react-icons/fa';
 
-// --- ALG-FR TRANSLITERATION ENGINE ---
+// --- ALG-FR TRANSLITERATION ENGINE (RESTORED) ---
 const transliterateArToFr = (text) => {
   if (!text) return '';
   const map = {
-    ا: 'A',
-    أ: 'A',
-    إ: 'E',
-    آ: 'A',
-    ى: 'A',
-    ة: 'A',
-    ب: 'B',
-    ت: 'T',
-    ث: 'T',
-    ج: 'DJ',
-    ح: 'H',
-    خ: 'KH',
-    د: 'D',
-    ذ: 'D',
-    ر: 'R',
-    ز: 'Z',
-    س: 'S',
-    ش: 'CH',
-    ص: 'S',
-    ض: 'D',
-    ط: 'T',
-    ظ: 'Z',
-    ع: 'A',
-    غ: 'GH',
-    ف: 'F',
-    ق: 'K',
-    ك: 'K',
-    ل: 'L',
-    م: 'M',
-    ن: 'N',
-    ه: 'H',
-    و: 'OU',
-    ي: 'Y',
-    ' ': ' ',
-    '-': '-',
-    '.': '.',
+    ا: 'A', أ: 'A', إ: 'E', آ: 'A', ى: 'A', ة: 'A',
+    ب: 'B', ت: 'T', ث: 'T', ج: 'DJ', ح: 'H', خ: 'KH',
+    د: 'D', ذ: 'D', ر: 'R', ز: 'Z', س: 'S', ش: 'CH',
+    ص: 'S', ض: 'D', ط: 'T', ظ: 'Z', ع: 'A', غ: 'GH',
+    ف: 'F', ق: 'K', ك: 'K', ل: 'L', م: 'M', ن: 'N',
+    ه: 'H', و: 'OU', ي: 'Y', ' ': ' ', '-': '-', '.': '.',
   };
   return text
     .split('')
@@ -130,9 +66,11 @@ export default function UniversalOCRModal({
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [docLanguage, setDocLanguage] = useState('fra');
-  const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' | 'paddle'
   const [debugMode, setDebugMode] = useState(false);
   const [debugCrops, setDebugCrops] = useState([]);
+  
+  // NEW: Engine State
+  const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle'
 
   // LOGS: Full Array + Scroll
   const [logs, setLogs] = useState([]);
@@ -163,7 +101,7 @@ export default function UniversalOCRModal({
     { val: 'ignore', label: 'Ignorer' },
   ];
 
-  // ========== IMAGE LOADING ==========
+  // ========== IMAGE LOADING (RESTORED EXACTLY) ==========
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
@@ -211,10 +149,7 @@ export default function UniversalOCRModal({
     }
   };
 
-  // Helper to extract a cell with padding
-  // KEEPING YOUR ORIGINAL BINARIZATION LOGIC (SAFE)
-  // 3. IMPROVED: Smart Grayscale (Fixes "Merged Words" in Arabic)
-  // 4. FINAL TUNED: High-Res Crisp Binarization (Best for IDs & Arabic Separation)
+  // ========== TESSERACT HELPER (RESTORED EXACTLY) ==========
   const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
@@ -233,41 +168,27 @@ export default function UniversalOCRModal({
 
     ctx.drawImage(
       imgElement,
-      rect.x,
-      rect.y,
-      rect.width,
-      rect.height,
-      paddingX * scale,
-      paddingY * scale,
-      rect.width * scale,
-      rect.height * scale
+      rect.x, rect.y, rect.width, rect.height,
+      paddingX * scale, paddingY * scale, rect.width * scale, rect.height * scale
     );
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
     const data = imageData.data;
 
     // FIX 2: Hard Threshold (175) - Makes text solid black, background solid white.
-    // This restores the accuracy for "7A146" which needs sharp edges.
     const threshold = 175;
 
     for (let i = 0; i < data.length; i += 4) {
-      // Standard Grayscale calculation
       const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-
-      // BINARIZATION ONLY:
-      // If dark, make it Pitch Black (0). If light, make it Pure White (255).
-      // CRITICAL: We REMOVED the "Dilation" loop (neighbor check) here.
-      // This prevents "fading" pixels from bridging the gap between words.
       let v = gray < threshold ? 0 : 255;
-
       data[i] = data[i + 1] = data[i + 2] = v;
     }
 
     ctx.putImageData(imageData, 0, 0);
-    return canvas.toDataURL('image/png'); // PNG is sharper for binary text than JPEG
+    return canvas.toDataURL('image/png'); 
   };
 
-  // ========== VISUAL DEBUGGER ==========
+  // ========== VISUAL DEBUGGER (RESTORED) ==========
   const drawDebugGrid = () => {
     const canvas = canvasRef.current;
     if (!canvas || !imageRef.current) {
@@ -310,7 +231,7 @@ export default function UniversalOCRModal({
     addLog('[DEBUG] Grille dessinée dans le cadre jaune.');
   };
 
-  // ========== MAIN OCR ENGINES ==========
+  // ========== ENGINE 1: TESSERACT (RENAMED FROM runOCR) ==========
   const runTesseractOCR = async () => {
     if (!image || !imageRef.current) return;
     if (debugMode) {
@@ -323,6 +244,7 @@ export default function UniversalOCRModal({
     setIsProcessing(true);
     setCandidates([]);
     setProgress(0);
+    setStatusText('Tesseract (Local)...');
 
     let worker = null;
     try {
@@ -351,8 +273,6 @@ export default function UniversalOCRModal({
             continue;
           }
 
-          // --- FIX 1: SAFETY MARGIN INCREASED ---
-          // Increased from 6 to 10 to cover thick table lines safely
           const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
           const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
           const safetyMargin = 10;
@@ -385,18 +305,16 @@ export default function UniversalOCRModal({
           // Generate URL
           const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
 
-          // Debug Trace - Always add even if confidence is low, so we can see what happened
+          // Debug Trace
           setDebugCrops((prev) => [...prev, { label: `R${r + 1}C${c + 1}`, url: cellUrl }]);
 
           const {
             data: { text, confidence },
           } = await worker.recognize(cellUrl);
 
-          // --- FIX 2: BORDER CLEANER REGEX ---
-          // Strips leading/trailing |, I, -, _ often caused by borders
           let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
 
-          // NOISE FILTER: Ignore tiny Latin garbage in Arabic mode
+          // NOISE FILTER
           if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) {
             addLog(`[FILTER] Ignored noise "${cleanText}" in ${field}`);
             cleanText = '';
@@ -427,71 +345,110 @@ export default function UniversalOCRModal({
     }
   };
 
-  // --- NEW ENGINE: PADDLE OCR (The "Turbo" Mode) ---
+  // ========== ENGINE 2: PADDLE OCR (NEW TURBO MODE) ==========
   const runPaddleOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
     setLogs([]);
-    addLog('[PADDLE] Initialisation du moteur Neural (WASM)...');
+    addLog(`[PADDLE] Pre-heating engine v${ORT_VERSION}...`);
     setProgress(10);
 
     try {
-      // 1. Initialize Engine (Points to your public/models folder)
-      const ocr = await createOCREngine({
-        models: {
-          det: '/models/det.onnx', // Must match your file in public/models/
-          rec: '/models/rec_ara.onnx', // Must match your file in public/models/
-          dic: '/models/keys_ara.txt', // Must match your file in public/models/
-        },
-      });
+      // 3. MANUAL INITIALIZATION (Forces the engine to find WASM now)
+      try {
+        await ort.InferenceSession.create(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]), { executionProviders: ['wasm'] });
+      } catch (e) {
+        // We ignore this error, it's just to kickstart the WASM loader
+      }
 
-      addLog('[PADDLE] Moteur chargé. Analyse de l\'image complète...');
+      const ocr = await Ocr.create({
+        models: {
+          detectionPath: 'models/det.onnx',
+          recognitionPath: 'models/rec_ara.onnx',
+          dictionaryPath: 'models/keys_ara.txt'
+        }
+      });
+      
+      addLog('[PADDLE] Moteur prêt. Analyse...');
+    
       setProgress(30);
 
-      // 2. Run OCR on the WHOLE image (Paddle is smart, no cropping needed)
+      // 2. Run Detection (Whole Page)
       const result = await ocr.detect(imageRef.current);
       setProgress(80);
 
-      // 3. Adapt Paddle results to your Grid System
-      // Paddle returns: { text: "...", box: [x,y,w,h], score: 0.99 }
-      // We map it to: { text: "...", bbox: {x0, y0, x1, y1} }
-      const adaptedWords = result.map((item) => ({
+      // 3. Map Results
+      const adaptedWords = result.map(item => ({
         text: item.text,
         confidence: item.score * 100,
         bbox: {
-          x0: item.box[0], // Left
-          y0: item.box[1], // Top
-          x1: item.box[0] + item.box[2], // Right = Left + Width
-          y1: item.box[1] + item.box[3], // Bottom = Top + Height
-        },
+          x0: item.box[0][0], y0: item.box[0][1],
+          x1: item.box[2][0], y1: item.box[2][1]
+        }
       }));
 
-      addLog(`[PADDLE] ${adaptedWords.length} éléments détectés. Application de la grille...`);
+      addLog(`[PADDLE] ${adaptedWords.length} mots trouvés. Mapping grille...`);
 
-      // 4. Use your EXISTING grid logic (filterWordsByGrid) to sort words
-      const candidates = filterWordsByGrid(
-        adaptedWords,
-        imgDimensions.width,
-        imgDimensions.height,
-        vLines,
-        hLines,
-        colMapping,
-        docLanguage === 'ara'
-      );
+      // 4. Grid Sorting Logic (Inline Implementation for safety)
+      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+      const isRTL = docLanguage === 'ara';
+      const results = [];
 
-      setCandidates(candidates);
+      for (let r = 0; r < sortedH.length - 1; r++) {
+        let candidate = createEmptyCandidate();
+        let hasDataInRow = false;
+        
+        // Define Row Boundaries (Y)
+        const rowTop = sortedH[r] * imgDimensions.height;
+        const rowBottom = sortedH[r + 1] * imgDimensions.height;
+
+        for (let c = 0; c < sortedV.length - 1; c++) {
+           const colIndex = isRTL ? sortedV.length - 2 - c : c;
+           const field = colMapping[colIndex];
+           if (!field || field === 'ignore') continue;
+
+           // Define Col Boundaries (X)
+           const colLeft = sortedV[colIndex] * imgDimensions.width;
+           const colRight = sortedV[colIndex + 1] * imgDimensions.width;
+
+           // Find words inside this box
+           const cellWords = adaptedWords.filter(w => {
+              const centerX = (w.bbox.x0 + w.bbox.x1) / 2;
+              const centerY = (w.bbox.y0 + w.bbox.y1) / 2;
+              return centerY >= rowTop && centerY <= rowBottom && 
+                     centerX >= colLeft && centerX <= colRight;
+           });
+
+           // Join words (RTL aware if needed, but usually space join is fine)
+           if (cellWords.length > 0) {
+              const joinedText = cellWords.map(w => w.text).join(' ');
+              candidate[field] = joinedText;
+              hasDataInRow = true;
+              addLog(`[CELL] R${r+1}C${c+1}: "${joinedText}"`);
+           }
+        }
+        if (hasDataInRow) {
+           cleanCandidate(candidate);
+           results.push(candidate);
+        }
+      }
+
+      setCandidates(results);
       setActiveTab('results');
-      addLog(`[SUCCESS] Analyse Paddle terminée.`);
+      addLog(`[SUCCESS] Terminé.`);
+
     } catch (e) {
       addLog(`[ERREUR PADDLE] ${e.message}`);
       console.error(e);
-      alert('Erreur PaddleOCR: Vérifiez que les modèles sont dans /public/models/');
+      alert("Erreur Paddle: Vérifiez que les fichiers .onnx sont dans public/models/");
     } finally {
       setIsProcessing(false);
       setProgress(100);
     }
   };
 
+  // --- MASTER SWITCH ---
   const handleGo = () => {
     if (ocrEngine === 'paddle') {
       runPaddleOCR();
@@ -500,7 +457,7 @@ export default function UniversalOCRModal({
     }
   };
 
-  // --- HELPERS ---
+  // --- HELPERS (RESTORED) ---
   const createEmptyCandidate = () => ({
     id: Math.random(),
     national_id: '',
@@ -567,7 +524,7 @@ export default function UniversalOCRModal({
           }}
         >
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <FaCamera color="var(--primary)" /> Smart Scan (Pro Debug)
+            <FaCamera color="var(--primary)" /> Smart Scan (Hybrid Pro)
           </h3>
           <button onClick={onClose} className="btn-close">
             ×
@@ -710,60 +667,23 @@ export default function UniversalOCRModal({
                     <FaBug /> Debug
                   </label>
 
-                  {/* --- ENGINE TOGGLE SWITCH --- */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      background: '#e2e8f0',
-                      borderRadius: '6px',
-                      padding: '2px',
-                      marginRight: '10px',
-                    }}
-                  >
-                    <button
-                      onClick={() => setOcrEngine('tesseract')}
-                      style={{
-                        background: ocrEngine === 'tesseract' ? 'white' : 'transparent',
-                        color: ocrEngine === 'tesseract' ? '#0f172a' : '#64748b',
-                        border: '1px solid',
-                        borderColor: ocrEngine === 'tesseract' ? '#cbd5e1' : 'transparent',
-                        borderRadius: '4px',
-                        padding: '4px 12px',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      Tesseract (Safe)
-                    </button>
-                    <button
-                      onClick={() => setOcrEngine('paddle')}
-                      style={{
-                        background: ocrEngine === 'paddle' ? 'var(--primary)' : 'transparent',
-                        color: ocrEngine === 'paddle' ? 'white' : '#64748b',
-                        border: 'none',
-                        borderRadius: '4px',
-                        padding: '4px 12px',
-                        fontSize: '0.75rem',
-                        fontWeight: 'bold',
-                        cursor: 'pointer',
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      Paddle AI (Turbo)
-                    </button>
-                  </div>
+                  {/* NEW: ENGINE TOGGLE */}
+                  <div style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
+                    <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '6px', padding: '2px' }}>
+                        <button onClick={() => setOcrEngine('tesseract')} style={{ background: ocrEngine === 'tesseract' ? 'white' : 'transparent', color: ocrEngine === 'tesseract' ? '#0f172a' : '#64748b', border: '1px solid transparent', borderColor: ocrEngine === 'tesseract' ? '#cbd5e1' : 'transparent', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                          Safe
+                        </button>
+                        <button onClick={() => setOcrEngine('paddle')} style={{ background: ocrEngine === 'paddle' ? 'var(--primary)' : 'transparent', color: ocrEngine === 'paddle' ? 'white' : '#64748b', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                          Turbo AI
+                        </button>
+                    </div>
 
-                  {!isProcessing && (
-                    <button
-                      onClick={handleGo}
-                      className="btn btn-success btn-sm"
-                      style={{ marginLeft: 'auto', fontWeight: 'bold' }}
-                    >
-                      <FaMagic /> GO
-                    </button>
-                  )}
+                    {!isProcessing && (
+                      <button onClick={handleGo} className="btn btn-success btn-sm" style={{ fontWeight: 'bold' }}>
+                        <FaMagic /> GO
+                      </button>
+                    )}
+                  </div>
                 </>
               )}
             </div>
@@ -778,7 +698,7 @@ export default function UniversalOCRModal({
                   background: '#333',
                 }}
               >
-                {/* Debug Canvas */}
+                {/* Debug Canvas (RESTORED VISIBILITY) */}
                 <canvas
                   ref={canvasRef}
                   style={{ display: debugMode ? 'block' : 'none', width: '100%', maxWidth: '100%' }}
@@ -821,7 +741,7 @@ export default function UniversalOCRModal({
                         letterSpacing: '2px',
                       }}
                     >
-                      GLISSER POUR DÉFILER ↕
+                      SCROLL ↕
                     </div>
                   </div>
 
@@ -876,7 +796,7 @@ export default function UniversalOCRModal({
                     })()}
                   </div>
 
-                  {/* MAIN IMAGE - FIX 3: SCROLL ENABLED */}
+                  {/* MAIN IMAGE */}
                   <img
                     ref={imageRef}
                     src={image}
@@ -884,7 +804,7 @@ export default function UniversalOCRModal({
                       display: 'block',
                       width: '100%',
                       marginTop: '30px',
-                      touchAction: 'pan-y', // CHANGED: Allows vertical scroll
+                      touchAction: 'pan-y',
                     }}
                     alt="Scan"
                   />
@@ -1067,7 +987,7 @@ export default function UniversalOCRModal({
               </div>
             )}
 
-            {/* TRACE GALLERY (DEBUG CROPS) */}
+            {/* TRACE GALLERY (DEBUG CROPS RESTORED) */}
             {debugCrops.length > 0 && (
               <div style={{ marginTop: '20px', borderTop: '2px solid #ddd', paddingTop: '10px' }}>
                 <h4 style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '10px' }}>
