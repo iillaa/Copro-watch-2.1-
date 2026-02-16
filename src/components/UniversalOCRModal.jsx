@@ -1,6 +1,53 @@
 import { useState, useRef, useEffect } from 'react';
 import Tesseract from 'tesseract.js';
+import { createOCREngine } from 'client-side-ocr';
 import { db } from '../services/db';
+
+// --- GRID MAPPING LOGIC (FOR PADDLE) ---
+const filterWordsByGrid = (words, imgW, imgH, vLines, hLines, colMapping, isRTL) => {
+  const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+  const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+  const results = [];
+
+  for (let r = 0; r < sortedH.length - 1; r++) {
+    const rowY0 = sortedH[r] * imgH;
+    const rowY1 = sortedH[r + 1] * imgH;
+    let candidate = {
+      id: Math.random(),
+      national_id: '',
+      full_name: '',
+      department_id: '',
+      job_info: '',
+      isArabic: false,
+    };
+    let hasData = false;
+
+    for (let c = 0; c < sortedV.length - 1; c++) {
+      const colIndex = isRTL ? sortedV.length - 2 - c : c;
+      const field = colMapping[colIndex];
+      if (!field || field === 'ignore') continue;
+
+      const colX0 = sortedV[colIndex] * imgW;
+      const colX1 = sortedV[colIndex + 1] * imgW;
+
+      const cellWords = words.filter((w) => {
+        const midX = (w.bbox.x0 + w.bbox.x1) / 2;
+        const midY = (w.bbox.y0 + w.bbox.y1) / 2;
+        return midX >= colX0 && midX <= colX1 && midY >= rowY0 && midY <= rowY1;
+      });
+
+      if (cellWords.length > 0) {
+        const sortedCellWords = cellWords.sort((a, b) => a.bbox.x0 - b.bbox.x0);
+        candidate[field] = sortedCellWords.map((w) => w.text).join(' ');
+        hasData = true;
+      }
+    }
+    if (hasData) {
+      results.push(candidate);
+    }
+  }
+  return results;
+};
 import {
   FaCamera,
   FaSpinner,
@@ -83,6 +130,7 @@ export default function UniversalOCRModal({
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [docLanguage, setDocLanguage] = useState('fra');
+  const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' | 'paddle'
   const [debugMode, setDebugMode] = useState(false);
   const [debugCrops, setDebugCrops] = useState([]);
 
@@ -262,8 +310,8 @@ export default function UniversalOCRModal({
     addLog('[DEBUG] Grille dessinée dans le cadre jaune.');
   };
 
-  // ========== MAIN OCR ENGINE ==========
-  const runOCR = async () => {
+  // ========== MAIN OCR ENGINES ==========
+  const runTesseractOCR = async () => {
     if (!image || !imageRef.current) return;
     if (debugMode) {
       drawDebugGrid();
@@ -376,6 +424,79 @@ export default function UniversalOCRModal({
     } finally {
       if (worker) await worker.terminate();
       setIsProcessing(false);
+    }
+  };
+
+  // --- NEW ENGINE: PADDLE OCR (The "Turbo" Mode) ---
+  const runPaddleOCR = async () => {
+    if (!image || !imageRef.current) return;
+    setIsProcessing(true);
+    setLogs([]);
+    addLog('[PADDLE] Initialisation du moteur Neural (WASM)...');
+    setProgress(10);
+
+    try {
+      // 1. Initialize Engine (Points to your public/models folder)
+      const ocr = await createOCREngine({
+        models: {
+          det: '/models/det.onnx', // Must match your file in public/models/
+          rec: '/models/rec_ara.onnx', // Must match your file in public/models/
+          dic: '/models/keys_ara.txt', // Must match your file in public/models/
+        },
+      });
+
+      addLog('[PADDLE] Moteur chargé. Analyse de l\'image complète...');
+      setProgress(30);
+
+      // 2. Run OCR on the WHOLE image (Paddle is smart, no cropping needed)
+      const result = await ocr.detect(imageRef.current);
+      setProgress(80);
+
+      // 3. Adapt Paddle results to your Grid System
+      // Paddle returns: { text: "...", box: [x,y,w,h], score: 0.99 }
+      // We map it to: { text: "...", bbox: {x0, y0, x1, y1} }
+      const adaptedWords = result.map((item) => ({
+        text: item.text,
+        confidence: item.score * 100,
+        bbox: {
+          x0: item.box[0], // Left
+          y0: item.box[1], // Top
+          x1: item.box[0] + item.box[2], // Right = Left + Width
+          y1: item.box[1] + item.box[3], // Bottom = Top + Height
+        },
+      }));
+
+      addLog(`[PADDLE] ${adaptedWords.length} éléments détectés. Application de la grille...`);
+
+      // 4. Use your EXISTING grid logic (filterWordsByGrid) to sort words
+      const candidates = filterWordsByGrid(
+        adaptedWords,
+        imgDimensions.width,
+        imgDimensions.height,
+        vLines,
+        hLines,
+        colMapping,
+        docLanguage === 'ara'
+      );
+
+      setCandidates(candidates);
+      setActiveTab('results');
+      addLog(`[SUCCESS] Analyse Paddle terminée.`);
+    } catch (e) {
+      addLog(`[ERREUR PADDLE] ${e.message}`);
+      console.error(e);
+      alert('Erreur PaddleOCR: Vérifiez que les modèles sont dans /public/models/');
+    } finally {
+      setIsProcessing(false);
+      setProgress(100);
+    }
+  };
+
+  const handleGo = () => {
+    if (ocrEngine === 'paddle') {
+      runPaddleOCR();
+    } else {
+      runTesseractOCR();
     }
   };
 
@@ -589,9 +710,54 @@ export default function UniversalOCRModal({
                     <FaBug /> Debug
                   </label>
 
+                  {/* --- ENGINE TOGGLE SWITCH --- */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      background: '#e2e8f0',
+                      borderRadius: '6px',
+                      padding: '2px',
+                      marginRight: '10px',
+                    }}
+                  >
+                    <button
+                      onClick={() => setOcrEngine('tesseract')}
+                      style={{
+                        background: ocrEngine === 'tesseract' ? 'white' : 'transparent',
+                        color: ocrEngine === 'tesseract' ? '#0f172a' : '#64748b',
+                        border: '1px solid',
+                        borderColor: ocrEngine === 'tesseract' ? '#cbd5e1' : 'transparent',
+                        borderRadius: '4px',
+                        padding: '4px 12px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      Tesseract (Safe)
+                    </button>
+                    <button
+                      onClick={() => setOcrEngine('paddle')}
+                      style={{
+                        background: ocrEngine === 'paddle' ? 'var(--primary)' : 'transparent',
+                        color: ocrEngine === 'paddle' ? 'white' : '#64748b',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '4px 12px',
+                        fontSize: '0.75rem',
+                        fontWeight: 'bold',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s',
+                      }}
+                    >
+                      Paddle AI (Turbo)
+                    </button>
+                  </div>
+
                   {!isProcessing && (
                     <button
-                      onClick={runOCR}
+                      onClick={handleGo}
                       className="btn btn-success btn-sm"
                       style={{ marginLeft: 'auto', fontWeight: 'bold' }}
                     >

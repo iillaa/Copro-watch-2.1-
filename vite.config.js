@@ -1,11 +1,16 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+// Add these two imports
+import wasm from "vite-plugin-wasm";
+import topLevelAwait from "vite-plugin-top-level-await";
 // import { VitePWA } from 'vite-plugin-pwa';
 // REMOVE: import { viteSingleFile } from 'vite-plugin-singlefile';
 
 export default defineConfig({
   plugins: [
     react(),
+    wasm(), // Add WASM support
+    topLevelAwait(), // Add Top Level Await support
     // REMOVE: viteSingleFile(),
     // VitePWA({
     //   registerType: 'autoUpdate',

@@ -18,6 +18,7 @@
     "@capacitor/cli": "^8.0.0",
     "@capacitor/core": "^8.0.0",
     "@capacitor/filesystem": "^8.0.0",
+    "client-side-ocr": "^2.1.0",
     "date-fns": "^4.1.0",
     "dexie": "^4.2.1",
     "eruda": "^3.4.3",
@@ -44,6 +45,8 @@
     "vite": "^7.2.4",
     "vite-plugin-pwa": "^1.2.0",
     "vite-plugin-singlefile": "^2.3.0",
+    "vite-plugin-top-level-await": "^1.6.0",
+    "vite-plugin-wasm": "^3.5.0",
     "vitest": "^4.0.18"
   }
 }
