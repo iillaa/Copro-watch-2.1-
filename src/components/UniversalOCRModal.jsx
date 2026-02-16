@@ -162,6 +162,34 @@ export default function UniversalOCRModal({
     }
   };
 
+
+  // Inside UniversalOCRModal component
+const [debugCrops, setDebugCrops] = useState([]); //
+
+// Helper to extract a cell with padding
+const getCellImage = (imgElement, rect, padding = 15) => {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Define dimensions including padding
+  const targetW = rect.width + padding * 2;
+  const targetH = rect.height + padding * 2;
+  canvas.width = targetW;
+  canvas.height = targetH;
+
+  // Fill background white to ensure padding doesn't create black bars
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillRect(0, 0, targetW, targetH);
+
+  // Draw the specific crop from the source image into the padded center
+  ctx.drawImage(
+    imgElement,
+    rect.x, rect.y, rect.width, rect.height, // Source
+    padding, padding, rect.width, rect.height // Destination
+  );
+
+  return canvas.toDataURL('image/jpeg', 0.9);
+};
   // ========== VISUAL DEBUGGER ==========
   const drawDebugGrid = () => {
     const canvas = canvasRef.current;
@@ -206,103 +234,104 @@ export default function UniversalOCRModal({
   };
 
   // ========== MAIN OCR ENGINE ==========
-  const runOCR = async () => {
-    if (!image) return;
-    setLogs([]); // Clear previous logs
-    addLog('🚀 ========== OCR START ==========');
-    addLog(`[CONFIG] Résolution: ${imgDimensions.width}x${imgDimensions.height}`);
+ const runOCR = async () => {
+  if (!image || !imageRef.current) return;
+  setLogs([]);
+  setDebugCrops([]); // Clear previous traces
+  addLog('🚀 ========== GRID-FIRST OCR START ==========');
+  
+  setIsProcessing(true);
+  setCandidates([]);
+  setProgress(0);
+  setStatusText('Initialisation Tesseract...');
 
-    if (debugMode) {
-      drawDebugGrid();
-      return;
+  let worker = null;
+  try {
+    const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
+    worker = await Tesseract.createWorker(langs, 1);
+    
+    // Set PSM 7: Treats each crop as a single line of text
+    await worker.setParameters({
+      tessedit_pageseg_mode: '7',
+      preserve_interword_spaces: '1',
+    });
+
+    const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+    const results = [];
+    
+    const totalCells = (sortedH.length - 1) * (sortedV.length - 1);
+    let cellsProcessed = 0;
+
+    for (let r = 0; r < sortedH.length - 1; r++) {
+      let candidate = createEmptyCandidate(); //
+      let hasDataInRow = false;
+
+      for (let c = 0; c < sortedV.length - 1; c++) {
+        const field = colMapping[c]; //
+        
+        // Skip ignored columns or tiny rows
+        if (!field || field === 'ignore') {
+          cellsProcessed++;
+          continue;
+        }
+
+        const yCoord = sortedH[r] * imgDimensions.height;
+        const xCoord = sortedV[c] * imgDimensions.width;
+        const cellW = (sortedV[c + 1] - sortedV[c]) * imgDimensions.width;
+        const cellH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+
+        if (cellH < 15) continue; // Minimum height threshold
+
+        setStatusText(`Scan: Ligne ${r + 1}, Col ${c + 1}...`);
+        
+        // Create the crop with 15px padding
+        const cellDataURL = getCellImage(imageRef.current, {
+          x: xCoord,
+          y: yCoord,
+          width: cellW,
+          height: cellH
+        }, 15);
+
+        // Save trace for the debug section
+        setDebugCrops(prev => [...prev, {
+          label: `R${r+1} C${c+1} (${field})`,
+          url: cellDataURL
+        }]);
+
+        // Targeted recognition
+        const { data: { text } } = await worker.recognize(cellDataURL);
+        const cleanText = text.replace(/[|\[\]{};:*!@#$%^&()]/g, '').trim().toUpperCase();
+
+        if (cleanText) {
+          candidate[field] = cleanText;
+          hasDataInRow = true;
+        }
+
+        cellsProcessed++;
+        setProgress(Math.round((cellsProcessed / totalCells) * 100));
+      }
+
+      if (hasDataInRow) {
+        cleanCandidate(candidate); //
+        results.push(candidate);
+        addLog(`[OK] Ligne ${r + 1} traitée: ${candidate.full_name || 'Sans Nom'}`);
+      }
     }
 
-    setIsProcessing(true);
-    setCandidates([]);
-    setProgress(0);
-    setStatusText('Démarrage Tesseract...');
-
-    let worker = null;
-    try {
-      const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
-      addLog(`[TESSERACT] Chargement langue: ${langs}`);
-
-      worker = await Tesseract.createWorker(langs, 1, {
-        logger: (m) => {
-          if (m.status.includes('download'))
-            addLog(`[DL] ${m.status}: ${Math.round(m.progress * 100)}%`);
-          if (m.status === 'recognizing text') setProgress(Math.round(m.progress * 100));
-        },
-      });
-
-      // PSM 11 = Sparse Text (Force coordinates)
-      // PSM 6 = Block Text (Better for full tables)
-      // We start with 11 to try and get coordinates for the grid
-      await worker.setParameters({
-        tessedit_pageseg_mode: '11',
-        preserve_interword_spaces: '1',
-      });
-
-      setStatusText('Scan Global...');
-      addLog('[SCAN] Lancement de la reconnaissance...');
-
-      const { data } = await worker.recognize(image);
-
-      // --- DEEP EXTRACTION LOGIC ---
-      let allWords = data.words || [];
-      // If root is empty, dig deeper
-      if (allWords.length === 0 && data.lines) {
-        allWords = data.lines.flatMap((l) => l.words || []);
-      }
-
-      addLog(`[SCAN] Terminé. ${allWords.length} mots avec coordonnées trouvés.`);
-
-      // Detailed diagnostics for 0 words
-      if (allWords.length === 0) {
-        addLog(`[DIAGNOSTIC] 0 mots trouvés. Causes possibles:`);
-        addLog(`  1. Image floue ou trop petite.`);
-        addLog(`  2. PSM 11 a échoué (structure complexe).`);
-        addLog(
-          `  3. Texte brut trouvé ? ${data.text ? 'OUI (' + data.text.length + ' chars)' : 'NON'}`
-        );
-        if (data.text) addLog(`[PREVIEW] "${data.text.substring(0, 50)}..."`);
-      }
-
-      let detected = [];
-
-      // STRATEGY A: GEOMETRIC GRID
-      // Only runs if User defined rows AND we have coordinates
-      if (hLines.length > 0 && allWords.length > 0) {
-        addLog('[MODE] 📐 Grille Géométrique (High Precision)');
-        detected = filterWordsByGrid(allWords, imgDimensions.width, imgDimensions.height);
-      }
-      // STRATEGY B: FALLBACK TEXT
-      else {
-        addLog('[MODE] 📝 Analyse Texte Fallback (Mode Secours)');
-        if (hLines.length > 0)
-          addLog("[WARN] La grille a été ignorée car Tesseract n'a pas donné de coordonnées.");
-
-        const rawText = data.text || '';
-        detected = parseTextToCandidates(rawText);
-      }
-
-      setCandidates(detected);
-
-      if (detected.length > 0) {
-        addLog(`[SUCCESS] ${detected.length} fiches extraites.`);
-        setActiveTab('results'); // Switch tab
-      } else {
-        addLog('[FAIL] Aucun candidat extrait après analyse.');
-        alert('Aucune donnée trouvée. Vérifiez les logs.');
-      }
-    } catch (err) {
-      addLog(`[CRASH] ${err.message}`);
-      alert(`Erreur: ${err.message}`);
-    } finally {
-      if (worker) await worker.terminate();
-      setIsProcessing(false);
+    setCandidates(results);
+    if (results.length > 0) {
+      addLog(`[SUCCESS] ${results.length} fiches extraites via la grille.`);
+      setActiveTab('results');
     }
-  };
+  } catch (err) {
+    addLog(`[CRASH] ${err.message}`);
+    alert(`Erreur OCR: ${err.message}`);
+  } finally {
+    if (worker) await worker.terminate();
+    setIsProcessing(false);
+  }
+};
 
   // --- FILTERING LOGIC (Detailed Logs) ---
   const filterWordsByGrid = (words, scanWidth, scanHeight) => {
@@ -889,6 +918,34 @@ export default function UniversalOCRModal({
                     {l}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* TRACE GALLERY (DEBUG CROPS) */}
+            {debugCrops.length > 0 && (
+              <div style={{ marginTop: '20px', borderTop: '2px solid #ddd', paddingTop: '10px' }}>
+                <h4 style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '10px' }}>
+                  <FaEye /> Traces des cellules découpées (Debug)
+                </h4>
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', 
+                  gap: '10px',
+                  maxHeight: '300px',
+                  overflowY: 'auto',
+                  padding: '5px',
+                  background: '#f1f5f9',
+                  borderRadius: '8px'
+                }}>
+                  {debugCrops.map((crop, idx) => (
+                    <div key={idx} style={{ background: 'white', padding: '5px', borderRadius: '4px', boxShadow: '0 1px 3px rgba(0,0,0,0.1)' }}>
+                      <img src={crop.url} style={{ width: '100%', height: 'auto', border: '1px solid #eee' }} alt="crop" />
+                      <div style={{ fontSize: '10px', color: '#94a3b8', marginTop: '3px', textAlign: 'center' }}>
+                        {crop.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </div>
