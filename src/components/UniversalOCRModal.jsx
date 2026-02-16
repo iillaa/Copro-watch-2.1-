@@ -165,53 +165,59 @@ export default function UniversalOCRModal({
 
   // Helper to extract a cell with padding
   // KEEPING YOUR ORIGINAL BINARIZATION LOGIC (SAFE)
- // 3. IMPROVED: Smart Grayscale (Fixes "Merged Words" in Arabic)
-// 4. FINAL TUNED: High-Res Crisp Binarization (Best for IDs & Arabic Separation)
-const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8) => {
-  const canvas = document.createElement('canvas');
-  const ctx = canvas.getContext('2d');
-  
-  // FIX 1: Increase Scale to 4x (Critical for separating Arabic words)
-  const scale = 4; 
-  const targetW = (rect.width + paddingX * 2) * scale;
-  const targetH = (rect.height + paddingY * 2) * scale;
-  canvas.width = targetW;
-  canvas.height = targetH;
+  // 3. IMPROVED: Smart Grayscale (Fixes "Merged Words" in Arabic)
+  // 4. FINAL TUNED: High-Res Crisp Binarization (Best for IDs & Arabic Separation)
+  const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8) => {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
 
-  ctx.fillStyle = '#FFFFFF';
-  ctx.fillRect(0, 0, targetW, targetH);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = 'high';
+    // FIX 1: Increase Scale to 4x (Critical for separating Arabic words)
+    const scale = 4;
+    const targetW = (rect.width + paddingX * 2) * scale;
+    const targetH = (rect.height + paddingY * 2) * scale;
+    canvas.width = targetW;
+    canvas.height = targetH;
 
-  ctx.drawImage(
-    imgElement,
-    rect.x, rect.y, rect.width, rect.height,
-    paddingX * scale, paddingY * scale, rect.width * scale, rect.height * scale
-  );
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, targetW, targetH);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
 
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-  const data = imageData.data;
+    ctx.drawImage(
+      imgElement,
+      rect.x,
+      rect.y,
+      rect.width,
+      rect.height,
+      paddingX * scale,
+      paddingY * scale,
+      rect.width * scale,
+      rect.height * scale
+    );
 
-  // FIX 2: Hard Threshold (175) - Makes text solid black, background solid white.
-  // This restores the accuracy for "7A146" which needs sharp edges.
-  const threshold = 175; 
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
 
-  for (let i = 0; i < data.length; i += 4) {
-    // Standard Grayscale calculation
-    const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-    
-    // BINARIZATION ONLY:
-    // If dark, make it Pitch Black (0). If light, make it Pure White (255).
-    // CRITICAL: We REMOVED the "Dilation" loop (neighbor check) here. 
-    // This prevents "fading" pixels from bridging the gap between words.
-    let v = gray < threshold ? 0 : 255; 
+    // FIX 2: Hard Threshold (175) - Makes text solid black, background solid white.
+    // This restores the accuracy for "7A146" which needs sharp edges.
+    const threshold = 175;
 
-    data[i] = data[i + 1] = data[i + 2] = v;
-  }
-  
-  ctx.putImageData(imageData, 0, 0);
-  return canvas.toDataURL('image/png'); // PNG is sharper for binary text than JPEG
-};
+    for (let i = 0; i < data.length; i += 4) {
+      // Standard Grayscale calculation
+      const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+
+      // BINARIZATION ONLY:
+      // If dark, make it Pitch Black (0). If light, make it Pure White (255).
+      // CRITICAL: We REMOVED the "Dilation" loop (neighbor check) here.
+      // This prevents "fading" pixels from bridging the gap between words.
+      let v = gray < threshold ? 0 : 255;
+
+      data[i] = data[i + 1] = data[i + 2] = v;
+    }
+
+    ctx.putImageData(imageData, 0, 0);
+    return canvas.toDataURL('image/png'); // PNG is sharper for binary text than JPEG
+  };
 
   // ========== VISUAL DEBUGGER ==========
   const drawDebugGrid = () => {

@@ -700,7 +700,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
             <FaCheckSquare />
           </button>
 
-{/* [NEW] SCAN BUTTON */}
+          {/* [NEW] SCAN BUTTON */}
           <button
             className="btn btn-outline"
             onClick={() => setShowOCRModal(true)}
@@ -1100,7 +1100,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
           onCancel={() => setShowResultModal(false)}
         />
       )}
-{/* [NEW] OCR Modal for Workers */}
+      {/* [NEW] OCR Modal for Workers */}
       {showOCRModal && (
         <UniversalOCRModal
           mode="worker" // <--- Tells it to save to Worker DB
@@ -1113,7 +1113,6 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
         />
       )}
 
-  
       {/* [NEW] TOAST CONTAINER */}
       <ToastContainer />
     </div>
