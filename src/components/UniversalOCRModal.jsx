@@ -84,6 +84,7 @@ export default function UniversalOCRModal({
   const [statusText, setStatusText] = useState('');
   const [docLanguage, setDocLanguage] = useState('fra');
   const [debugMode, setDebugMode] = useState(false);
+  const [debugCrops, setDebugCrops] = useState([]);
 
   // LOGS: Full Array + Scroll
   const [logs, setLogs] = useState([]);
@@ -162,17 +163,16 @@ export default function UniversalOCRModal({
     }
   };
 
-  // Inside UniversalOCRModal component
-  const [debugCrops, setDebugCrops] = useState([]); //
-
   // Helper to extract a cell with padding
-// 1. IMPROVED: Adaptive Cell Processing (3x scaling + adaptive thresholding for Arabic)
+  // KEEPING YOUR ORIGINAL BINARIZATION LOGIC (SAFE)
+ // 3. IMPROVED: Smart Grayscale (Fixes "Merged Words" in Arabic)
+// 4. FINAL TUNED: High-Res Crisp Binarization (Best for IDs & Arabic Separation)
 const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8) => {
   const canvas = document.createElement('canvas');
   const ctx = canvas.getContext('2d');
   
-  // 3x Scale for Arabic Density
-  const scale = 3; 
+  // FIX 1: Increase Scale to 4x (Critical for separating Arabic words)
+  const scale = 4; 
   const targetW = (rect.width + paddingX * 2) * scale;
   const targetH = (rect.height + paddingY * 2) * scale;
   canvas.width = targetW;
@@ -191,29 +191,26 @@ const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8) => {
 
   const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
   const data = imageData.data;
-  const originalData = new Uint8ClampedArray(data); // Copy for neighbor checking
 
-  // Fixed Threshold (Safer than Adaptive for faint text)
-  const threshold = 180; 
+  // FIX 2: Hard Threshold (175) - Makes text solid black, background solid white.
+  // This restores the accuracy for "7A146" which needs sharp edges.
+  const threshold = 175; 
 
   for (let i = 0; i < data.length; i += 4) {
+    // Standard Grayscale calculation
     const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
     
-    // Standard Binarization
+    // BINARIZATION ONLY:
+    // If dark, make it Pitch Black (0). If light, make it Pure White (255).
+    // CRITICAL: We REMOVED the "Dilation" loop (neighbor check) here. 
+    // This prevents "fading" pixels from bridging the gap between words.
     let v = gray < threshold ? 0 : 255; 
-
-    // DILATION (Thickening): If a neighbor pixel is black, make this one black too.
-    // This connects broken Arabic letters and prevents "fading".
-    if (v === 255 && i > 4) {
-       const prevGray = 0.299 * originalData[i-4] + 0.587 * originalData[i-3] + 0.114 * originalData[i-2];
-       if (prevGray < threshold) v = 0; // Spread the blackness
-    }
 
     data[i] = data[i + 1] = data[i + 2] = v;
   }
   
   ctx.putImageData(imageData, 0, 0);
-  return canvas.toDataURL('image/png');
+  return canvas.toDataURL('image/png'); // PNG is sharper for binary text than JPEG
 };
 
   // ========== VISUAL DEBUGGER ==========
@@ -260,16 +257,15 @@ const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8) => {
   };
 
   // ========== MAIN OCR ENGINE ==========
-  // --- OCR ENGINE (RTL + SORTED + CONDITIONAL) ---
-  
-
-// 2. UPDATED OCR ENGINE (With Safety Margin)
-const runOCR = async () => {
+  const runOCR = async () => {
     if (!image || !imageRef.current) return;
-    if (debugMode) { drawDebugGrid(); return; }
+    if (debugMode) {
+      drawDebugGrid();
+      return;
+    }
 
     setLogs([]);
-    setDebugCrops([]); // This will now show the clean, borderless images
+    setDebugCrops([]);
     setIsProcessing(true);
     setCandidates([]);
     setProgress(0);
@@ -278,7 +274,7 @@ const runOCR = async () => {
     try {
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
       worker = await Tesseract.createWorker(langs, 1);
-      
+
       const isRTL = docLanguage === 'ara';
       addLog(`[ENGINE] Scan ${isRTL ? 'RTL' : 'LTR'} (${langs})`);
 
@@ -293,63 +289,70 @@ const runOCR = async () => {
         let hasDataInRow = false;
 
         for (let c = 0; c < sortedV.length - 1; c++) {
-          const colIndex = isRTL ? (sortedV.length - 2 - c) : c;
+          const colIndex = isRTL ? sortedV.length - 2 - c : c;
           const field = colMapping[colIndex];
-          
+
           if (!field || field === 'ignore') {
-             cellsProcessed++;
-             continue;
+            cellsProcessed++;
+            continue;
           }
 
-          // --- SAFETY MARGIN CALCULATION ---
-         // Increased to 6px to definitely kill the borders like "|"
+          // --- FIX 1: SAFETY MARGIN INCREASED ---
+          // Increased from 6 to 10 to cover thick table lines safely
           const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
           const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-          const safetyMargin = 6; 
+          const safetyMargin = 10;
 
           const cropParams = {
-            x: (sortedV[colIndex] * imgDimensions.width) + safetyMargin,
-            y: (sortedH[r] * imgDimensions.height) + safetyMargin,
-            width: rawW - (safetyMargin * 2),
-            height: rawH - (safetyMargin * 2)
+            x: sortedV[colIndex] * imgDimensions.width + safetyMargin,
+            y: sortedH[r] * imgDimensions.height + safetyMargin,
+            width: rawW - safetyMargin * 2,
+            height: rawH - safetyMargin * 2,
           };
 
           if (cropParams.width < 10 || cropParams.height < 10) continue;
 
           // Conditional Parameters
           if (field === 'national_id') {
-             await worker.setParameters({
-                tessedit_pageseg_mode: '7',
-                preserve_interword_spaces: '1',
-                tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. ', 
-             });
+            await worker.setParameters({
+              tessedit_pageseg_mode: '7',
+              preserve_interword_spaces: '1',
+              tessedit_char_whitelist:
+                '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. ',
+            });
           } else {
-             await worker.setParameters({
-                tessedit_pageseg_mode: '7',
-                preserve_interword_spaces: '1',
-                tessedit_char_whitelist: '', // Allow Arabic
-             });
+            await worker.setParameters({
+              tessedit_pageseg_mode: '7',
+              preserve_interword_spaces: '1',
+              tessedit_char_whitelist: '', // Allow Arabic
+            });
           }
 
-          // Use 0 padding for getCellImage because safetyMargin handles the crop
+          // Generate URL
           const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
-          const { data: { text, confidence } } = await worker.recognize(cellUrl);
-          
-          let cleanText = text.trim();
-          
-          // NOISE FILTER: If result is tiny Latin garbage in Arabic mode, ignore it
+
+          // Debug Trace - Always add even if confidence is low, so we can see what happened
+          setDebugCrops((prev) => [...prev, { label: `R${r + 1}C${c + 1}`, url: cellUrl }]);
+
+          const {
+            data: { text, confidence },
+          } = await worker.recognize(cellUrl);
+
+          // --- FIX 2: BORDER CLEANER REGEX ---
+          // Strips leading/trailing |, I, -, _ often caused by borders
+          let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
+
+          // NOISE FILTER: Ignore tiny Latin garbage in Arabic mode
           if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) {
-             addLog(`[FILTER] Ignored noise "${cleanText}" in ${field}`);
-             cleanText = "";
+            addLog(`[FILTER] Ignored noise "${cleanText}" in ${field}`);
+            cleanText = '';
           }
 
-          addLog(`[CELL] R${r+1}C${c+1} (${field}): "${cleanText}" | ${confidence}%`);
+          addLog(`[CELL] R${r + 1}C${c + 1} (${field}): "${cleanText}" | ${confidence}%`);
 
           if (cleanText) {
             candidate[field] = cleanText;
             hasDataInRow = true;
-            // VISUAL DEBUG: This saves the EXACT image Tesseract saw
-            setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1}`, url: cellUrl }]);
           }
           cellsProcessed++;
           setProgress(Math.round((cellsProcessed / totalCells) * 100));
@@ -361,129 +364,13 @@ const runOCR = async () => {
         }
       }
       setCandidates(results);
-      if(results.length > 0) setActiveTab('results');
-
+      if (results.length > 0) setActiveTab('results');
     } catch (err) {
       addLog(`[CRASH] ${err.message}`);
     } finally {
       if (worker) await worker.terminate();
       setIsProcessing(false);
     }
-};
-  // --- FILTERING LOGIC (Detailed Logs) ---
-  const filterWordsByGrid = (words, scanWidth, scanHeight) => {
-    const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-    const results = [];
-
-    addLog(
-      `[FILTER] Application de la grille: ${sortedH.length - 1} Lignes, ${
-        sortedV.length - 1
-      } Colonnes`
-    );
-
-    for (let r = 0; r < sortedH.length - 1; r++) {
-      const yMin = Math.floor(sortedH[r] * scanHeight);
-      const yMax = Math.floor(sortedH[r + 1] * scanHeight);
-
-      // 1. Log Row Boundaries
-      // addLog(`--- Ligne ${r+1}: Y=${yMin} à ${yMax} ---`);
-
-      if (yMax - yMin < 20) {
-        addLog(`[Ligne ${r + 1}] Ignorée (trop petite < 20px)`);
-        continue;
-      }
-
-      // 2. Filter Words by Y
-      const rowWords = words.filter((w) => {
-        const centerY = (w.bbox.y0 + w.bbox.y1) / 2;
-        return centerY >= yMin && centerY < yMax && w.confidence > 40;
-      });
-
-      if (rowWords.length === 0) {
-        // Verbose: Explain why it's empty
-        // const nearbyWords = words.filter(w => Math.abs(w.bbox.y0 - yMin) < 50);
-        // addLog(`[Ligne ${r+1}] Vide. (Mots proches trouvés à Y=${nearbyWords.length > 0 ? nearbyWords[0].bbox.y0 : 'Aucun'})`);
-        continue;
-      }
-
-      let candidate = createEmptyCandidate();
-      let hasData = false;
-
-      // Sort words Left -> Right
-      rowWords.sort((a, b) => a.bbox.x0 - b.bbox.x0);
-
-      // 3. Map to Columns
-      rowWords.forEach((w) => {
-        const centerX = (w.bbox.x0 + w.bbox.x1) / 2;
-        const xPct = centerX / scanWidth;
-
-        for (let c = 0; c < sortedV.length - 1; c++) {
-          if (xPct >= sortedV[c] && xPct < sortedV[c + 1]) {
-            const field = colMapping[c];
-            if (field && field !== 'ignore') {
-              const txt = w.text
-                .replace(/[|\[\]{};:*!@#$%^&()]/g, '')
-                .trim()
-                .toUpperCase();
-              candidate[field] = (candidate[field] ? candidate[field] + ' ' : '') + txt;
-              hasData = true;
-            }
-            break;
-          }
-        }
-      });
-
-      if (hasData) {
-        cleanCandidate(candidate);
-        addLog(`[Ligne ${r + 1}] OK: ${candidate.national_id} | ${candidate.full_name}`);
-        results.push(candidate);
-      } else {
-        addLog(`[Ligne ${r + 1}] Mots trouvés mais mapping colonne échoué.`);
-      }
-    }
-    return results;
-  };
-
-  const parseTextToCandidates = (text) => {
-    addLog('[PARSER] Analyse du texte brut (Ligne par ligne)...');
-    const lines = text.split('\n');
-    const results = [];
-    lines.forEach((line) => {
-      const tokens = line.trim().split(/\s+/);
-      let matricule = '',
-        nameParts = [];
-      tokens.forEach((t) => {
-        let clean = t.replace(/[^\w\d]/g, '').toUpperCase();
-        // Typo fix
-        if (/^[lIi]A/.test(clean)) clean = clean.replace(/^[lIi]/, '7');
-        if (/^T[A-Z]/.test(clean)) clean = clean.replace(/^T/, '7');
-
-        if ((/^\d{2,15}$/.test(clean) || /^\d+[A-Z]+\d+$/.test(clean)) && !matricule) {
-          matricule = clean;
-        } else if (clean.length > 1 && !['MAT', 'NOM', 'PRENOM'].includes(clean)) {
-          nameParts.push(t);
-        }
-      });
-
-      if (nameParts.length > 0) {
-        let job = '';
-        let name = nameParts.join(' ');
-        // Smart Split: Last word is Job?
-        if (colMapping.includes('job_info') && nameParts.length > 1) {
-          job = nameParts.pop();
-          name = nameParts.join(' ');
-        }
-
-        let cand = createEmptyCandidate();
-        cand.national_id = matricule || '?';
-        cand.full_name = name.toUpperCase();
-        cand.job_info = job.toUpperCase();
-        cleanCandidate(cand);
-        results.push(cand);
-      }
-    });
-    return results;
   };
 
   // --- HELPERS ---
@@ -725,134 +612,208 @@ const runOCR = async () => {
                   style={{ display: debugMode ? 'block' : 'none', width: '100%', maxWidth: '100%' }}
                 />
 
-                {/* Interactive Editor */}
-      {/* Interactive Editor with Scroll Gutter */}
-<div
-  style={{
-    position: 'relative',
-    minWidth: '600px',
-    display: debugMode ? 'none' : 'block',
-    // We remove touchAction: 'none' from here so the gutter can work
-  }}
->
-  {/* 1. SCROLL GUTTER (The "Big Thing" on the right) */}
-  <div
-    style={{
-      position: 'absolute',
-      top: 0,
-      right: 0,
-      width: '50px', // Large enough to grab with a thumb
-      height: '100%',
-      zIndex: 60, // Above everything
-      background: 'rgba(0, 0, 0, 0.1)',
-      borderLeft: '2px solid rgba(0, 0, 0, 0.2)',
-      display: 'flex',
-      flexDirection: 'column',
-      alignItems: 'center',
-      justifyContent: 'center',
-      touchAction: 'pan-y', // FORCES native scrolling in this zone
-      pointerEvents: 'auto',
-    }}
-  >
-    <div style={{ 
-      color: '#666', 
-      writingMode: 'vertical-rl', 
-      textOrientation: 'mixed',
-      fontSize: '0.7rem',
-      fontWeight: 'bold',
-      letterSpacing: '2px'
-    }}>
-      GLISSER POUR DÉFILER ↕
-    </div>
-  </div>
+                {/* Interactive Editor with Scroll Gutter */}
+                <div
+                  style={{
+                    position: 'relative',
+                    minWidth: '600px',
+                    display: debugMode ? 'none' : 'block',
+                  }}
+                >
+                  {/* SCROLL GUTTER */}
+                  <div
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      right: 0,
+                      width: '50px',
+                      height: '100%',
+                      zIndex: 60,
+                      background: 'rgba(0, 0, 0, 0.1)',
+                      borderLeft: '2px solid rgba(0, 0, 0, 0.2)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      touchAction: 'pan-y',
+                      pointerEvents: 'auto',
+                    }}
+                  >
+                    <div
+                      style={{
+                        color: '#666',
+                        writingMode: 'vertical-rl',
+                        textOrientation: 'mixed',
+                        fontSize: '0.7rem',
+                        fontWeight: 'bold',
+                        letterSpacing: '2px',
+                      }}
+                    >
+                      GLISSER POUR DÉFILER ↕
+                    </div>
+                  </div>
 
-  {/* 2. HEADER SELECTORS */}
-  <div style={{ display: 'flex', position: 'absolute', top: 0, left: 0, right: '50px', height: '30px', zIndex: 30 }}>
-    {(() => {
-      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-      return sortedV.slice(0, -1).map((x, i) => (
-        <div key={i} style={{ position: 'absolute', left: `${x * 100}%`, width: `${(sortedV[i + 1] - x) * 100}%`, textAlign: 'center' }}>
-          <select
-            className="input"
-            style={{ fontSize: '0.7rem', padding: 0, height: '24px', width: '90%', background: 'rgba(255,255,255,0.9)' }}
-            value={colMapping[i] || 'ignore'}
-            onChange={(e) => {
-              const n = [...colMapping];
-              n[i] = e.target.value;
-              setColMapping(n);
-            }}
-          >
-            {colOptions.map((o) => (
-              <option key={o.val} value={o.val}>{o.label}</option>
-            ))}
-          </select>
-        </div>
-      ));
-    })()}
-  </div>
+                  {/* HEADER SELECTORS */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      right: '50px',
+                      height: '30px',
+                      zIndex: 30,
+                    }}
+                  >
+                    {(() => {
+                      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+                      return sortedV.slice(0, -1).map((x, i) => (
+                        <div
+                          key={i}
+                          style={{
+                            position: 'absolute',
+                            left: `${x * 100}%`,
+                            width: `${(sortedV[i + 1] - x) * 100}%`,
+                            textAlign: 'center',
+                          }}
+                        >
+                          <select
+                            className="input"
+                            style={{
+                              fontSize: '0.7rem',
+                              padding: 0,
+                              height: '24px',
+                              width: '90%',
+                              background: 'rgba(255,255,255,0.9)',
+                            }}
+                            value={colMapping[i] || 'ignore'}
+                            onChange={(e) => {
+                              const n = [...colMapping];
+                              n[i] = e.target.value;
+                              setColMapping(n);
+                            }}
+                          >
+                            {colOptions.map((o) => (
+                              <option key={o.val} value={o.val}>
+                                {o.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ));
+                    })()}
+                  </div>
 
-  {/* 3. MAIN IMAGE */}
-  <img 
-    ref={imageRef} 
-    src={image} 
-    style={{ 
-      display: 'block', 
-      width: '100%', 
-      marginTop: '30px',
-      touchAction: 'none' // Only the image prevents scrolling to protect line movement
-    }} 
-    alt="Scan" 
-  />
+                  {/* MAIN IMAGE - FIX 3: SCROLL ENABLED */}
+                  <img
+                    ref={imageRef}
+                    src={image}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      marginTop: '30px',
+                      touchAction: 'pan-y', // CHANGED: Allows vertical scroll
+                    }}
+                    alt="Scan"
+                  />
 
-  {/* 4. VERTICAL HANDLES (CENTERED - BLUE) */}
-  {vLines.map((x, i) => (
-    <div key={`v-${i}`} style={{ position: 'absolute', top: 30, bottom: 0, left: `${x * 100}%`, width: '2px', background: '#3b82f6', zIndex: 40 }}>
-      <div
-        style={{
-          position: 'absolute', top: '50%', left: '-16px', transform: 'translateY(-50%)',
-          width: '32px', height: '32px', background: '#3b82f6', color: 'white',
-          borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
-          touchAction: 'none'
-        }}
-        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-        onPointerMove={(e) => {
-          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-          const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
-          const nx = (e.clientX - rect.left) / (rect.width - 50);
-          const nv = [...vLines];
-          nv[i] = Math.max(0, Math.min(1, nx));
-          setVLines(nv.sort((a, b) => a - b)); // Auto-sort fix
-        }}
-        onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
-      ><FaArrowsAltH size={12}/></div>
-    </div>
-  ))}
+                  {/* VERTICAL HANDLES */}
+                  {vLines.map((x, i) => (
+                    <div
+                      key={`v-${i}`}
+                      style={{
+                        position: 'absolute',
+                        top: 30,
+                        bottom: 0,
+                        left: `${x * 100}%`,
+                        width: '2px',
+                        background: '#3b82f6',
+                        zIndex: 40,
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          top: '50%',
+                          left: '-16px',
+                          transform: 'translateY(-50%)',
+                          width: '32px',
+                          height: '32px',
+                          background: '#3b82f6',
+                          color: 'white',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                          touchAction: 'none',
+                        }}
+                        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+                        onPointerMove={(e) => {
+                          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                          const rect =
+                            e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+                          const nx = (e.clientX - rect.left) / (rect.width - 50);
+                          const nv = [...vLines];
+                          nv[i] = Math.max(0, Math.min(1, nx));
+                          setVLines(nv.sort((a, b) => a - b));
+                        }}
+                        onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+                      >
+                        <FaArrowsAltH size={12} />
+                      </div>
+                    </div>
+                  ))}
 
-  {/* 5. HORIZONTAL HANDLES (CENTERED - RED) */}
-  {hLines.map((y, i) => (
-    <div key={`h-${i}`} style={{ position: 'absolute', left: 0, right: '50px', top: `calc(${y * 100}% + 30px)`, height: '2px', background: '#ef4444', zIndex: 40 }}>
-      <div
-        style={{
-          position: 'absolute', left: '50%', top: '-16px', transform: 'translateX(-50%)',
-          width: '32px', height: '32px', background: '#ef4444', color: 'white',
-          borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
-          touchAction: 'none'
-        }}
-        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-        onPointerMove={(e) => {
-          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-          const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
-          const ny = (e.clientY - rect.top - 30) / (rect.height - 30);
-          const nh = [...hLines];
-          nh[i] = Math.max(0, Math.min(1, ny));
-          setHLines(nh.sort((a, b) => a - b)); // Auto-sort fix
-        }}
-        onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
-        onDoubleClick={() => setHLines(hLines.filter((_, idx) => idx !== i))}
-      ><FaArrowsAltV size={12}/></div>
-    </div>
-  ))}
-</div>
+                  {/* HORIZONTAL HANDLES */}
+                  {hLines.map((y, i) => (
+                    <div
+                      key={`h-${i}`}
+                      style={{
+                        position: 'absolute',
+                        left: 0,
+                        right: '50px',
+                        top: `calc(${y * 100}% + 30px)`,
+                        height: '2px',
+                        background: '#ef4444',
+                        zIndex: 40,
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: 'absolute',
+                          left: '50%',
+                          top: '-16px',
+                          transform: 'translateX(-50%)',
+                          width: '32px',
+                          height: '32px',
+                          background: '#ef4444',
+                          color: 'white',
+                          borderRadius: '50%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                          touchAction: 'none',
+                        }}
+                        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+                        onPointerMove={(e) => {
+                          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                          const rect =
+                            e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+                          const ny = (e.clientY - rect.top - 30) / (rect.height - 30);
+                          const nh = [...hLines];
+                          nh[i] = Math.max(0, Math.min(1, ny));
+                          setHLines(nh.sort((a, b) => a - b));
+                        }}
+                        onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+                        onDoubleClick={() => setHLines(hLines.filter((_, idx) => idx !== i))}
+                      >
+                        <FaArrowsAltV size={12} />
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
 
@@ -889,7 +850,7 @@ const runOCR = async () => {
               </div>
             )}
 
-            {/* Logs - FULL SCROLLABLE */}
+            {/* Logs */}
             {logs.length > 0 && (
               <div
                 style={{
