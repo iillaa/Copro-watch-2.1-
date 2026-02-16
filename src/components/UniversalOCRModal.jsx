@@ -143,83 +143,82 @@ export default function UniversalOCRModal({
       masterCanvas.height = imgEl.naturalHeight;
       ctx.drawImage(imgEl, 0, 0, masterCanvas.width, masterCanvas.height);
 
-      // 2. Loop through User's Horizontal Lines (Percentages)
-      // Use hLines if present, otherwise default to full image (0 to 1)
+      // 2. Pre-process Image (Binarization & Scale)
+      setProgress(10);
+      setStatusText('Optimisation de l\'image...');
+
+      // Limit max dimension to avoid memory crashes
+      const maxDim = 2500;
+      let scale = 1;
+      if (imgEl.naturalWidth > maxDim || imgEl.naturalHeight > maxDim) {
+        scale = maxDim / Math.max(imgEl.naturalWidth, imgEl.naturalHeight);
+      } else {
+        scale = 1.5; // Mild upscale for better OCR
+      }
+
+      const procCanvas = document.createElement('canvas');
+      procCanvas.width = imgEl.naturalWidth * scale;
+      procCanvas.height = imgEl.naturalHeight * scale;
+      const ctx = procCanvas.getContext('2d');
+      ctx.drawImage(imgEl, 0, 0, procCanvas.width, procCanvas.height);
+
+      // Binarization (Thresholding)
+      const imgData = ctx.getImageData(0, 0, procCanvas.width, procCanvas.height);
+      const d = imgData.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const v = 0.2126 * d[i] + 0.7152 * d[i+1] + 0.0722 * d[i+2];
+        const val = v >= 128 ? 255 : 0;
+        d[i] = d[i+1] = d[i+2] = val;
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      // 3. Run OCR on Full Page (Logical Slicing)
+      setProgress(30);
+      setStatusText('Analyse globale...');
+      await worker.setParameters({ tessedit_pageseg_mode: '6' }); // Assume uniform block of text
+      const result = await worker.recognize(procCanvas);
+      const words = result.data.words || [];
+      const totalWordsFound = words.length;
+
+      // 4. Map Words to Grid
+      setProgress(80);
+      setStatusText('Mapping grille...');
+
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-
       let allCandidates = [];
-      let totalWordsFound = 0;
-      const totalSlices = sortedH.length - 1;
 
-      for (let r = 0; r < totalSlices; r++) {
-        setProgress(Math.round(((r) / totalSlices) * 100));
-        setStatusText(`Lecture ligne ${r + 1}/${totalSlices}...`);
+      // Debug: Draw bounding boxes on masterCanvas to show user what was detected
+      const debugCtx = masterCanvas.getContext('2d');
+      debugCtx.strokeStyle = 'rgba(255, 0, 0, 0.5)';
+      debugCtx.lineWidth = 2;
 
-        const yStart = Math.floor(sortedH[r] * masterCanvas.height);
-        const yEnd = Math.floor(sortedH[r + 1] * masterCanvas.height);
+      // We need to map words back to original scale (masterCanvas is natural size)
+      const mappedWords = words.map(w => ({
+        ...w,
+        bbox: {
+          x0: w.bbox.x0 / scale,
+          x1: w.bbox.x1 / scale,
+          y0: w.bbox.y0 / scale,
+          y1: w.bbox.y1 / scale,
+        },
+        // Calculate centroid
+        cx: ((w.bbox.x0 + w.bbox.x1) / 2) / scale,
+        cy: ((w.bbox.y0 + w.bbox.y1) / 2) / scale
+      }));
+
+      // Visualize detections
+      mappedWords.forEach(w => {
+        debugCtx.strokeRect(w.bbox.x0, w.bbox.y0, w.bbox.x1 - w.bbox.x0, w.bbox.y1 - w.bbox.y0);
+      });
+
+      // GRID MAPPING LOGIC
+      for (let r = 0; r < sortedH.length - 1; r++) {
+        const yStart = sortedH[r] * masterCanvas.height;
+        const yEnd = sortedH[r + 1] * masterCanvas.height;
         const rowHeight = yEnd - yStart;
 
-        if (rowHeight < 15) continue; // Skip too small slices
-
-        // 3. Create Slice Canvas (Scaled 2x for better resolution)
-        const scale = 2;
-        const rowCanvas = document.createElement('canvas');
-        rowCanvas.width = masterCanvas.width * scale;
-        rowCanvas.height = rowHeight * scale;
-        const rowCtx = rowCanvas.getContext('2d');
-
-        // Draw scaled image
-        rowCtx.drawImage(
-          masterCanvas,
-          0, yStart, masterCanvas.width, rowHeight, // Source
-          0, 0, rowCanvas.width, rowCanvas.height   // Dest
-        );
-
-        // Apply Binarization (Thresholding) manually for max contrast
-        // This forces pixels to be either black or white, removing gray noise
-        const imgData = rowCtx.getImageData(0, 0, rowCanvas.width, rowCanvas.height);
-        const d = imgData.data;
-        for (let i = 0; i < d.length; i += 4) {
-          const r = d[i];
-          const g = d[i+1];
-          const b = d[i+2];
-          // Standard luminance formula
-          const v = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-          // Threshold at 128 (can be adjusted, but 128 is standard)
-          const val = v >= 128 ? 255 : 0;
-          d[i] = d[i+1] = d[i+2] = val;
-        }
-        rowCtx.putImageData(imgData, 0, 0);
-
-        // 4. Run OCR on Strip with Padding
-        const padding = 20 * scale;
-        const paddedCanvas = document.createElement('canvas');
-        paddedCanvas.width = rowCanvas.width + padding * 2;
-        paddedCanvas.height = rowCanvas.height + padding * 2;
-        const pCtx = paddedCanvas.getContext('2d');
-        pCtx.fillStyle = '#FFFFFF';
-        pCtx.fillRect(0, 0, paddedCanvas.width, paddedCanvas.height);
-        pCtx.drawImage(rowCanvas, padding, padding);
-
-        // Use PSM 6 (Sparse Text Block)
-        await worker.setParameters({ tessedit_pageseg_mode: '6' });
-        const result = await worker.recognize(paddedCanvas);
-        const data = result.data;
-
-        // 5. Parse Data for this Slice
-        const rawWords = data.words || [];
-        totalWordsFound += rawWords.length;
-
-        // Adjust coordinates back to original image space (remove padding AND scale)
-        const words = rawWords.map((w) => ({
-          ...w,
-          bbox: {
-            ...w.bbox,
-            x0: (w.bbox.x0 - padding) / scale,
-            x1: (w.bbox.x1 - padding) / scale,
-          },
-        }));
+        if (rowHeight < 10) continue; // Skip tiny rows
 
         let candidate = {
           id: Date.now() + Math.random(),
@@ -232,6 +231,7 @@ export default function UniversalOCRModal({
         };
         let hasData = false;
 
+        // For each column in this row
         for (let c = 0; c < sortedV.length - 1; c++) {
           const xStart = sortedV[c] * masterCanvas.width;
           const xEnd = sortedV[c + 1] * masterCanvas.width;
@@ -239,15 +239,16 @@ export default function UniversalOCRModal({
 
           if (fieldType === 'ignore') continue;
 
-          const cellWords = words.filter((w) => {
-            if (!w || !w.bbox) return false;
-            const wx = (w.bbox.x0 + w.bbox.x1) / 2;
-            // X coords are preserved in the slice
-            return wx >= xStart && wx < xEnd;
+          // Find words whose CENTER point is inside this cell
+          const cellWords = mappedWords.filter(w => {
+            return w.cy >= yStart && w.cy < yEnd && w.cx >= xStart && w.cx < xEnd;
           });
 
+          // Sort by X position to maintain reading order
+          cellWords.sort((a, b) => a.cx - b.cx);
+
           const cellText = cellWords
-            .map((w) => w.text)
+            .map(w => w.text)
             .join(' ')
             .replace(/[|\[\]{};:_*!@#$%^&()]/g, '')
             .trim();
@@ -269,18 +270,18 @@ export default function UniversalOCRModal({
 
       // Update State
       if (allCandidates.length > 0) {
-        console.log(`✅ Slicing OCR Complete: Found ${allCandidates.length} candidates.`);
+        console.log(`✅ Logical OCR Complete: Mapped ${allCandidates.length} candidates from ${totalWordsFound} words.`);
         setCandidates(allCandidates);
       } else {
-        console.warn('⚠️ No candidates found with slicing.');
+        console.warn('⚠️ No candidates found with logical mapping.');
         // Diagnostic Alert
         if (totalWordsFound > 0) {
           alert(
-            `Texte détecté (${totalWordsFound} mots) mais ignoré par le filtrage.\n\nSolution : Ajustez les lignes BLEUES (Colonnes) pour qu'elles passent BIEN au milieu des espaces blancs, sans couper le texte.`
+            `OCR a détecté ${totalWordsFound} mots, mais AUCUN ne correspond à votre grille.\n\nLes boîtes rouges sur l'image montrent ce qui a été lu.\nAjustez vos lignes (Rouges/Bleues) pour qu'elles passent à travers les boîtes rouges.`
           );
         } else {
           alert(
-            `Aucun texte détecté.\n\nConseils :\n1. L'image est-elle nette ?\n2. Le contraste est-il suffisant ?\n3. Essayez de redessiner les lignes rouges.`
+            `Aucun mot détecté sur toute l'image.\n\nL'image est peut-être trop floue ou le contraste trop faible.`
           );
         }
       }
