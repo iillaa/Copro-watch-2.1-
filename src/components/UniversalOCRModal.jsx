@@ -358,6 +358,8 @@ const runPaddleOCR = async () => {
   setProgress(10);
   setStatusText('Paddle AI (Turbo)...');
 
+  let blobUrl = null;
+
   try {
     const img = imageRef.current;
     
@@ -382,15 +384,14 @@ const runPaddleOCR = async () => {
           reject(new Error("Échec de la création du Blob"));
           return;
         }
-        const url = URL.createObjectURL(blob);
+        blobUrl = URL.createObjectURL(blob);
         const tempImg = new Image();
         tempImg.onload = () => {
-          // Clean up the URL once the image is loaded in memory
-          URL.revokeObjectURL(url);
+          // Do NOT revoke here - needed by OCR engine
           resolve(tempImg);
         };
         tempImg.onerror = reject;
-        tempImg.src = url;
+        tempImg.src = blobUrl;
       }, 'image/jpeg', 0.95);
     });
 
@@ -468,6 +469,7 @@ const runPaddleOCR = async () => {
     addLog(`[ERREUR] ${e.message}`);
     console.error(e);
   } finally {
+    if (blobUrl) URL.revokeObjectURL(blobUrl);
     setIsProcessing(false);
     setProgress(100);
   }
