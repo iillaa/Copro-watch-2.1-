@@ -11,7 +11,9 @@ const CDN_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dis
 ort.env.wasm.wasmPaths = CDN_URL;
 // This tells the engine to use the main thread to fetch WASM, 
 // which avoids the "Worker 404" problem.
-ort.env.wasm.proxy = true; 
+ort.env.wasm.proxy = false;
+ort.env.wasm.numThreads = 1;
+window.ort = ort; 
 
 import { db } from '../services/db';
 import {
@@ -346,108 +348,130 @@ export default function UniversalOCRModal({
   };
 
   // ========== ENGINE 2: PADDLE OCR (NEW TURBO MODE) ==========
-  const runPaddleOCR = async () => {
-    if (!image || !imageRef.current) return;
-    setIsProcessing(true);
-    setLogs([]);
-    addLog(`[PADDLE] Pre-heating engine v${ORT_VERSION}...`);
-    setProgress(10);
+  // SURGICAL FIX: Using Raw Pixel Data (ImageData) instead of HTML Element
+  // This bypasses the decoding step in WASM which fails on Android WebView
+const runPaddleOCR = async () => {
+  if (!image || !imageRef.current) return;
+  setIsProcessing(true);
+  setLogs([]);
+  addLog(`[PADDLE] Initialisation IA v${ORT_VERSION}...`);
+  setProgress(10);
+  setStatusText('Paddle AI (Turbo)...');
 
-    try {
-      // 3. MANUAL INITIALIZATION (Forces the engine to find WASM now)
-      try {
-        await ort.InferenceSession.create(new Uint8Array([0, 97, 115, 109, 1, 0, 0, 0]), { executionProviders: ['wasm'] });
-      } catch (e) {
-        // We ignore this error, it's just to kickstart the WASM loader
-      }
-
-      const ocr = await Ocr.create({
-        models: {
-          detectionPath: 'models/det.onnx',
-          recognitionPath: 'models/rec_ara.onnx',
-          dictionaryPath: 'models/keys_ara.txt'
-        }
-      });
-      
-      addLog('[PADDLE] Moteur prêt. Analyse...');
+  try {
+    const img = imageRef.current;
     
-      setProgress(30);
+    // 1. DIMENSIONS (Multiple of 32)
+    const finalW = Math.floor((img.naturalWidth > 960 ? 960 : img.naturalWidth) / 32) * 32;
+    const finalH = Math.floor((img.naturalHeight > 960 ? 960 : img.naturalHeight) / 32) * 32;
 
-      // 2. Run Detection (Whole Page)
-      const result = await ocr.detect(imageRef.current);
-      setProgress(80);
+    // 2. DRAW TO CANVAS
+    const canvas = document.createElement('canvas');
+    canvas.width = finalW;
+    canvas.height = finalH;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, finalW, finalH);
+    ctx.drawImage(img, 0, 0, finalW, finalH);
 
-      // 3. Map Results
-      const adaptedWords = result.map(item => ({
-        text: item.text,
-        confidence: item.score * 100,
-        bbox: {
-          x0: item.box[0][0], y0: item.box[0][1],
-          x1: item.box[2][0], y1: item.box[2][1]
+    // 3. SURGICAL FIX: BLOB CONVERSION
+    // We convert canvas -> blob -> new Image object to force browser decoding
+    const blobImage = await new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error("Échec de la création du Blob"));
+          return;
         }
-      }));
+        const url = URL.createObjectURL(blob);
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          // Clean up the URL once the image is loaded in memory
+          URL.revokeObjectURL(url);
+          resolve(tempImg);
+        };
+        tempImg.onerror = reject;
+        tempImg.src = url;
+      }, 'image/jpeg', 0.95);
+    });
 
-      addLog(`[PADDLE] ${adaptedWords.length} mots trouvés. Mapping grille...`);
+    addLog(`[PADDLE] Image reconstruite: ${finalW}x${finalH}px`);
 
-      // 4. Grid Sorting Logic (Inline Implementation for safety)
-      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-      const isRTL = docLanguage === 'ara';
-      const results = [];
+    // 4. LOAD ENGINE (Absolute Paths)
+    const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
+    const modelsUrl = baseUrl + 'models/';
 
-      for (let r = 0; r < sortedH.length - 1; r++) {
-        let candidate = createEmptyCandidate();
-        let hasDataInRow = false;
-        
-        // Define Row Boundaries (Y)
-        const rowTop = sortedH[r] * imgDimensions.height;
-        const rowBottom = sortedH[r + 1] * imgDimensions.height;
+    const ocr = await Ocr.create({
+      models: {
+        detectionPath: `${modelsUrl}det.onnx`,
+        recognitionPath: `${modelsUrl}rec_ara.onnx`,
+        dictionaryPath: `${modelsUrl}keys_ara.txt`
+      }
+    });
 
-        for (let c = 0; c < sortedV.length - 1; c++) {
-           const colIndex = isRTL ? sortedV.length - 2 - c : c;
-           const field = colMapping[colIndex];
-           if (!field || field === 'ignore') continue;
+    addLog('[PADDLE] Moteur prêt. Analyse des pixels...');
+    setProgress(40);
 
-           // Define Col Boundaries (X)
-           const colLeft = sortedV[colIndex] * imgDimensions.width;
-           const colRight = sortedV[colIndex + 1] * imgDimensions.width;
+    // 5. DETECTION (Passing the fresh Blob-Image)
+    const results = await ocr.detect(blobImage);
+    
+    setProgress(80);
+    addLog(`[PADDLE] Succès: ${results.length} mots trouvés.`);
 
-           // Find words inside this box
-           const cellWords = adaptedWords.filter(w => {
-              const centerX = (w.bbox.x0 + w.bbox.x1) / 2;
-              const centerY = (w.bbox.y0 + w.bbox.y1) / 2;
-              return centerY >= rowTop && centerY <= rowBottom && 
-                     centerX >= colLeft && centerX <= colRight;
-           });
+    // 6. COORDINATE MAPPING
+    const ratioX = imgDimensions.width / finalW;
+    const ratioY = imgDimensions.height / finalH;
+    const adaptedWords = results.map(item => ({
+      text: item.text,
+      cx: ((item.box[0][0] + item.box[2][0]) / 2) * ratioX,
+      cy: ((item.box[0][1] + item.box[2][1]) / 2) * ratioY
+    }));
 
-           // Join words (RTL aware if needed, but usually space join is fine)
-           if (cellWords.length > 0) {
-              const joinedText = cellWords.map(w => w.text).join(' ');
-              candidate[field] = joinedText;
-              hasDataInRow = true;
-              addLog(`[CELL] R${r+1}C${c+1}: "${joinedText}"`);
-           }
-        }
-        if (hasDataInRow) {
-           cleanCandidate(candidate);
-           results.push(candidate);
+    // 7. GRID SORTING (Standard Logic)
+    const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+    const isRTL = docLanguage === 'ara';
+    const gridCandidates = [];
+
+    for (let r = 0; r < sortedH.length - 1; r++) {
+      let candidate = createEmptyCandidate();
+      let hasData = false;
+      const yTop = sortedH[r] * imgDimensions.height;
+      const yBottom = sortedH[r + 1] * imgDimensions.height;
+
+      for (let c = 0; c < sortedV.length - 1; c++) {
+        const colIndex = isRTL ? sortedV.length - 2 - c : c;
+        const field = colMapping[colIndex];
+        if (!field || field === 'ignore') continue;
+        const xLeft = sortedV[colIndex] * imgDimensions.width;
+        const xRight = sortedV[colIndex + 1] * imgDimensions.width;
+
+        const cellWords = adaptedWords.filter(w => 
+          w.cy >= yTop && w.cy <= yBottom && w.cx >= xLeft && w.cx <= xRight
+        );
+
+        if (cellWords.length > 0) {
+          cellWords.sort((a, b) => isRTL ? b.cx - a.cx : a.cx - b.cx);
+          candidate[field] = cellWords.map(w => w.text).join(' ');
+          hasData = true;
         }
       }
-
-      setCandidates(results);
-      setActiveTab('results');
-      addLog(`[SUCCESS] Terminé.`);
-
-    } catch (e) {
-      addLog(`[ERREUR PADDLE] ${e.message}`);
-      console.error(e);
-      alert("Erreur Paddle: Vérifiez que les fichiers .onnx sont dans public/models/");
-    } finally {
-      setIsProcessing(false);
-      setProgress(100);
+      if (hasData) {
+        cleanCandidate(candidate);
+        gridCandidates.push(candidate);
+      }
     }
-  };
 
+    setCandidates(gridCandidates);
+    setActiveTab('results');
+
+  } catch (e) {
+    addLog(`[ERREUR] ${e.message}`);
+    console.error(e);
+  } finally {
+    setIsProcessing(false);
+    setProgress(100);
+  }
+};
   // --- MASTER SWITCH ---
   const handleGo = () => {
     if (ocrEngine === 'paddle') {
