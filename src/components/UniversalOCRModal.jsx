@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import Tesseract from 'tesseract.js';
 import { db } from '../services/db';
 import {
@@ -10,6 +10,8 @@ import {
   FaGlobeAfrica,
   FaEraser,
   FaPlus,
+  FaBug,
+  FaClipboardList,
   FaArrowsAltH,
   FaArrowsAltV,
 } from 'react-icons/fa';
@@ -77,6 +79,16 @@ export default function UniversalOCRModal({
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
   const [docLanguage, setDocLanguage] = useState('fra');
+  const [debugMode, setDebugMode] = useState(false);
+
+  // LOGGING SYSTEM
+  const [logs, setLogs] = useState([]);
+  const addLog = (msg) => {
+    const time = new Date().toLocaleTimeString();
+    const logLine = `[${time}] ${msg}`;
+    console.log(logLine);
+    setLogs((prev) => [...prev, logLine]);
+  };
 
   // Grid State
   const [vLines, setVLines] = useState([0.2, 0.5, 0.8]);
@@ -89,6 +101,7 @@ export default function UniversalOCRModal({
   ]);
   const [imgDimensions, setImgDimensions] = useState({ width: 0, height: 0 });
   const imageRef = useRef(null);
+  const canvasRef = useRef(null);
 
   const colOptions = [
     { val: 'national_id', label: 'Matricule' },
@@ -98,24 +111,118 @@ export default function UniversalOCRModal({
     { val: 'ignore', label: 'Ignorer' },
   ];
 
-  // 2. IMAGE LOADING
+  // 2. IMAGE LOADING (SANITIZER)
   const handleImageChange = (e) => {
     if (e.target.files && e.target.files[0]) {
-      const url = URL.createObjectURL(e.target.files[0]);
-      const img = new Image();
-      img.onload = () => {
-        setImgDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-        setImage(url);
+      const file = e.target.files[0];
+      addLog(`[LOAD] File selected: ${file.name} (${(file.size / 1024).toFixed(2)} KB)`);
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          // Create a canvas to "bake" the rotation/dimensions
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          addLog(`[LOAD] Native Dimensions: ${width}x${height}`);
+
+          // Cap resolution to 2000px width for stability
+          if (width > 2000) {
+            const scale = 2000 / width;
+            width = 2000;
+            height = height * scale;
+            addLog(`[LOAD] Resizing to: ${width}x${Math.round(height)} for performance`);
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const cleanUrl = canvas.toDataURL('image/jpeg', 0.9);
+          addLog(`[LOAD] Image sanitized and ready.`);
+
+          setImage(cleanUrl);
+          setImgDimensions({ width, height });
+          setCandidates([]);
+          setHLines([]);
+        };
+        img.onerror = () => addLog('[ERROR] Failed to load image object.');
+        img.src = event.target.result;
       };
-      img.src = url;
-      setCandidates([]);
-      setHLines([]);
+      reader.readAsDataURL(file);
     }
   };
 
-  // 3. THE SELF-HEALING OCR ENGINE
+  // 3. DEBUGGER: VISUALIZE GRID
+  const drawDebugGrid = () => {
+    addLog('[DEBUG] Drawing Visual Grid...');
+    const canvas = canvasRef.current;
+
+    if (!canvas || !imageRef.current) {
+      addLog('[ERROR] Canvas or Image ref missing. Is the image loaded?');
+      return;
+    }
+
+    const ctx = canvas.getContext('2d');
+
+    // Match dimensions strictly to internal state
+    canvas.width = imgDimensions.width;
+    canvas.height = imgDimensions.height;
+
+    // Draw Image
+    try {
+      ctx.drawImage(imageRef.current, 0, 0, canvas.width, canvas.height);
+    } catch (e) {
+      addLog('[ERROR] Error drawing image to debug canvas: ' + e.message);
+      return;
+    }
+
+    // Draw Rows (Red)
+    const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
+    ctx.lineWidth = 5;
+
+    for (let r = 0; r < sortedH.length - 1; r++) {
+      const y = sortedH[r] * canvas.height;
+      const h = (sortedH[r + 1] - sortedH[r]) * canvas.height;
+      ctx.strokeRect(0, y, canvas.width, h);
+
+      ctx.fillStyle = 'red';
+      ctx.font = 'bold 30px monospace';
+      ctx.fillText(`ROW ${r + 1} (y=${Math.round(y)})`, 20, y + 40);
+    }
+
+    // Draw Columns (Blue)
+    ctx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
+    vLines.forEach((v, i) => {
+      const x = v * canvas.width;
+      ctx.beginPath();
+      ctx.moveTo(x, 0);
+      ctx.lineTo(x, canvas.height);
+      ctx.stroke();
+
+      ctx.fillStyle = 'blue';
+      ctx.fillText(`COL ${i + 1} (${Math.round(v * 100)}%)`, x + 10, 80);
+    });
+    addLog('[DEBUG] Grid drawn. Check the yellow box below.');
+  };
+
+  // 4. OCR ENGINE: HEAVY LOGGING
   const runOCR = async () => {
     if (!image) return;
+    setLogs([]);
+    addLog('🚀 === STARTING OCR PROCESS ===');
+    addLog(`[CONFIG] Image Size: ${imgDimensions.width}x${imgDimensions.height}`);
+
+    if (debugMode) {
+      drawDebugGrid();
+      return;
+    }
+
     setIsProcessing(true);
     setCandidates([]);
     setProgress(0);
@@ -125,74 +232,89 @@ export default function UniversalOCRModal({
 
     try {
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
+      addLog(`[TESSERACT] Initializing Worker for languages: ${langs}`);
 
-      // Initialize Tesseract v5
       worker = await Tesseract.createWorker(langs);
+      addLog('[TESSERACT] Worker Ready.');
 
-      // B. Prepare the "Master Canvas" (Fixes Rotation & Scaling)
-      const masterCanvas = document.createElement('canvas');
-      const ctx = masterCanvas.getContext('2d');
-      const imgEl = imageRef.current;
-      masterCanvas.width = imgEl.naturalWidth;
-      masterCanvas.height = imgEl.naturalHeight;
-      ctx.drawImage(imgEl, 0, 0);
-
-      // C. TRY GRID STRATEGY
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
       let detected = [];
 
-      // Only run Grid if User Defined Rows (Red Lines)
+      addLog(
+        `[GRID] Config: ${sortedH.length - 1} Rows defined, ${sortedV.length - 1} Columns defined.`
+      );
+      addLog(`[GRID] Columns (X%): ${sortedV.map((v) => (v * 100).toFixed(1) + '%').join(', ')}`);
+
+      // STRATEGY: Native Rectangle Slicing
       if (hLines.length > 0) {
         const rowCount = sortedH.length - 1;
 
         for (let r = 0; r < rowCount; r++) {
-          const yStart = Math.floor(sortedH[r] * masterCanvas.height);
-          const yEnd = Math.floor(sortedH[r + 1] * masterCanvas.height);
-          const rowHeight = yEnd - yStart;
+          const yStart = Math.floor(sortedH[r] * imgDimensions.height);
+          const height = Math.floor((sortedH[r + 1] - sortedH[r]) * imgDimensions.height);
 
-          if (rowHeight < 20) continue;
+          addLog(`\n--- ROW ${r + 1} ANALYSIS ---`);
+          addLog(`[SLICE] Y-Start: ${yStart}px, Height: ${height}px`);
 
-          // Update Status
+          if (height < 20) {
+            addLog('[SKIP] Row too short (<20px). Likely noise.');
+            continue;
+          }
+
           const pct = Math.round(((r + 1) / rowCount) * 100);
           setProgress(pct);
-          setStatusText(`Lecture ligne ${r + 1}/${rowCount} (Mode Grille)...`);
+          setStatusText(`Lecture ligne ${r + 1}/${rowCount}...`);
 
-          // 1. Slice the Row
-          const rowCanvas = document.createElement('canvas');
-          rowCanvas.width = masterCanvas.width;
-          rowCanvas.height = rowHeight;
-          const rowCtx = rowCanvas.getContext('2d');
-          rowCtx.drawImage(
-            masterCanvas,
-            0,
-            yStart,
-            masterCanvas.width,
-            rowHeight,
-            0,
-            0,
-            masterCanvas.width,
-            rowHeight
-          );
+          // USE NATIVE TESSERACT RECTANGLE
+          const rect = {
+            top: yStart,
+            left: 0,
+            width: imgDimensions.width,
+            height: height,
+          };
 
-          // 2. OCR the Row Strip
-          // [FIX] PSM 6 (Block) is better for sparse tables than PSM 7 (Line)
-          await worker.setParameters({ tessedit_pageseg_mode: '6' });
-          const { data } = await worker.recognize(rowCanvas.toDataURL('image/jpeg'));
+          const { data } = await worker.recognize(image, {
+            rectangle: rect,
+            tessedit_pageseg_mode: '6', // Block mode
+          });
 
-          // 3. Map Words to Blue Columns
+          // SAFETY CHECK
+          const words = data.words || [];
+          addLog(`[OCR] Found ${words.length} words in this strip.`);
+
+          if (words.length === 0) {
+            addLog(`[OCR WARNING] Empty strip? Raw text: "${data.text.trim()}"`);
+          } else {
+            const preview = data.text.replace(/\n/g, ' ').substring(0, 60);
+            addLog(`[OCR PREVIEW] "${preview}..."`);
+          }
+
+          // MAP WORDS TO COLUMNS
           let candidate = createEmptyCandidate();
           let hasData = false;
-          const words = data.words || [];
 
           words.forEach((w) => {
-            if (w.confidence < 30) return; // Lowered confidence threshold
+            if (w.confidence < 40) {
+              // addLog(`[FILTER] Ignored low conf word: "${w.text}" (${w.confidence}%)`);
+              return;
+            }
 
+            // Calculate relative position within the STRIP
+            // NOTE: bbox is relative to the RECTANGLE, not the whole image in some versions,
+            // but usually relative to the input image if using 'rectangle'.
+            // Let's debug coordinates.
             const xCenter = (w.bbox.x0 + w.bbox.x1) / 2;
-            const xPct = xCenter / masterCanvas.width;
+            const xPct = xCenter / imgDimensions.width;
 
+            // addLog(`[MAP] Word "${w.text}" center X=${Math.round(xCenter)}px (${(xPct*100).toFixed(1)}%)`);
+
+            let matched = false;
             for (let c = 0; c < sortedV.length - 1; c++) {
-              if (xPct >= sortedV[c] && xPct < sortedV[c + 1]) {
+              const startPct = sortedV[c];
+              const endPct = sortedV[c + 1];
+
+              if (xPct >= startPct && xPct < endPct) {
                 const fieldType = colMapping[c] || 'ignore';
                 if (fieldType !== 'ignore') {
                   const cleanWord = w.text.replace(/[|\[\]{};:_*!@#$%^&()]/g, '').trim();
@@ -201,47 +323,53 @@ export default function UniversalOCRModal({
                       (candidate[fieldType] ? candidate[fieldType] + ' ' : '') +
                       cleanWord.toUpperCase();
                     hasData = true;
+                    matched = true;
                   }
                 }
                 break;
               }
             }
+            // if(!matched) addLog(`[UNMATCHED] "${w.text}" at ${(xPct*100).toFixed(1)}% (Outside defined cols?)`);
           });
 
-          if (candidate.full_name) {
-            candidate.original_name = candidate.full_name;
-            candidate.isArabic = /[\u0600-\u06FF]/.test(candidate.full_name);
+          if (hasData) {
+            if (candidate.full_name) {
+              candidate.original_name = candidate.full_name;
+              candidate.isArabic = /[\u0600-\u06FF]/.test(candidate.full_name);
+            }
+            addLog(`[SUCCESS] Extracted: ${JSON.stringify(candidate)}`);
+            detected.push(candidate);
+          } else {
+            addLog('[FAIL] Row processed but map yielded no valid data.');
           }
-
-          if (hasData) detected.push(candidate);
         }
       }
+      // FALLBACK: Full Page
+      else {
+        addLog('\n[FALLBACK] No Red Lines. Switching to Full Page Mode (PSM 3).');
+        setStatusText('Lecture globale (Auto)...');
+        await worker.setParameters({ tessedit_pageseg_mode: '3' });
+        const { data } = await worker.recognize(image);
+        addLog(`[FALLBACK] Full page OCR complete. Text length: ${data.text.length}`);
 
-      // D. RESCUE MODE (Fallback)
-      // If Grid failed (0 results) OR User didn't draw rows, try reading full page
+        detected = parseTextToCandidatesLogic(data.text);
+        addLog(`[FALLBACK] Regex Parser found ${detected.length} candidates.`);
+      }
+
       if (detected.length === 0) {
-        setStatusText('Mode Grille vide. Tentative de lecture globale...');
-        console.warn('Grid yielded 0 results. Switching to Full Page Text Mode.');
-
-        await worker.setParameters({ tessedit_pageseg_mode: '3' }); // Auto Mode
-        const { data: fullData } = await worker.recognize(masterCanvas.toDataURL('image/jpeg'));
-
-        // Use the Regex Parser on the full text
-        const textCandidates = parseTextToCandidatesLogic(fullData.text);
-        if (textCandidates.length > 0) {
-          detected = textCandidates;
-          alert(
-            "Attention : Le découpage par ligne a échoué. L'application a basculé en mode lecture automatique (Text Mode)."
-          );
-        } else {
-          alert("Échec total : Aucun texte lisible trouvé. Vérifiez la netteté de l'image.");
-        }
+        addLog('\n[CRITICAL] Final Result is EMPTY.');
+        alert(
+          'Aucune donnée trouvée. Vérifiez les logs pour voir si les colonnes (Bleu) sont bien alignées avec le texte.'
+        );
+      } else {
+        addLog(`\n🏁 FINISHED. Found ${detected.length} candidates.`);
       }
 
       setCandidates(detected);
     } catch (err) {
       console.error(err);
-      alert('Erreur critique: ' + err.message);
+      addLog(`[EXCEPTION] ${err.message}`);
+      alert('Erreur: ' + err.message);
     } finally {
       if (worker) await worker.terminate();
       setIsProcessing(false);
@@ -249,39 +377,24 @@ export default function UniversalOCRModal({
     }
   };
 
-  // HELPER: Standalone Regex Parser (Logic Only)
+  // LOGIC HELPERS
   const parseTextToCandidatesLogic = (text) => {
     const lines = text.split('\n');
     const detected = [];
-
     lines.forEach((line) => {
       const cleanLine = line.replace(/[|\[\]{};:.,_*!@#$%^&()]/g, ' ').trim();
       if (cleanLine.length < 3) return;
-
       const tokens = cleanLine.split(/\s+/);
       let matricule = '';
       let nameParts = [];
-
       tokens.forEach((token) => {
-        if (/^\d{2,15}$/.test(token) && !matricule) {
-          matricule = token;
-        } else if (/[a-zA-ZÀ-ÿ\u0600-\u06FF]{2,}/.test(token)) {
+        if (/^\d{2,15}$/.test(token) && !matricule) matricule = token;
+        else if (/[a-zA-ZÀ-ÿ\u0600-\u06FF]{2,}/.test(token)) {
           const upper = token.toUpperCase();
-          const forbidden = [
-            'MAT',
-            'MATRICULE',
-            'NOM',
-            'PRENOM',
-            'SERVICE',
-            'GRADE',
-            'PAGE',
-            'LISTE',
-            'N°',
-          ];
-          if (!forbidden.includes(upper)) nameParts.push(token);
+          if (!['MAT', 'MATRICULE', 'NOM', 'PRENOM', 'SERVICE', 'GRADE'].includes(upper))
+            nameParts.push(token);
         }
       });
-
       if (nameParts.length > 0) {
         const fullName = nameParts.join(' ').replace(/['"]/g, '');
         detected.push({
@@ -298,7 +411,6 @@ export default function UniversalOCRModal({
     return detected;
   };
 
-  // HELPER: Create Empty Object
   const createEmptyCandidate = () => ({
     id: Date.now() + Math.random(),
     national_id: '',
@@ -371,10 +483,10 @@ export default function UniversalOCRModal({
         >
           <div>
             <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-              <FaCamera color="var(--primary)" /> Scan Intelligent
+              <FaCamera color="var(--primary)" /> Scan Intelligent (Debug V2)
             </h3>
             <p style={{ margin: 0, fontSize: '0.8rem', color: '#666' }}>
-              Tracez les lignes. Si cela échoue, le mode automatique prendra le relais.
+              Tracez les lignes. Consultez les logs en bas si ça échoue.
             </p>
           </div>
           <button onClick={onClose} className="btn-close">
@@ -471,6 +583,28 @@ export default function UniversalOCRModal({
                     <FaEraser /> Reset{' '}
                   </button>
 
+                  {/* DEBUG TOGGLE */}
+                  <label
+                    className="btn btn-sm"
+                    style={{
+                      border: '1px solid #f59e0b',
+                      color: '#f59e0b',
+                      background: debugMode ? '#fef3c7' : 'white',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      gap: '5px',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={debugMode}
+                      onChange={(e) => setDebugMode(e.target.checked)}
+                      style={{ display: 'none' }}
+                    />
+                    <FaBug /> Debug {debugMode ? 'ON' : 'OFF'}
+                  </label>
+
                   {!isProcessing && (
                     <button
                       onClick={runOCR}
@@ -492,63 +626,92 @@ export default function UniversalOCRModal({
                   border: '1px solid #cbd5e1',
                   borderRadius: '4px',
                   background: '#333',
+                  position: 'relative',
                 }}
               >
-                {/* COLUMN HEADERS */}
+                {/* HIDDEN CANVAS FOR DEBUGGING */}
+                <canvas
+                  ref={canvasRef}
+                  style={{
+                    display: debugMode ? 'block' : 'none',
+                    width: '100%',
+                    maxWidth: '800px',
+                    border: '2px solid yellow',
+                    margin: '10px auto',
+                  }}
+                />
+
+                {/* NORMAL EDITOR */}
                 <div
                   style={{
-                    display: 'flex',
-                    width: '100%',
+                    position: 'relative',
                     minWidth: '800px',
-                    background: '#e0f2fe',
-                    borderBottom: '1px solid #93c5fd',
+                    userSelect: 'none',
+                    display: debugMode ? 'none' : 'block',
                   }}
                 >
-                  {(() => {
-                    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-                    return sortedV.slice(0, -1).map((x, i) => (
-                      <div
-                        key={i}
-                        style={{
-                          width: `${(sortedV[i + 1] - x) * 100}%`,
-                          padding: '4px',
-                          borderRight: '1px solid #93c5fd',
-                          textAlign: 'center',
-                        }}
-                      >
-                        <select
-                          className="input"
+                  {/* COLUMN HEADERS */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      width: '100%',
+                      background: '#e0f2fe',
+                      borderBottom: '1px solid #93c5fd',
+                      position: 'absolute',
+                      top: '-30px',
+                      left: 0,
+                      right: 0,
+                      height: '30px',
+                    }}
+                  >
+                    {(() => {
+                      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+                      return sortedV.slice(0, -1).map((x, i) => (
+                        <div
+                          key={i}
                           style={{
-                            fontSize: '0.75rem',
-                            padding: '2px',
-                            height: '24px',
-                            width: '100%',
-                            background: 'white',
-                          }}
-                          value={colMapping[i] || 'ignore'}
-                          onChange={(e) => {
-                            const newMap = [...colMapping];
-                            newMap[i] = e.target.value;
-                            setColMapping(newMap);
+                            width: `${(sortedV[i + 1] - x) * 100}%`,
+                            padding: '4px',
+                            borderRight: '1px solid #93c5fd',
+                            textAlign: 'center',
                           }}
                         >
-                          {colOptions.map((opt) => (
-                            <option key={opt.val} value={opt.val}>
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                    ));
-                  })()}
-                </div>
+                          <select
+                            className="input"
+                            style={{
+                              fontSize: '0.75rem',
+                              padding: '2px',
+                              height: '24px',
+                              width: '100%',
+                              background: 'white',
+                            }}
+                            value={colMapping[i] || 'ignore'}
+                            onChange={(e) => {
+                              const newMap = [...colMapping];
+                              newMap[i] = e.target.value;
+                              setColMapping(newMap);
+                            }}
+                          >
+                            {colOptions.map((opt) => (
+                              <option key={opt.val} value={opt.val}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      ));
+                    })()}
+                  </div>
 
-                {/* IMAGE AREA */}
-                <div style={{ position: 'relative', minWidth: '800px', userSelect: 'none' }}>
                   <img
                     ref={imageRef}
                     src={image}
-                    style={{ display: 'block', width: '100%', pointerEvents: 'none' }}
+                    style={{
+                      display: 'block',
+                      width: '100%',
+                      pointerEvents: 'none',
+                      marginTop: '30px',
+                    }}
                     alt="Scan"
                   />
 
@@ -558,7 +721,7 @@ export default function UniversalOCRModal({
                       key={`v-${i}`}
                       style={{
                         position: 'absolute',
-                        top: 0,
+                        top: 30,
                         bottom: 0,
                         left: `${x * 100}%`,
                         width: '2px',
@@ -630,7 +793,7 @@ export default function UniversalOCRModal({
                         position: 'absolute',
                         left: 0,
                         right: 0,
-                        top: `${y * 100}%`,
+                        top: `calc(${y * 100}% + 30px)`,
                         height: '2px',
                         background: '#ef4444',
                         zIndex: 10,
@@ -642,7 +805,8 @@ export default function UniversalOCRModal({
                           const p = e.currentTarget.parentElement.parentElement;
                           const move = (m) => {
                             const rect = p.getBoundingClientRect();
-                            const ny = (m.clientY - rect.top) / rect.height;
+                            const imgHeight = rect.height - 30;
+                            const ny = (m.clientY - rect.top - 30) / imgHeight;
                             const nh = [...hLines];
                             nh[i] = Math.max(0, Math.min(1, ny));
                             setHLines(nh);
@@ -659,7 +823,8 @@ export default function UniversalOCRModal({
                           const p = e.currentTarget.parentElement.parentElement;
                           const move = (m) => {
                             const rect = p.getBoundingClientRect();
-                            const ny = (m.touches[0].clientY - rect.top) / rect.height;
+                            const imgHeight = rect.height - 30;
+                            const ny = (m.touches[0].clientY - rect.top - 30) / imgHeight;
                             const nh = [...hLines];
                             nh[i] = Math.max(0, Math.min(1, ny));
                             setHLines(nh);
@@ -736,6 +901,45 @@ export default function UniversalOCRModal({
             )}
           </div>
         </div>
+
+        {/* LOGS PANEL */}
+        {logs.length > 0 && (
+          <div
+            style={{
+              border: '1px solid #ddd',
+              background: '#2d3748',
+              color: '#a0aec0',
+              padding: '10px',
+              margin: '0 0.5rem',
+              maxHeight: '150px',
+              overflowY: 'auto',
+              borderRadius: '4px',
+              fontFamily: 'monospace',
+              fontSize: '0.7rem',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '5px',
+              }}
+            >
+              <strong>Logs du système OCR:</strong>
+              <button
+                onClick={() => navigator.clipboard.writeText(logs.join('\n'))}
+                className="btn btn-xs btn-outline"
+                style={{ color: 'white', borderColor: 'white' }}
+              >
+                <FaClipboardList /> Copier logs
+              </button>
+            </div>
+            {logs.map((l, i) => (
+              <div key={i}>{l}</div>
+            ))}
+          </div>
+        )}
 
         {/* RESULTS TABLE */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
