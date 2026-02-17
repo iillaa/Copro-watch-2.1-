@@ -377,9 +377,9 @@ const runPaddleOCR = async () => {
     ctx.fillRect(0, 0, finalW, finalH);
     ctx.drawImage(img, 0, 0, finalW, finalH);
 
-    // 3. SURGICAL FIX: DATA URL (BASE64)
-    // We pass a Base64 JPEG string which is universally supported by the engine
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+    // 3. SURGICAL FIX: RAW PIXEL DATA (ImageData)
+    // Avoids "The source image cannot be decoded" error by bypassing image codec in WASM
+    const imageData = ctx.getImageData(0, 0, finalW, finalH);
 
     addLog(`[PADDLE] Image optimisée: ${finalW}x${finalH}px (Original: ${img.naturalWidth}x${img.naturalHeight})`);
 
@@ -410,8 +410,8 @@ const runPaddleOCR = async () => {
     addLog('[PADDLE] Moteur prêt. Lecture globale...');
     setProgress(40);
 
-    // 7. DETECTION (Passing Base64 Data URL)
-    const results = await ocr.detect(dataUrl);
+    // 7. DETECTION (Passing ImageData)
+    const results = await ocr.detect(imageData);
     
     setProgress(80);
     addLog(`[PADDLE] Succès: ${results.length} éléments textuels détectés.`);
@@ -468,108 +468,118 @@ const runPaddleOCR = async () => {
       maxY: Math.max(item.box[2][1], item.box[3][1]) * ratioY,
     }));
 
-    // 9. GRID SORTING & DEBUG CROPS
-    setDebugCrops([]); // Clear previous
+    // 9. GRID SORTING & DEBUG CROPS (Smart Token Distribution)
+    setDebugCrops([]);
     const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
     const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
     const isRTL = docLanguage === 'ara';
-    const gridCandidates = [];
-    const newDebugCrops = [];
 
-    for (let r = 0; r < sortedH.length - 1; r++) {
-      let candidate = createEmptyCandidate();
-      let hasData = false;
-      const yTop = sortedH[r] * imgDimensions.height;
-      const yBottom = sortedH[r + 1] * imgDimensions.height;
-
-      for (let c = 0; c < sortedV.length - 1; c++) {
-        const colIndex = isRTL ? sortedV.length - 2 - c : c;
-        const field = colMapping[colIndex];
-        if (!field || field === 'ignore') continue;
-
-        const xLeft = sortedV[colIndex] * imgDimensions.width;
-        const xRight = sortedV[colIndex + 1] * imgDimensions.width;
-
-        // HEURISTIC: Find words that overlap with this cell
-        // 1. Text centroid falls inside cell (Normal case)
-        // 2. OR Text box overlaps significantly (Cross-column case - split needed)
-
-        let cellTextParts = [];
-
-        adaptedWords.forEach(w => {
-           // Vertical Check: Must be in this row
-           if (w.cy < yTop || w.cy > yBottom) return;
-
-           // Horizontal Check: Overlap Logic
-           const overlapStart = Math.max(w.minX, xLeft);
-           const overlapEnd = Math.min(w.maxX, xRight);
-           const overlapWidth = Math.max(0, overlapEnd - overlapStart);
-           const wordWidth = w.maxX - w.minX;
-
-           // If overlap is significant (> 30% of word or > 80% of cell)
-           if (overlapWidth > 0 && wordWidth > 0) {
-              const overlapRatio = overlapWidth / wordWidth;
-
-              if (overlapRatio > 0.9) {
-                 // Entire word is in this cell
-                 cellTextParts.push({ text: w.text, x: w.minX });
-              } else if (overlapRatio > 0.2) {
-                 // PARTIAL OVERLAP: Attempt to slice text proportional to width
-                 // This handles "Name Surname" spanning two columns
-                 const len = w.text.length;
-                 const startRatio = (overlapStart - w.minX) / wordWidth;
-                 const endRatio = (overlapEnd - w.minX) / wordWidth;
-
-                 const startIdx = Math.floor(startRatio * len);
-                 const endIdx = Math.ceil(endRatio * len);
-
-                 const slicedText = w.text.substring(startIdx, endIdx).trim();
-                 if (slicedText.length > 0) {
-                    cellTextParts.push({ text: slicedText, x: overlapStart });
-                    // Visual Debug for splitting
-                    if (debugMode) {
-                        addLog(`[SPLIT] "${w.text}" -> "${slicedText}" for ${field}`);
-                    }
-                 }
-              }
-           }
-        });
-
-        if (cellTextParts.length > 0) {
-          // Sort words logically (RTL or LTR)
-          cellTextParts.sort((a, b) => isRTL ? b.x - a.x : a.x - b.x);
-          const finalText = cellTextParts.map(p => p.text).join(' ');
-
-          candidate[field] = finalText;
-          hasData = true;
-
-          addLog(`[CELL] R${r+1}C${c+1} (${field}): "${finalText}"`);
-
-          // Create Debug Crop (visualize what fell into this bucket)
-          if (debugMode) {
-             const cropW = xRight - xLeft;
-             const cropH = yBottom - yTop;
-             const cropUrl = getCellImage(imageRef.current, {
-               x: xLeft, y: yTop, width: cropW, height: cropH
-             }, 0, 0);
-
-             newDebugCrops.push({
-               label: `R${r+1}C${c+1}: ${finalText.substring(0, 10)}...`,
-               url: cropUrl
-             });
-          }
-        } else {
-           addLog(`[CELL] R${r+1}C${c+1} (${field}): - Vide -`);
-        }
-      }
-      if (hasData) {
-        cleanCandidate(candidate);
-        gridCandidates.push(candidate);
-      }
+    // 1. Initialize Rows
+    const rows = [];
+    for(let r=0; r < sortedH.length - 1; r++) {
+       rows.push({
+          index: r,
+          yTop: sortedH[r] * imgDimensions.height,
+          yBottom: sortedH[r+1] * imgDimensions.height,
+          cols: {}, // field -> { tokens: [], minX: Infinity }
+          candidate: createEmptyCandidate()
+       });
     }
 
+    // 2. Distribute Tokens (Token-based instead of geometric slicing)
+    adaptedWords.forEach(w => {
+       // Find Row
+       const row = rows.find(r => w.cy >= r.yTop && w.cy <= r.yBottom);
+       if(!row) return;
+
+       // Tokenize (Split by space to respect word boundaries)
+       // This fixes "Matricule NometPrinom" -> "ule" issues
+       const tokens = w.text.split(/\s+/);
+
+       // Estimate Token Geometry
+       const totalLen = w.text.length;
+       const charWidth = totalLen > 0 ? (w.maxX - w.minX) / totalLen : 0;
+       let currentX = w.minX;
+
+       tokens.forEach(token => {
+          if (!token) return;
+          const tokenWidth = token.length * charWidth;
+          const tokenCenter = currentX + (tokenWidth / 2);
+
+          // Find Column
+          let foundCol = -1;
+          for(let c=0; c < sortedV.length - 1; c++) {
+             const xLeft = sortedV[c] * imgDimensions.width;
+             const xRight = sortedV[c+1] * imgDimensions.width;
+             if(tokenCenter >= xLeft && tokenCenter <= xRight) {
+                foundCol = c;
+                break;
+             }
+          }
+
+          if(foundCol !== -1) {
+             const colIndex = isRTL ? sortedV.length - 2 - foundCol : foundCol;
+             const field = colMapping[colIndex];
+
+             if(field && field !== 'ignore') {
+                if(!row.cols[field]) row.cols[field] = [];
+                row.cols[field].push({ text: token, x: currentX });
+             }
+          }
+
+          // Advance X (space count as 1 char)
+          currentX += (token.length + 1) * charWidth;
+       });
+    });
+
+    // 3. Assemble Candidates
+    const finalCandidates = [];
+    const newDebugCrops = [];
+
+    rows.forEach(row => {
+       let hasData = false;
+
+       // Process each column in the grid for this row
+       for (let c = 0; c < sortedV.length - 1; c++) {
+         const colIndex = isRTL ? sortedV.length - 2 - c : c;
+         const field = colMapping[colIndex];
+
+         if (!field || field === 'ignore') continue;
+
+         const parts = row.cols[field] || [];
+         if (parts.length > 0) {
+            // Sort tokens by X position
+            parts.sort((a, b) => isRTL ? b.x - a.x : a.x - b.x);
+            const text = parts.map(p => p.text).join(' ');
+
+            row.candidate[field] = text;
+            hasData = true;
+            addLog(`[CELL] R${row.index+1} (${field}): "${text}"`);
+
+            // Re-enable Debug Crops for verification
+            if (debugMode) {
+               const xLeft = sortedV[c] * imgDimensions.width;
+               const xRight = sortedV[c+1] * imgDimensions.width;
+               const cropUrl = getCellImage(imageRef.current, {
+                 x: xLeft, y: row.yTop, width: xRight - xLeft, height: row.yBottom - row.yTop
+               }, 0, 0);
+
+               newDebugCrops.push({
+                 label: `R${row.index+1}C${c+1}: ${text.substring(0, 10)}...`,
+                 url: cropUrl
+               });
+            }
+         }
+       }
+
+       if(hasData) {
+          cleanCandidate(row.candidate);
+          finalCandidates.push(row.candidate);
+       }
+    });
+
     setDebugCrops(newDebugCrops);
-    setCandidates(gridCandidates);
+    setCandidates(finalCandidates);
 
     // Only switch tabs if not debugging, so user can see the overlay
     if (!debugMode) {
