@@ -460,6 +460,43 @@ export function generateBackupFilename(prefix = 'backup') {
   return `${prefix}_${dateStr}.json`;
 }
 
+// [NEW] Retention Policy: Keep only the last 20 auto-backups
+async function runRetentionPolicy() {
+  const { Capacitor } = await import('@capacitor/core');
+  if (!Capacitor.isNativePlatform()) return;
+
+  const { Filesystem, Directory } = await import('@capacitor/filesystem');
+
+  try {
+    // 1. List all backup files
+    const result = await Filesystem.readdir({
+      path: 'copro-watch',
+      directory: Directory.Documents,
+    });
+
+    // 2. Filter & Sort by Time (Newest First)
+    const backups = result.files
+      .filter(f => f.name.startsWith('backup-counter_') || f.name.startsWith('backup-time_'))
+      .sort((a, b) => b.mtime - a.mtime); // Sort Descending
+
+    // 3. Keep top 20, Delete the rest
+    const MAX_HISTORY = 20;
+    if (backups.length > MAX_HISTORY) {
+      const toDelete = backups.slice(MAX_HISTORY);
+      console.log(`[Janitor] Cleaning up ${toDelete.length} old backups...`);
+
+      for (const file of toDelete) {
+        await Filesystem.deleteFile({
+          path: `copro-watch/${file.name}`,
+          directory: Directory.Documents
+        });
+      }
+    }
+  } catch (e) {
+    console.warn('[Janitor] Cleanup failed:', e);
+  }
+}
+
 // [UPDATED] Export now takes a specific filename based on type
 export async function performAutoExport(getJsonCallback, type = 'COUNTER') {
   try {
@@ -474,6 +511,10 @@ export async function performAutoExport(getJsonCallback, type = 'COUNTER') {
     if (success) {
       await resetCounter(); // Reset on success
       console.log(`[Backup] Auto backup saved: ${filename}`);
+
+      // NEW: Run retention policy after successful save
+      await runRetentionPolicy();
+
       return true;
     } else {
       // Backup failed - DO NOT reset counter so user knows there's a problem
