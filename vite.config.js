@@ -7,6 +7,7 @@ import topLevelAwait from "vite-plugin-top-level-await";
 // REMOVE: import { viteSingleFile } from 'vite-plugin-singlefile';
 
 export default defineConfig({
+  assetsInclude: ['**/*.onnx', '**/*.wasm'], // Explicitly include model files
   plugins: [
     react(),
     wasm(), // Add WASM support
