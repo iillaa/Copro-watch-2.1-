@@ -358,8 +358,6 @@ const runPaddleOCR = async () => {
   setProgress(10);
   setStatusText('Paddle AI (Turbo)...');
 
-  let blobUrl = null;
-
   try {
     const img = imageRef.current;
     
@@ -376,24 +374,9 @@ const runPaddleOCR = async () => {
     ctx.fillRect(0, 0, finalW, finalH);
     ctx.drawImage(img, 0, 0, finalW, finalH);
 
-    // 3. SURGICAL FIX: BLOB CONVERSION
-    // We convert canvas -> blob -> new Image object to force browser decoding
-    const blobImage = await new Promise((resolve, reject) => {
-      canvas.toBlob((blob) => {
-        if (!blob) {
-          reject(new Error("Échec de la création du Blob"));
-          return;
-        }
-        blobUrl = URL.createObjectURL(blob);
-        const tempImg = new Image();
-        tempImg.onload = () => {
-          // Do NOT revoke here - needed by OCR engine
-          resolve(tempImg);
-        };
-        tempImg.onerror = reject;
-        tempImg.src = blobUrl;
-      }, 'image/jpeg', 0.95);
-    });
+    // 3. SURGICAL FIX: RAW PIXEL DATA
+    // We pass ImageData directly to bypass browser decoding issues (WASM/WebView)
+    const imageData = ctx.getImageData(0, 0, finalW, finalH);
 
     addLog(`[PADDLE] Image reconstruite: ${finalW}x${finalH}px`);
 
@@ -412,8 +395,8 @@ const runPaddleOCR = async () => {
     addLog('[PADDLE] Moteur prêt. Analyse des pixels...');
     setProgress(40);
 
-    // 5. DETECTION (Passing the fresh Blob-Image)
-    const results = await ocr.detect(blobImage);
+    // 5. DETECTION (Passing ImageData directly)
+    const results = await ocr.detect(imageData);
     
     setProgress(80);
     addLog(`[PADDLE] Succès: ${results.length} mots trouvés.`);
@@ -469,7 +452,6 @@ const runPaddleOCR = async () => {
     addLog(`[ERREUR] ${e.message}`);
     console.error(e);
   } finally {
-    if (blobUrl) URL.revokeObjectURL(blobUrl);
     setIsProcessing(false);
     setProgress(100);
   }
