@@ -460,7 +460,12 @@ const runPaddleOCR = async () => {
       text: item.text,
       // Centroid Calculation
       cx: ((item.box[0][0] + item.box[2][0]) / 2) * ratioX,
-      cy: ((item.box[0][1] + item.box[2][1]) / 2) * ratioY
+      cy: ((item.box[0][1] + item.box[2][1]) / 2) * ratioY,
+      // Bounding Box (Scaled)
+      minX: Math.min(item.box[0][0], item.box[3][0]) * ratioX,
+      maxX: Math.max(item.box[1][0], item.box[2][0]) * ratioX,
+      minY: Math.min(item.box[0][1], item.box[1][1]) * ratioY,
+      maxY: Math.max(item.box[2][1], item.box[3][1]) * ratioY,
     }));
 
     // 9. GRID SORTING & DEBUG CROPS
@@ -485,15 +490,55 @@ const runPaddleOCR = async () => {
         const xLeft = sortedV[colIndex] * imgDimensions.width;
         const xRight = sortedV[colIndex + 1] * imgDimensions.width;
 
-        // Filter words belonging to this cell
-        const cellWords = adaptedWords.filter(w => 
-          w.cy >= yTop && w.cy <= yBottom && w.cx >= xLeft && w.cx <= xRight
-        );
+        // HEURISTIC: Find words that overlap with this cell
+        // 1. Text centroid falls inside cell (Normal case)
+        // 2. OR Text box overlaps significantly (Cross-column case - split needed)
 
-        if (cellWords.length > 0) {
+        let cellTextParts = [];
+
+        adaptedWords.forEach(w => {
+           // Vertical Check: Must be in this row
+           if (w.cy < yTop || w.cy > yBottom) return;
+
+           // Horizontal Check: Overlap Logic
+           const overlapStart = Math.max(w.minX, xLeft);
+           const overlapEnd = Math.min(w.maxX, xRight);
+           const overlapWidth = Math.max(0, overlapEnd - overlapStart);
+           const wordWidth = w.maxX - w.minX;
+
+           // If overlap is significant (> 30% of word or > 80% of cell)
+           if (overlapWidth > 0 && wordWidth > 0) {
+              const overlapRatio = overlapWidth / wordWidth;
+
+              if (overlapRatio > 0.9) {
+                 // Entire word is in this cell
+                 cellTextParts.push({ text: w.text, x: w.minX });
+              } else if (overlapRatio > 0.2) {
+                 // PARTIAL OVERLAP: Attempt to slice text proportional to width
+                 // This handles "Name Surname" spanning two columns
+                 const len = w.text.length;
+                 const startRatio = (overlapStart - w.minX) / wordWidth;
+                 const endRatio = (overlapEnd - w.minX) / wordWidth;
+
+                 const startIdx = Math.floor(startRatio * len);
+                 const endIdx = Math.ceil(endRatio * len);
+
+                 const slicedText = w.text.substring(startIdx, endIdx).trim();
+                 if (slicedText.length > 0) {
+                    cellTextParts.push({ text: slicedText, x: overlapStart });
+                    // Visual Debug for splitting
+                    if (debugMode) {
+                        addLog(`[SPLIT] "${w.text}" -> "${slicedText}" for ${field}`);
+                    }
+                 }
+              }
+           }
+        });
+
+        if (cellTextParts.length > 0) {
           // Sort words logically (RTL or LTR)
-          cellWords.sort((a, b) => isRTL ? b.cx - a.cx : a.cx - b.cx);
-          const finalText = cellWords.map(w => w.text).join(' ');
+          cellTextParts.sort((a, b) => isRTL ? b.x - a.x : a.x - b.x);
+          const finalText = cellTextParts.map(p => p.text).join(' ');
 
           candidate[field] = finalText;
           hasData = true;
@@ -502,12 +547,8 @@ const runPaddleOCR = async () => {
 
           // Create Debug Crop (visualize what fell into this bucket)
           if (debugMode) {
-             // Create crop from original high-res image logic
              const cropW = xRight - xLeft;
              const cropH = yBottom - yTop;
-
-             // We use getCellImage helper to extract visual proof
-             // Passing 'cropParams' relative to imgDimensions
              const cropUrl = getCellImage(imageRef.current, {
                x: xLeft, y: yTop, width: cropW, height: cropH
              }, 0, 0);
