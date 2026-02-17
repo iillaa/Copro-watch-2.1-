@@ -374,9 +374,9 @@ const runPaddleOCR = async () => {
     ctx.fillRect(0, 0, finalW, finalH);
     ctx.drawImage(img, 0, 0, finalW, finalH);
 
-    // 3. SURGICAL FIX: RAW PIXEL DATA
-    // We pass ImageData directly to bypass browser decoding issues (WASM/WebView)
-    const imageData = ctx.getImageData(0, 0, finalW, finalH);
+    // 3. SURGICAL FIX: DATA URL (BASE64)
+    // We pass a Base64 JPEG string which is universally supported by the engine
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
 
     addLog(`[PADDLE] Image reconstruite: ${finalW}x${finalH}px`);
 
@@ -395,8 +395,8 @@ const runPaddleOCR = async () => {
     addLog('[PADDLE] Moteur prêt. Analyse des pixels...');
     setProgress(40);
 
-    // 5. DETECTION (Passing ImageData directly)
-    const results = await ocr.detect(imageData);
+    // 5. DETECTION (Passing Base64 Data URL)
+    const results = await ocr.detect(dataUrl);
     
     setProgress(80);
     addLog(`[PADDLE] Succès: ${results.length} mots trouvés.`);
