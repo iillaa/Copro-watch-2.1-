@@ -361,9 +361,12 @@ const runPaddleOCR = async () => {
   try {
     const img = imageRef.current;
     
-    // 1. DIMENSIONS (Multiple of 32)
-    const finalW = Math.floor((img.naturalWidth > 960 ? 960 : img.naturalWidth) / 32) * 32;
-    const finalH = Math.floor((img.naturalHeight > 960 ? 960 : img.naturalHeight) / 32) * 32;
+    // 1. DIMENSIONS & ASPECT RATIO (Multiple of 32)
+    // We must preserve aspect ratio to ensure accurate text detection
+    const MAX_DIM = 960;
+    const ratio = Math.min(MAX_DIM / img.naturalWidth, MAX_DIM / img.naturalHeight, 1);
+    const finalW = Math.floor((img.naturalWidth * ratio) / 32) * 32;
+    const finalH = Math.floor((img.naturalHeight * ratio) / 32) * 32;
 
     // 2. DRAW TO CANVAS
     const canvas = document.createElement('canvas');
@@ -378,9 +381,21 @@ const runPaddleOCR = async () => {
     // We pass a Base64 JPEG string which is universally supported by the engine
     const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
 
-    addLog(`[PADDLE] Image reconstruite: ${finalW}x${finalH}px`);
+    addLog(`[PADDLE] Image optimisée: ${finalW}x${finalH}px (Original: ${img.naturalWidth}x${img.naturalHeight})`);
 
-    // 4. LOAD ENGINE (Absolute Paths)
+    // 4. VISUAL DEBUG (If enabled)
+    if (debugMode && canvasRef.current) {
+      const debugCtx = canvasRef.current.getContext('2d');
+      canvasRef.current.width = finalW;
+      canvasRef.current.height = finalH;
+      debugCtx.drawImage(canvas, 0, 0);
+      debugCtx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+      debugCtx.lineWidth = 2;
+      addLog('[DEBUG] Image source affichée.');
+    }
+
+    // 5. LOAD ENGINE (Absolute Paths)
+    // 6. LOAD ENGINE (Absolute Paths)
     const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
     const modelsUrl = baseUrl + 'models/';
 
@@ -392,29 +407,69 @@ const runPaddleOCR = async () => {
       }
     });
 
-    addLog('[PADDLE] Moteur prêt. Analyse des pixels...');
+    addLog('[PADDLE] Moteur prêt. Lecture globale...');
     setProgress(40);
 
-    // 5. DETECTION (Passing Base64 Data URL)
+    // 7. DETECTION (Passing Base64 Data URL)
     const results = await ocr.detect(dataUrl);
     
     setProgress(80);
-    addLog(`[PADDLE] Succès: ${results.length} mots trouvés.`);
+    addLog(`[PADDLE] Succès: ${results.length} éléments textuels détectés.`);
 
-    // 6. COORDINATE MAPPING
+    // 8. COORDINATE MAPPING & DEBUG
     const ratioX = imgDimensions.width / finalW;
     const ratioY = imgDimensions.height / finalH;
+
+    // Debug overlay on canvas
+    if (debugMode && canvasRef.current) {
+      const debugCtx = canvasRef.current.getContext('2d');
+
+      // Draw detected boxes
+      results.forEach(item => {
+        debugCtx.beginPath();
+        debugCtx.moveTo(item.box[0][0], item.box[0][1]);
+        debugCtx.lineTo(item.box[1][0], item.box[1][1]);
+        debugCtx.lineTo(item.box[2][0], item.box[2][1]);
+        debugCtx.lineTo(item.box[3][0], item.box[3][1]);
+        debugCtx.closePath();
+        debugCtx.stroke();
+      });
+
+      // Draw grid lines (mapped to current canvas size)
+      const w = canvasRef.current.width;
+      const h = canvasRef.current.height;
+
+      debugCtx.strokeStyle = 'blue';
+      vLines.forEach(v => {
+        debugCtx.beginPath();
+        debugCtx.moveTo(v * w, 0);
+        debugCtx.lineTo(v * w, h);
+        debugCtx.stroke();
+      });
+
+      debugCtx.strokeStyle = 'red';
+      hLines.forEach(y => {
+        debugCtx.beginPath();
+        debugCtx.moveTo(0, y * h);
+        debugCtx.lineTo(w, y * h);
+        debugCtx.stroke();
+      });
+    }
+
     const adaptedWords = results.map(item => ({
       text: item.text,
+      // Centroid Calculation
       cx: ((item.box[0][0] + item.box[2][0]) / 2) * ratioX,
       cy: ((item.box[0][1] + item.box[2][1]) / 2) * ratioY
     }));
 
-    // 7. GRID SORTING (Standard Logic)
+    // 9. GRID SORTING & DEBUG CROPS
+    setDebugCrops([]); // Clear previous
     const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
     const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
     const isRTL = docLanguage === 'ara';
     const gridCandidates = [];
+    const newDebugCrops = [];
 
     for (let r = 0; r < sortedH.length - 1; r++) {
       let candidate = createEmptyCandidate();
@@ -426,17 +481,44 @@ const runPaddleOCR = async () => {
         const colIndex = isRTL ? sortedV.length - 2 - c : c;
         const field = colMapping[colIndex];
         if (!field || field === 'ignore') continue;
+
         const xLeft = sortedV[colIndex] * imgDimensions.width;
         const xRight = sortedV[colIndex + 1] * imgDimensions.width;
 
+        // Filter words belonging to this cell
         const cellWords = adaptedWords.filter(w => 
           w.cy >= yTop && w.cy <= yBottom && w.cx >= xLeft && w.cx <= xRight
         );
 
         if (cellWords.length > 0) {
+          // Sort words logically (RTL or LTR)
           cellWords.sort((a, b) => isRTL ? b.cx - a.cx : a.cx - b.cx);
-          candidate[field] = cellWords.map(w => w.text).join(' ');
+          const finalText = cellWords.map(w => w.text).join(' ');
+
+          candidate[field] = finalText;
           hasData = true;
+
+          addLog(`[CELL] R${r+1}C${c+1} (${field}): "${finalText}"`);
+
+          // Create Debug Crop (visualize what fell into this bucket)
+          if (debugMode) {
+             // Create crop from original high-res image logic
+             const cropW = xRight - xLeft;
+             const cropH = yBottom - yTop;
+
+             // We use getCellImage helper to extract visual proof
+             // Passing 'cropParams' relative to imgDimensions
+             const cropUrl = getCellImage(imageRef.current, {
+               x: xLeft, y: yTop, width: cropW, height: cropH
+             }, 0, 0);
+
+             newDebugCrops.push({
+               label: `R${r+1}C${c+1}: ${finalText.substring(0, 10)}...`,
+               url: cropUrl
+             });
+          }
+        } else {
+           addLog(`[CELL] R${r+1}C${c+1} (${field}): - Vide -`);
         }
       }
       if (hasData) {
@@ -445,8 +527,15 @@ const runPaddleOCR = async () => {
       }
     }
 
+    setDebugCrops(newDebugCrops);
     setCandidates(gridCandidates);
-    setActiveTab('results');
+
+    // Only switch tabs if not debugging, so user can see the overlay
+    if (!debugMode) {
+        setActiveTab('results');
+    } else {
+        addLog('[DEBUG] Mode Debug actif: Resté sur l\'onglet Scan pour visualisation.');
+    }
 
   } catch (e) {
     addLog(`[ERREUR] ${e.message}`);
