@@ -74,9 +74,6 @@ export default function UniversalOCRModal({
   // NEW: Engine State
   const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle'
 
-  // NEW: Last used department for auto-fill
-  const [lastUsedDept, setLastUsedDept] = useState(null);
-
   // LOGS: Full Array + Scroll
   const [logs, setLogs] = useState([]);
   const addLog = (msg) => {
@@ -350,151 +347,245 @@ export default function UniversalOCRModal({
     }
   };
 
-  // ========== ENGINE 2: PADDLE OCR (TURBO MODE - DEBUG ENABLED) ==========
-  const runPaddleOCR = async () => {
-    if (!image || !imageRef.current) return;
+  // ========== ENGINE 2: PADDLE OCR (NEW TURBO MODE) ==========
+  // SURGICAL FIX: Using Raw Pixel Data (ImageData) instead of HTML Element
+  // This bypasses the decoding step in WASM which fails on Android WebView
+const runPaddleOCR = async () => {
+  if (!image || !imageRef.current) return;
+  setIsProcessing(true);
+  setLogs([]);
+  addLog(`[PADDLE] Initialisation IA v${ORT_VERSION}...`);
+  setProgress(10);
+  setStatusText('Paddle AI (Turbo)...');
+
+  try {
+    const img = imageRef.current;
     
-    // 1. SETUP & RESET
-    setIsProcessing(true);
-    setLogs([]);
-    setDebugCrops([]); // Clear previous debug images
-    setCandidates([]); // Clear previous results
+    // 1. DIMENSIONS & ASPECT RATIO (Multiple of 32)
+    // We must preserve aspect ratio to ensure accurate text detection
+    const MAX_DIM = 960;
+    const ratio = Math.min(MAX_DIM / img.naturalWidth, MAX_DIM / img.naturalHeight, 1);
+    const finalW = Math.floor((img.naturalWidth * ratio) / 32) * 32;
+    const finalH = Math.floor((img.naturalHeight * ratio) / 32) * 32;
+
+    // 2. DRAW TO CANVAS
+    const canvas = document.createElement('canvas');
+    canvas.width = finalW;
+    canvas.height = finalH;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillRect(0, 0, finalW, finalH);
+    ctx.drawImage(img, 0, 0, finalW, finalH);
+
+    // 3. SURGICAL FIX: DATA URL (BASE64)
+    // We pass a Base64 JPEG string which is universally supported by the engine
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
+
+    addLog(`[PADDLE] Image optimisée: ${finalW}x${finalH}px (Original: ${img.naturalWidth}x${img.naturalHeight})`);
+
+    // 4. VISUAL DEBUG (If enabled)
+    if (debugMode && canvasRef.current) {
+      const debugCtx = canvasRef.current.getContext('2d');
+      canvasRef.current.width = finalW;
+      canvasRef.current.height = finalH;
+      debugCtx.drawImage(canvas, 0, 0);
+      debugCtx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
+      debugCtx.lineWidth = 2;
+      addLog('[DEBUG] Image source affichée.');
+    }
+
+    // 5. LOAD ENGINE (Absolute Paths)
+    // 6. LOAD ENGINE (Absolute Paths)
+    const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
+    const modelsUrl = baseUrl + 'models/';
+
+    const ocr = await Ocr.create({
+      models: {
+        detectionPath: `${modelsUrl}det.onnx`,
+        recognitionPath: `${modelsUrl}rec_ara.onnx`,
+        dictionaryPath: `${modelsUrl}keys_ara.txt`
+      }
+    });
+
+    addLog('[PADDLE] Moteur prêt. Lecture globale...');
+    setProgress(40);
+
+    // 7. DETECTION (Passing Base64 Data URL)
+    const results = await ocr.detect(dataUrl);
     
-    addLog(`[PADDLE] Initialisation IA v${ORT_VERSION}...`);
-    setProgress(10);
-    setStatusText('Paddle AI (Turbo)...');
+    setProgress(80);
+    addLog(`[PADDLE] Succès: ${results.length} éléments textuels détectés.`);
 
-    try {
-      const img = imageRef.current;
-      
-      // 2. IMAGE PREPARATION (The fix that makes it work on Android)
-      // We resize to a multiple of 32 for the AI stability
-      const finalW = Math.floor((img.naturalWidth > 960 ? 960 : img.naturalWidth) / 32) * 32;
-      const finalH = Math.floor((img.naturalHeight > 960 ? 960 : img.naturalHeight) / 32) * 32;
+    // 8. COORDINATE MAPPING & DEBUG
+    const ratioX = imgDimensions.width / finalW;
+    const ratioY = imgDimensions.height / finalH;
 
-      const canvas = document.createElement('canvas');
-      canvas.width = finalW;
-      canvas.height = finalH;
-      const ctx = canvas.getContext('2d', { willReadFrequently: true });
-      ctx.fillStyle = '#FFFFFF';
-      ctx.fillRect(0, 0, finalW, finalH);
-      ctx.drawImage(img, 0, 0, finalW, finalH);
+    // Debug overlay on canvas
+    if (debugMode && canvasRef.current) {
+      const debugCtx = canvasRef.current.getContext('2d');
 
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-      addLog(`[PADDLE] Image optimisée: ${finalW}x${finalH}px`);
-
-      // 3. LOAD ENGINE & DETECT
-      const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
-      const modelsUrl = baseUrl + 'models/';
-
-      const ocr = await Ocr.create({
-        models: {
-          detectionPath: `${modelsUrl}det.onnx`,
-          recognitionPath: `${modelsUrl}rec_ara.onnx`,
-          dictionaryPath: `${modelsUrl}keys_ara.txt`
-        }
+      // Draw detected boxes
+      results.forEach(item => {
+        debugCtx.beginPath();
+        debugCtx.moveTo(item.box[0][0], item.box[0][1]);
+        debugCtx.lineTo(item.box[1][0], item.box[1][1]);
+        debugCtx.lineTo(item.box[2][0], item.box[2][1]);
+        debugCtx.lineTo(item.box[3][0], item.box[3][1]);
+        debugCtx.closePath();
+        debugCtx.stroke();
       });
 
-      addLog('[PADDLE] Moteur prêt. Lecture globale...');
-      setProgress(40);
+      // Draw grid lines (mapped to current canvas size)
+      const w = canvasRef.current.width;
+      const h = canvasRef.current.height;
 
-      const results = await ocr.detect(dataUrl);
-      setProgress(70);
-      addLog(`[PADDLE] Succès: ${results.length} éléments textuels détectés.`);
+      debugCtx.strokeStyle = 'blue';
+      vLines.forEach(v => {
+        debugCtx.beginPath();
+        debugCtx.moveTo(v * w, 0);
+        debugCtx.lineTo(v * w, h);
+        debugCtx.stroke();
+      });
 
-      // 4. PREPARE COORDINATES (Map AI space back to User Space)
-      const ratioX = imgDimensions.width / finalW;
-      const ratioY = imgDimensions.height / finalH;
-      
-      const adaptedWords = results.map(item => ({
-        text: item.text,
-        confidence: item.score,
-        // Calculate center point of each word in the ORIGINAL image coordinates
-        cx: ((item.box[0][0] + item.box[2][0]) / 2) * ratioX,
-        cy: ((item.box[0][1] + item.box[2][1]) / 2) * ratioY
-      }));
-
-      // 5. GRID LOGIC (The "Tesseract-Style" Sorting & Debugging)
-      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-      const isRTL = docLanguage === 'ara';
-      const gridCandidates = [];
-
-      // Loop through every row
-      for (let r = 0; r < sortedH.length - 1; r++) {
-        let candidate = createEmptyCandidate();
-        let hasDataInRow = false;
-        
-        // Define Row Boundaries (Y axis)
-        const yTop = sortedH[r] * imgDimensions.height;
-        const yBottom = sortedH[r + 1] * imgDimensions.height;
-        const rowHeight = yBottom - yTop;
-
-        // Loop through every column
-        for (let c = 0; c < sortedV.length - 1; c++) {
-          const colIndex = isRTL ? sortedV.length - 2 - c : c;
-          const field = colMapping[colIndex];
-
-          if (!field || field === 'ignore') continue;
-
-          // Define Col Boundaries (X axis)
-          const xLeft = sortedV[colIndex] * imgDimensions.width;
-          const xRight = sortedV[colIndex + 1] * imgDimensions.width;
-          const colWidth = xRight - xLeft;
-
-          // A. GENERATE DEBUG CROP (Visual Feedback)
-          // We invoke getCellImage so you can see exactly what the grid covers
-          const cropParams = { x: xLeft, y: yTop, width: colWidth, height: rowHeight };
-          // Only generate crop if size is reasonable
-          if (colWidth > 10 && rowHeight > 10) {
-             const cellUrl = getCellImage(imageRef.current, cropParams, 0, 0);
-             setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1}`, url: cellUrl }]);
-          }
-
-          // B. FILTER WORDS (Spatial Logic)
-          // Find words that sit visually inside this grid cell
-          const cellWords = adaptedWords.filter(w => 
-            w.cy >= yTop && w.cy <= yBottom && 
-            w.cx >= xLeft && w.cx <= xRight
-          );
-
-          if (cellWords.length > 0) {
-            // C. SORT WORDS (Critical for "Nom Prénom" vs "Prénom Nom")
-            cellWords.sort((a, b) => isRTL ? b.cx - a.cx : a.cx - b.cx);
-            
-            const joinedText = cellWords.map(w => w.text).join(' ');
-            candidate[field] = joinedText;
-            hasDataInRow = true;
-            
-            addLog(`[CELL] R${r+1}C${c+1} (${field}): "${joinedText}" (Conf: ${Math.round(cellWords[0].confidence * 100)}%)`);
-          } else {
-            addLog(`[CELL] R${r+1}C${c+1} (${field}): - Vide -`);
-          }
-        }
-
-        if (hasDataInRow) {
-          cleanCandidate(candidate);
-          gridCandidates.push(candidate);
-        }
-      }
-
-      setCandidates(gridCandidates);
-      
-      if (gridCandidates.length > 0) {
-        setActiveTab('results');
-        addLog(`[SUCCESS] Terminé. ${gridCandidates.length} fiches générées.`);
-      } else {
-        addLog(`[WARNING] Aucun texte trouvé dans la grille. Vérifiez vos lignes.`);
-      }
-
-    } catch (e) {
-      addLog(`[ERREUR] ${e.message}`);
-      console.error(e);
-    } finally {
-      setIsProcessing(false);
-      setProgress(100);
+      debugCtx.strokeStyle = 'red';
+      hLines.forEach(y => {
+        debugCtx.beginPath();
+        debugCtx.moveTo(0, y * h);
+        debugCtx.lineTo(w, y * h);
+        debugCtx.stroke();
+      });
     }
-  };
+
+    const adaptedWords = results.map(item => ({
+      text: item.text,
+      // Centroid Calculation
+      cx: ((item.box[0][0] + item.box[2][0]) / 2) * ratioX,
+      cy: ((item.box[0][1] + item.box[2][1]) / 2) * ratioY,
+      // Bounding Box (Scaled)
+      minX: Math.min(item.box[0][0], item.box[3][0]) * ratioX,
+      maxX: Math.max(item.box[1][0], item.box[2][0]) * ratioX,
+      minY: Math.min(item.box[0][1], item.box[1][1]) * ratioY,
+      maxY: Math.max(item.box[2][1], item.box[3][1]) * ratioY,
+    }));
+
+    // 9. GRID SORTING & DEBUG CROPS
+    setDebugCrops([]); // Clear previous
+    const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+    const isRTL = docLanguage === 'ara';
+    const gridCandidates = [];
+    const newDebugCrops = [];
+
+    for (let r = 0; r < sortedH.length - 1; r++) {
+      let candidate = createEmptyCandidate();
+      let hasData = false;
+      const yTop = sortedH[r] * imgDimensions.height;
+      const yBottom = sortedH[r + 1] * imgDimensions.height;
+
+      for (let c = 0; c < sortedV.length - 1; c++) {
+        const colIndex = isRTL ? sortedV.length - 2 - c : c;
+        const field = colMapping[colIndex];
+        if (!field || field === 'ignore') continue;
+
+        const xLeft = sortedV[colIndex] * imgDimensions.width;
+        const xRight = sortedV[colIndex + 1] * imgDimensions.width;
+
+        // HEURISTIC: Find words that overlap with this cell
+        // 1. Text centroid falls inside cell (Normal case)
+        // 2. OR Text box overlaps significantly (Cross-column case - split needed)
+
+        let cellTextParts = [];
+
+        adaptedWords.forEach(w => {
+           // Vertical Check: Must be in this row
+           if (w.cy < yTop || w.cy > yBottom) return;
+
+           // Horizontal Check: Overlap Logic
+           const overlapStart = Math.max(w.minX, xLeft);
+           const overlapEnd = Math.min(w.maxX, xRight);
+           const overlapWidth = Math.max(0, overlapEnd - overlapStart);
+           const wordWidth = w.maxX - w.minX;
+
+           // If overlap is significant (> 30% of word or > 80% of cell)
+           if (overlapWidth > 0 && wordWidth > 0) {
+              const overlapRatio = overlapWidth / wordWidth;
+
+              if (overlapRatio > 0.9) {
+                 // Entire word is in this cell
+                 cellTextParts.push({ text: w.text, x: w.minX });
+              } else if (overlapRatio > 0.2) {
+                 // PARTIAL OVERLAP: Attempt to slice text proportional to width
+                 // This handles "Name Surname" spanning two columns
+                 const len = w.text.length;
+                 const startRatio = (overlapStart - w.minX) / wordWidth;
+                 const endRatio = (overlapEnd - w.minX) / wordWidth;
+
+                 const startIdx = Math.floor(startRatio * len);
+                 const endIdx = Math.ceil(endRatio * len);
+
+                 const slicedText = w.text.substring(startIdx, endIdx).trim();
+                 if (slicedText.length > 0) {
+                    cellTextParts.push({ text: slicedText, x: overlapStart });
+                    // Visual Debug for splitting
+                    if (debugMode) {
+                        addLog(`[SPLIT] "${w.text}" -> "${slicedText}" for ${field}`);
+                    }
+                 }
+              }
+           }
+        });
+
+        if (cellTextParts.length > 0) {
+          // Sort words logically (RTL or LTR)
+          cellTextParts.sort((a, b) => isRTL ? b.x - a.x : a.x - b.x);
+          const finalText = cellTextParts.map(p => p.text).join(' ');
+
+          candidate[field] = finalText;
+          hasData = true;
+
+          addLog(`[CELL] R${r+1}C${c+1} (${field}): "${finalText}"`);
+
+          // Create Debug Crop (visualize what fell into this bucket)
+          if (debugMode) {
+             const cropW = xRight - xLeft;
+             const cropH = yBottom - yTop;
+             const cropUrl = getCellImage(imageRef.current, {
+               x: xLeft, y: yTop, width: cropW, height: cropH
+             }, 0, 0);
+
+             newDebugCrops.push({
+               label: `R${r+1}C${c+1}: ${finalText.substring(0, 10)}...`,
+               url: cropUrl
+             });
+          }
+        } else {
+           addLog(`[CELL] R${r+1}C${c+1} (${field}): - Vide -`);
+        }
+      }
+      if (hasData) {
+        cleanCandidate(candidate);
+        gridCandidates.push(candidate);
+      }
+    }
+
+    setDebugCrops(newDebugCrops);
+    setCandidates(gridCandidates);
+
+    // Only switch tabs if not debugging, so user can see the overlay
+    if (!debugMode) {
+        setActiveTab('results');
+    } else {
+        addLog('[DEBUG] Mode Debug actif: Resté sur l\'onglet Scan pour visualisation.');
+    }
+
+  } catch (e) {
+    addLog(`[ERREUR] ${e.message}`);
+    console.error(e);
+  } finally {
+    setIsProcessing(false);
+    setProgress(100);
+  }
+};
   // --- MASTER SWITCH ---
   const handleGo = () => {
     if (ocrEngine === 'paddle') {
@@ -509,7 +600,7 @@ export default function UniversalOCRModal({
     id: Math.random(),
     national_id: '',
     full_name: '',
-    department_id: lastUsedDept || '',
+    department_id: '',
     job_info: '',
     isArabic: false,
   });
@@ -522,10 +613,6 @@ export default function UniversalOCRModal({
 
   const updateCandidate = (id, field, val) => {
     setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: val } : c)));
-    // Track last used department
-    if (field === 'department_id') {
-      setLastUsedDept(val);
-    }
   };
   const removeCandidate = (id) => setCandidates((prev) => prev.filter((c) => c.id !== id));
 
