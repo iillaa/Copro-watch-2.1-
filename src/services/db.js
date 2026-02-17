@@ -2,6 +2,10 @@ import Dexie from 'dexie';
 import backupService from './backup';
 import { encryptString, decryptString } from './crypto'; // IMPORT ADDED
 
+// [NEW] WORKER IMPORT (Vite Syntax)
+// We use a dedicated worker for heavy JSON operations to prevent UI freeze
+import ExportWorker from '../workers/export.worker?worker';
+
 // 1. Define the Database
 class CoproDatabase extends Dexie {
   constructor() {
@@ -49,6 +53,31 @@ class CoproDatabase extends Dexie {
 
 const dbInstance = new CoproDatabase();
 
+// --- WORKER HELPER ---
+// [NEW] Wraps the Worker in a Promise so we can await it
+function stringifyInWorker(data) {
+  return new Promise((resolve, reject) => {
+    const worker = new ExportWorker();
+    
+    worker.onmessage = (e) => {
+      if (e.data.success) {
+        resolve(e.data.json);
+      } else {
+        reject(new Error(e.data.error));
+      }
+      worker.terminate(); // Kill worker after job is done to save RAM
+    };
+
+    worker.onerror = (err) => {
+      reject(err);
+      worker.terminate();
+    };
+
+    // Send the massive object to the background
+    worker.postMessage({ data });
+  });
+}
+
 // [FIXED] Split Logic: Increment NOW (Async), Export LATER (Background)
 async function triggerBackupCheck() {
   try {
@@ -79,9 +108,12 @@ async function triggerBackupCheck() {
     console.error('[DB] Backup trigger error:', e);
   }
 }
+
 // 4. Export Global Function (Used by UI and Backup)
+// [UPDATED] Now uses Worker to prevent UI Freeze
 async function exportData() {
-  const data = {
+  // A. Gather Data (Must happen on Main Thread)
+  const rawData = {
     // [NEW] Metadata allows us to trust the data, not the file system
     meta: {
       version: '1.1',
@@ -97,7 +129,10 @@ async function exportData() {
     weapon_exams: await dbInstance.weapon_exams.toArray(),
     weapon_departments: await dbInstance.weapon_departments.toArray(),
   };
-  return JSON.stringify(data);
+  
+  // B. Stringify in Background (No UI Freeze)
+  // This replaces "return JSON.stringify(rawData)"
+  return await stringifyInWorker(rawData);
 }
 
 // 5. The Public API
@@ -384,6 +419,7 @@ export const db = {
       return false;
     }
   },
+  
   // [NEW] JANITOR FUNCTION
   async cleanupOrphans() {
     console.log('🧹 Starting Cleanup...');
