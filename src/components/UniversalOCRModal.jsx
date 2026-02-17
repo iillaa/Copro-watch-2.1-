@@ -377,9 +377,10 @@ const runPaddleOCR = async () => {
     ctx.fillRect(0, 0, finalW, finalH);
     ctx.drawImage(img, 0, 0, finalW, finalH);
 
-    // 3. SURGICAL FIX: RAW PIXEL DATA (ImageData)
-    // Avoids "The source image cannot be decoded" error by bypassing image codec in WASM
-    const imageData = ctx.getImageData(0, 0, finalW, finalH);
+    // 3. SURGICAL FIX: BLOB (Standard File Object)
+    // Avoids "The source image cannot be decoded" error by passing a standard Blob (File)
+    // which is more robust than Data URLs (string limits) or ImageData (raw pixels)
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/jpeg', 0.95));
 
     addLog(`[PADDLE] Image optimisée: ${finalW}x${finalH}px (Original: ${img.naturalWidth}x${img.naturalHeight})`);
 
@@ -410,8 +411,8 @@ const runPaddleOCR = async () => {
     addLog('[PADDLE] Moteur prêt. Lecture globale...');
     setProgress(40);
 
-    // 7. DETECTION (Passing ImageData)
-    const results = await ocr.detect(imageData);
+    // 7. DETECTION (Passing Blob)
+    const results = await ocr.detect(blob);
     
     setProgress(80);
     addLog(`[PADDLE] Succès: ${results.length} éléments textuels détectés.`);
