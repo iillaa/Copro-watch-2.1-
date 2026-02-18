@@ -7,6 +7,7 @@ import topLevelAwait from "vite-plugin-top-level-await";
 // REMOVE: import { viteSingleFile } from 'vite-plugin-singlefile';
 
 export default defineConfig({
+  assetsInclude: ['**/*.onnx', '**/*.wasm'], // Explicitly include model files
   plugins: [
     react(),
     wasm(), // Add WASM support
@@ -27,6 +28,22 @@ export default defineConfig({
     // }),
   ],
   base: './',
+  server: {
+    host: '0.0.0.0', // Expose to network
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+    // Force MIME types if needed, though Vite is usually good.
+    // The main fix for "Magic Word" is ensuring the file exists at the path.
+  },
+  preview: {
+    host: '0.0.0.0',
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
   build: {
     target: 'esnext',
     // REMOVE: assetsInlineLimit: 100000000,

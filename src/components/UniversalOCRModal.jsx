@@ -54,6 +54,21 @@ const transliterateArToFr = (text) => {
     .replace(/IY/g, 'I');
 };
 
+  // --- ARABIC REVERSAL FIX ---
+  // PaddleOCR often returns Arabic text LTR (e.g. "CBA" instead of "ABC").
+  // This function detects Arabic and reverses the string if needed.
+  const fixArabicReversal = (text) => {
+    if (!text) return '';
+    // Check if the text contains Arabic characters
+    const hasArabic = /[\u0600-\u06FF]/.test(text);
+    if (hasArabic) {
+        // Reverse characters to correct LTR rendering of RTL text
+        // Also split by space to reverse word order if necessary, but usually character reversal is the main issue with raw OCR output
+        return text.split('').reverse().join('');
+    }
+    return text;
+  };
+
 export default function UniversalOCRModal({
   mode = 'worker',
   onClose,
@@ -72,7 +87,7 @@ export default function UniversalOCRModal({
   const [debugCrops, setDebugCrops] = useState([]);
   
   // NEW: Engine State
-  const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle'
+  const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle' or 'hybrid'
 
   // LOGS: Full Array + Scroll
   const [logs, setLogs] = useState([]);
@@ -152,7 +167,7 @@ export default function UniversalOCRModal({
   };
 
   // ========== TESSERACT HELPER (RESTORED EXACTLY) ==========
-  const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8) => {
+  const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8, binarize = true) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
 
@@ -174,19 +189,21 @@ export default function UniversalOCRModal({
       paddingX * scale, paddingY * scale, rect.width * scale, rect.height * scale
     );
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
+    if (binarize) {
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const data = imageData.data;
 
-    // FIX 2: Hard Threshold (175) - Makes text solid black, background solid white.
-    const threshold = 175;
+      // FIX 2: Hard Threshold (175) - Makes text solid black, background solid white.
+      const threshold = 175;
 
-    for (let i = 0; i < data.length; i += 4) {
-      const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-      let v = gray < threshold ? 0 : 255;
-      data[i] = data[i + 1] = data[i + 2] = v;
+      for (let i = 0; i < data.length; i += 4) {
+        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+        let v = gray < threshold ? 0 : 255;
+        data[i] = data[i + 1] = data[i + 2] = v;
+      }
+      ctx.putImageData(imageData, 0, 0);
     }
-
-    ctx.putImageData(imageData, 0, 0);
+    
     return canvas.toDataURL('image/png'); 
   };
 
@@ -233,365 +250,365 @@ export default function UniversalOCRModal({
     addLog('[DEBUG] Grille dessinée dans le cadre jaune.');
   };
 
-  // ========== ENGINE 1: TESSERACT (RENAMED FROM runOCR) ==========
+  // ========== MODE 1: TESSERACT PARALLEL (SAFE) ==========
   const runTesseractOCR = async () => {
     if (!image || !imageRef.current) return;
-    if (debugMode) {
-      drawDebugGrid();
-      return;
-    }
-
+    setIsProcessing(true);
     setLogs([]);
     setDebugCrops([]);
-    setIsProcessing(true);
     setCandidates([]);
     setProgress(0);
-    setStatusText('Tesseract (Local)...');
+    setStatusText('Tesseract (Parallel Workers)...');
 
-    let worker = null;
+    let workers = [];
     try {
+      // 1. Initialize Worker Pool (2 Workers for Dual-Core Optimization)
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
-      worker = await Tesseract.createWorker(langs, 1);
-
-      const isRTL = docLanguage === 'ara';
-      addLog(`[ENGINE] Scan ${isRTL ? 'RTL' : 'LTR'} (${langs})`);
-
+      const numWorkers = 2;
+      addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
+      
+      for (let i = 0; i < numWorkers; i++) {
+        const w = await Tesseract.createWorker(langs, 1);
+        workers.push(w);
+      }
+      
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-      const results = [];
-      const totalCells = (sortedH.length - 1) * (sortedV.length - 1);
+      const isRTL = docLanguage === 'ara';
+      
+      // Initialize Results Array
+      const numRows = sortedH.length - 1;
+      const numCols = sortedV.length - 1;
+      let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
       let cellsProcessed = 0;
+      const totalCells = numRows * numCols;
 
-      for (let r = 0; r < sortedH.length - 1; r++) {
-        let candidate = createEmptyCandidate();
-        let hasDataInRow = false;
+      // 2. Column-based Processing (To minimize parameter switching)
+      for (let c = 0; c < numCols; c++) {
+        const colIndex = isRTL ? numCols - 1 - c : c;
+        const field = colMapping[colIndex];
+        
+        if (!field || field === 'ignore') {
+          cellsProcessed += numRows;
+          continue;
+        }
 
-        for (let c = 0; c < sortedV.length - 1; c++) {
-          const colIndex = isRTL ? sortedV.length - 2 - c : c;
-          const field = colMapping[colIndex];
+        // Configure all workers for this column type
+        const params = (field === 'national_id') ? {
+           tessedit_pageseg_mode: '7',
+           preserve_interword_spaces: '1',
+           tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. '
+        } : {
+           tessedit_pageseg_mode: '7',
+           preserve_interword_spaces: '1',
+           tessedit_char_whitelist: '' // Allow Arabic
+        };
 
-          if (!field || field === 'ignore') {
-            cellsProcessed++;
-            continue;
-          }
+        await Promise.all(workers.map(w => w.setParameters(params)));
 
-          const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
-          const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-          const safetyMargin = 10;
+        // Split rows between workers
+        const promises = [];
+        for (let r = 0; r < numRows; r++) {
+          const workerIndex = r % numWorkers;
+          
+          const task = async () => {
+             const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+             const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+             const safetyMargin = 10;
+             const cropParams = {
+                x: sortedV[colIndex] * imgDimensions.width + safetyMargin,
+                y: sortedH[r] * imgDimensions.height + safetyMargin,
+                width: rawW - safetyMargin * 2,
+                height: rawH - safetyMargin * 2
+             };
 
-          const cropParams = {
-            x: sortedV[colIndex] * imgDimensions.width + safetyMargin,
-            y: sortedH[r] * imgDimensions.height + safetyMargin,
-            width: rawW - safetyMargin * 2,
-            height: rawH - safetyMargin * 2,
+             if (cropParams.width < 10 || cropParams.height < 10) return;
+
+             const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
+             if (debugMode) {
+               setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
+             }
+
+             const { data: { text, confidence } } = await workers[workerIndex].recognize(cellUrl);
+             
+             let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
+             if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) cleanText = '';
+             
+             if (cleanText) {
+                gridResults[r][field] = cleanText;
+                addLog(`[CELL] R${r+1}C${c+1}: ${cleanText} (${confidence}%)`);
+             }
+             
+             cellsProcessed++;
+             setProgress(Math.round((cellsProcessed / totalCells) * 100));
           };
-
-          if (cropParams.width < 10 || cropParams.height < 10) continue;
-
-          // Conditional Parameters
-          if (field === 'national_id') {
-            await worker.setParameters({
-              tessedit_pageseg_mode: '7',
-              preserve_interword_spaces: '1',
-              tessedit_char_whitelist:
-                '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. ',
-            });
-          } else {
-            await worker.setParameters({
-              tessedit_pageseg_mode: '7',
-              preserve_interword_spaces: '1',
-              tessedit_char_whitelist: '', // Allow Arabic
-            });
-          }
-
-          // Generate URL
-          const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
-
-          // Debug Trace
-          setDebugCrops((prev) => [...prev, { label: `R${r + 1}C${c + 1}`, url: cellUrl }]);
-
-          const {
-            data: { text, confidence },
-          } = await worker.recognize(cellUrl);
-
-          let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
-
-          // NOISE FILTER
-          if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) {
-            addLog(`[FILTER] Ignored noise "${cleanText}" in ${field}`);
-            cleanText = '';
-          }
-
-          addLog(`[CELL] R${r + 1}C${c + 1} (${field}): "${cleanText}" | ${confidence}%`);
-
-          if (cleanText) {
-            candidate[field] = cleanText;
-            hasDataInRow = true;
-          }
-          cellsProcessed++;
-          setProgress(Math.round((cellsProcessed / totalCells) * 100));
+          
+          promises.push(task());
         }
-
-        if (hasDataInRow) {
-          cleanCandidate(candidate);
-          results.push(candidate);
-        }
+        await Promise.all(promises);
       }
-      setCandidates(results);
-      if (results.length > 0) setActiveTab('results');
-    } catch (err) {
-      addLog(`[CRASH] ${err.message}`);
+
+      setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+      
+      // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
+      if (!debugMode && gridResults.length > 0) {
+        setActiveTab('results');
+      } else if (debugMode) {
+        addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+      }
+
+    } catch (e) {
+      addLog(`[CRASH] ${e.message}`);
+      console.error(e);
     } finally {
-      if (worker) await worker.terminate();
+      // Terminate all workers
+      for (const w of workers) await w.terminate();
       setIsProcessing(false);
     }
   };
 
-  // ========== ENGINE 2: PADDLE OCR (NEW TURBO MODE) ==========
-  // SURGICAL FIX: Using Raw Pixel Data (ImageData) instead of HTML Element
-  // This bypasses the decoding step in WASM which fails on Android WebView
-const runPaddleOCR = async () => {
-  if (!image || !imageRef.current) return;
-  setIsProcessing(true);
-  setLogs([]);
-  addLog(`[PADDLE] Initialisation IA v${ORT_VERSION}...`);
-  setProgress(10);
-  setStatusText('Paddle AI (Turbo)...');
-
-  try {
-    const img = imageRef.current;
+  // ========== MODE 2: PADDLE CELLULAR (TURBO) ==========
+  const runPaddleOCR = async () => {
+    if (!image || !imageRef.current) return;
+    setIsProcessing(true);
+    setLogs([]);
+    setDebugCrops([]);
+    setCandidates([]);
+    setProgress(0);
+    setStatusText('Paddle AI (Cellular Mode)...');
     
-    // 1. DIMENSIONS & ASPECT RATIO (Multiple of 32)
-    // We must preserve aspect ratio to ensure accurate text detection
-    const MAX_DIM = 960;
-    const ratio = Math.min(MAX_DIM / img.naturalWidth, MAX_DIM / img.naturalHeight, 1);
-    const finalW = Math.floor((img.naturalWidth * ratio) / 32) * 32;
-    const finalH = Math.floor((img.naturalHeight * ratio) / 32) * 32;
+    let ocr = null;
 
-    // 2. DRAW TO CANVAS
-    const canvas = document.createElement('canvas');
-    canvas.width = finalW;
-    canvas.height = finalH;
-    const ctx = canvas.getContext('2d', { willReadFrequently: true });
-    ctx.fillStyle = '#FFFFFF';
-    ctx.fillRect(0, 0, finalW, finalH);
-    ctx.drawImage(img, 0, 0, finalW, finalH);
-
-    // 3. SURGICAL FIX: DATA URL (BASE64)
-    // We pass a Base64 JPEG string which is universally supported by the engine
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.95);
-
-    addLog(`[PADDLE] Image optimisée: ${finalW}x${finalH}px (Original: ${img.naturalWidth}x${img.naturalHeight})`);
-
-    // 4. VISUAL DEBUG (If enabled)
-    if (debugMode && canvasRef.current) {
-      const debugCtx = canvasRef.current.getContext('2d');
-      canvasRef.current.width = finalW;
-      canvasRef.current.height = finalH;
-      debugCtx.drawImage(canvas, 0, 0);
-      debugCtx.strokeStyle = 'rgba(0, 255, 0, 0.5)';
-      debugCtx.lineWidth = 2;
-      addLog('[DEBUG] Image source affichée.');
-    }
-
-    // 5. LOAD ENGINE (Absolute Paths)
-    // 6. LOAD ENGINE (Absolute Paths)
-    const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
-    const modelsUrl = baseUrl + 'models/';
-
-    const ocr = await Ocr.create({
-      models: {
-        detectionPath: `${modelsUrl}det.onnx`,
-        recognitionPath: `${modelsUrl}rec_ara.onnx`,
-        dictionaryPath: `${modelsUrl}keys_ara.txt`
-      }
-    });
-
-    addLog('[PADDLE] Moteur prêt. Lecture globale...');
-    setProgress(40);
-
-    // 7. DETECTION (Passing Base64 Data URL)
-    const results = await ocr.detect(dataUrl);
-    
-    setProgress(80);
-    addLog(`[PADDLE] Succès: ${results.length} éléments textuels détectés.`);
-
-    // 8. COORDINATE MAPPING & DEBUG
-    const ratioX = imgDimensions.width / finalW;
-    const ratioY = imgDimensions.height / finalH;
-
-    // Debug overlay on canvas
-    if (debugMode && canvasRef.current) {
-      const debugCtx = canvasRef.current.getContext('2d');
-
-      // Draw detected boxes
-      results.forEach(item => {
-        debugCtx.beginPath();
-        debugCtx.moveTo(item.box[0][0], item.box[0][1]);
-        debugCtx.lineTo(item.box[1][0], item.box[1][1]);
-        debugCtx.lineTo(item.box[2][0], item.box[2][1]);
-        debugCtx.lineTo(item.box[3][0], item.box[3][1]);
-        debugCtx.closePath();
-        debugCtx.stroke();
-      });
-
-      // Draw grid lines (mapped to current canvas size)
-      const w = canvasRef.current.width;
-      const h = canvasRef.current.height;
-
-      debugCtx.strokeStyle = 'blue';
-      vLines.forEach(v => {
-        debugCtx.beginPath();
-        debugCtx.moveTo(v * w, 0);
-        debugCtx.lineTo(v * w, h);
-        debugCtx.stroke();
-      });
-
-      debugCtx.strokeStyle = 'red';
-      hLines.forEach(y => {
-        debugCtx.beginPath();
-        debugCtx.moveTo(0, y * h);
-        debugCtx.lineTo(w, y * h);
-        debugCtx.stroke();
-      });
-    }
-
-    const adaptedWords = results.map(item => ({
-      text: item.text,
-      // Centroid Calculation
-      cx: ((item.box[0][0] + item.box[2][0]) / 2) * ratioX,
-      cy: ((item.box[0][1] + item.box[2][1]) / 2) * ratioY,
-      // Bounding Box (Scaled)
-      minX: Math.min(item.box[0][0], item.box[3][0]) * ratioX,
-      maxX: Math.max(item.box[1][0], item.box[2][0]) * ratioX,
-      minY: Math.min(item.box[0][1], item.box[1][1]) * ratioY,
-      maxY: Math.max(item.box[2][1], item.box[3][1]) * ratioY,
-    }));
-
-    // 9. GRID SORTING & DEBUG CROPS
-    setDebugCrops([]); // Clear previous
-    const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-    const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-    const isRTL = docLanguage === 'ara';
-    const gridCandidates = [];
-    const newDebugCrops = [];
-
-    for (let r = 0; r < sortedH.length - 1; r++) {
-      let candidate = createEmptyCandidate();
-      let hasData = false;
-      const yTop = sortedH[r] * imgDimensions.height;
-      const yBottom = sortedH[r + 1] * imgDimensions.height;
-
-      for (let c = 0; c < sortedV.length - 1; c++) {
-        const colIndex = isRTL ? sortedV.length - 2 - c : c;
-        const field = colMapping[colIndex];
-        if (!field || field === 'ignore') continue;
-
-        const xLeft = sortedV[colIndex] * imgDimensions.width;
-        const xRight = sortedV[colIndex + 1] * imgDimensions.width;
-
-        // HEURISTIC: Find words that overlap with this cell
-        // 1. Text centroid falls inside cell (Normal case)
-        // 2. OR Text box overlaps significantly (Cross-column case - split needed)
-
-        let cellTextParts = [];
-
-        adaptedWords.forEach(w => {
-           // Vertical Check: Must be in this row
-           if (w.cy < yTop || w.cy > yBottom) return;
-
-           // Horizontal Check: Overlap Logic
-           const overlapStart = Math.max(w.minX, xLeft);
-           const overlapEnd = Math.min(w.maxX, xRight);
-           const overlapWidth = Math.max(0, overlapEnd - overlapStart);
-           const wordWidth = w.maxX - w.minX;
-
-           // If overlap is significant (> 30% of word or > 80% of cell)
-           if (overlapWidth > 0 && wordWidth > 0) {
-              const overlapRatio = overlapWidth / wordWidth;
-
-              if (overlapRatio > 0.9) {
-                 // Entire word is in this cell
-                 cellTextParts.push({ text: w.text, x: w.minX });
-              } else if (overlapRatio > 0.2) {
-                 // PARTIAL OVERLAP: Attempt to slice text proportional to width
-                 // This handles "Name Surname" spanning two columns
-                 const len = w.text.length;
-                 const startRatio = (overlapStart - w.minX) / wordWidth;
-                 const endRatio = (overlapEnd - w.minX) / wordWidth;
-
-                 const startIdx = Math.floor(startRatio * len);
-                 const endIdx = Math.ceil(endRatio * len);
-
-                 const slicedText = w.text.substring(startIdx, endIdx).trim();
-                 if (slicedText.length > 0) {
-                    cellTextParts.push({ text: slicedText, x: overlapStart });
-                    // Visual Debug for splitting
-                    if (debugMode) {
-                        addLog(`[SPLIT] "${w.text}" -> "${slicedText}" for ${field}`);
-                    }
-                 }
-              }
-           }
-        });
-
-        if (cellTextParts.length > 0) {
-          // Sort words logically (RTL or LTR)
-          cellTextParts.sort((a, b) => isRTL ? b.x - a.x : a.x - b.x);
-          const finalText = cellTextParts.map(p => p.text).join(' ');
-
-          candidate[field] = finalText;
-          hasData = true;
-
-          addLog(`[CELL] R${r+1}C${c+1} (${field}): "${finalText}"`);
-
-          // Create Debug Crop (visualize what fell into this bucket)
-          if (debugMode) {
-             const cropW = xRight - xLeft;
-             const cropH = yBottom - yTop;
-             const cropUrl = getCellImage(imageRef.current, {
-               x: xLeft, y: yTop, width: cropW, height: cropH
-             }, 0, 0);
-
-             newDebugCrops.push({
-               label: `R${r+1}C${c+1}: ${finalText.substring(0, 10)}...`,
-               url: cropUrl
-             });
-          }
-        } else {
-           addLog(`[CELL] R${r+1}C${c+1} (${field}): - Vide -`);
+    try {
+      const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
+      const modelsUrl = baseUrl + 'models/';
+      
+      addLog('[PADDLE] Loading Neural Engine...');
+      // Initialize Engine ONCE
+      ocr = await Ocr.create({
+        models: {
+            detectionPath: `${modelsUrl}det.onnx`,
+            recognitionPath: `${modelsUrl}rec_ara.onnx`,
+            dictionaryPath: `${modelsUrl}keys_ara.txt`
         }
-      }
-      if (hasData) {
-        cleanCandidate(candidate);
-        gridCandidates.push(candidate);
-      }
-    }
+      });
 
-    setDebugCrops(newDebugCrops);
-    setCandidates(gridCandidates);
+      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+      const isRTL = docLanguage === 'ara';
+      
+      const numRows = sortedH.length - 1;
+      const numCols = sortedV.length - 1;
+      let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
+      let cellsProcessed = 0;
+      const totalCells = numRows * numCols;
 
-    // Only switch tabs if not debugging, so user can see the overlay
-    if (!debugMode) {
+      // Iterate Grid (Slice-then-Read Strategy)
+      for (let r = 0; r < numRows; r++) {
+         for (let c = 0; c < numCols; c++) {
+            const colIndex = isRTL ? numCols - 1 - c : c;
+            const field = colMapping[colIndex];
+            
+            if (!field || field === 'ignore') {
+                cellsProcessed++;
+                continue;
+            }
+
+            const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+            const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+            const cropParams = {
+               x: sortedV[colIndex] * imgDimensions.width,
+               y: sortedH[r] * imgDimensions.height,
+               width: rawW,
+               height: rawH
+            };
+            
+            // Paddle needs specific padding/sizing, handled by getCellImage or just raw crop
+            // Here we use getCellImage but without high contrast thresholding if possible?
+            // Actually getCellImage applies thresholding which Tesseract needs. 
+            // Paddle works better with grayscale/color. 
+            // BUT for consistency we use the same crop logic but maybe less scale?
+            // Let's use getCellImage but we might want to relax thresholding for Paddle?
+            // For now, reuse getCellImage as it handles the canvas slicing. 
+            // NOTE: Paddle Engine expects an image URL or Blob. getCellImage returns DataURL.
+            
+            // TRY: Re-enable binarization (true) to see if it helps with French tables as per user feedback
+            const cellUrl = getCellImage(imageRef.current, cropParams, 0, 0, false); 
+            
+            // Pass to Engine
+            const results = await ocr.detect(cellUrl);
+            
+            // Extract text from results
+            let text = results.map(box => box.text).join(' ').trim();
+            
+            if (text) {
+                // FIX: Arabic Reversal
+                if (isRTL) text = fixArabicReversal(text);
+
+                gridResults[r][field] = text;
+                addLog(`[CELL] R${r+1}C${c+1}: ${text}`);
+                
+                if (debugMode) {
+                   setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} [${text}]`, url: cellUrl }]);
+                }
+            }
+            
+            cellsProcessed++;
+            setProgress(Math.round((cellsProcessed / totalCells) * 100));
+         }
+      }
+
+      setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+      
+      // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
+      if (!debugMode && gridResults.length > 0) {
         setActiveTab('results');
-    } else {
-        addLog('[DEBUG] Mode Debug actif: Resté sur l\'onglet Scan pour visualisation.');
-    }
+      } else if (debugMode) {
+        addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+      }
 
-  } catch (e) {
-    addLog(`[ERREUR] ${e.message}`);
-    console.error(e);
-  } finally {
-    setIsProcessing(false);
-    setProgress(100);
-  }
-};
+    } catch (e) {
+      addLog(`[CRASH] ${e.message}`);
+      console.error(e);
+    } finally {
+      if (ocr && ocr.dispose) await ocr.dispose(); // CRITICAL: Free WASM Heap
+      setIsProcessing(false);
+    }
+  };
+
+  // ========== MODE 3: HYBRID (SMART) ==========
+  const runHybridOCR = async () => {
+    if (!image || !imageRef.current) return;
+    setIsProcessing(true);
+    setLogs([]);
+    setCandidates([]);
+    setProgress(0);
+    setStatusText('Hybrid Mode (Smart)...');
+
+    let tesseractWorkers = [];
+    let paddleOcr = null;
+
+    try {
+       // 1. Initialize Both Engines
+       addLog('[HYBRID] Starting Engines...');
+       
+       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
+       const worker1 = await Tesseract.createWorker(langs, 1);
+       const worker2 = await Tesseract.createWorker(langs, 1);
+       tesseractWorkers = [worker1, worker2];
+
+       const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
+       const modelsUrl = baseUrl + 'models/';
+       paddleOcr = await Ocr.create({
+         models: {
+             detectionPath: `${modelsUrl}det.onnx`,
+             recognitionPath: `${modelsUrl}rec_ara.onnx`,
+             dictionaryPath: `${modelsUrl}keys_ara.txt`
+         }
+       });
+
+       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+       const isRTL = docLanguage === 'ara';
+       const numRows = sortedH.length - 1;
+       const numCols = sortedV.length - 1;
+       let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
+       const totalCells = numRows * numCols;
+       let cellsProcessed = 0;
+
+       // 2. Iterate by Column to Optimize Engine Usage
+       for (let c = 0; c < numCols; c++) {
+          const colIndex = isRTL ? numCols - 1 - c : c;
+          const field = colMapping[colIndex];
+          
+          if (!field || field === 'ignore') {
+             cellsProcessed += numRows;
+             continue;
+          }
+
+          // DECISION LOGIC
+          const useTesseract = (field === 'national_id' || field === 'department_id');
+          
+          if (useTesseract) {
+             addLog(`[HYBRID] Column "${field}" -> Tesseract (Numeric Safe)`);
+             const params = {
+               tessedit_pageseg_mode: '7',
+               preserve_interword_spaces: '1',
+               tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. '
+             };
+             await Promise.all(tesseractWorkers.map(w => w.setParameters(params)));
+
+             const promises = [];
+             for (let r = 0; r < numRows; r++) {
+                const worker = tesseractWorkers[r % 2];
+                const task = async () => {
+                   // ... Crop Logic ...
+                   const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+                   const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+                   const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
+                   const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
+                   
+                   const { data: { text } } = await worker.recognize(cellUrl);
+                   if (text.trim()) gridResults[r][field] = text.trim();
+                   cellsProcessed++;
+                   setProgress(Math.round((cellsProcessed / totalCells) * 100));
+                };
+                promises.push(task());
+             }
+             await Promise.all(promises);
+
+          } else {
+             addLog(`[HYBRID] Column "${field}" -> Paddle (Text Turbo)`);
+             // Sequential loop for Paddle (Single Threaded WASM)
+             for (let r = 0; r < numRows; r++) {
+                const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+                const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+                const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
+                
+                // Use getCellImage but maybe less aggressive processing? 
+                // Using standard for now.
+                // TRY: Re-enable binarization (true) to see if it helps with French tables as per user feedback
+                const cellUrl = getCellImage(imageRef.current, cropParams, 0, 0, false);
+                
+                const results = await paddleOcr.detect(cellUrl);
+                let text = results.map(b => b.text).join(' ').trim();
+                
+                if (text) {
+                   if (isRTL) text = fixArabicReversal(text);
+                   gridResults[r][field] = text;
+                   addLog(`[CELL] ${field}: ${text}`);
+                }
+                cellsProcessed++;
+                setProgress(Math.round((cellsProcessed / totalCells) * 100));
+             }
+          }
+       }
+       
+       setCandidates(gridResults.filter(c => c.national_id || c.full_name));
+       
+       // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
+       if (!debugMode && gridResults.length > 0) {
+         setActiveTab('results');
+       } else if (debugMode) {
+         addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+       }
+
+    } catch (e) {
+       addLog(`[CRASH] ${e.message}`);
+    } finally {
+       for (const w of tesseractWorkers) await w.terminate();
+       if (paddleOcr && paddleOcr.dispose) await paddleOcr.dispose();
+       setIsProcessing(false);
+    }
+  };
   // --- MASTER SWITCH ---
   const handleGo = () => {
     if (ocrEngine === 'paddle') {
-      runPaddleOCR();
+      runPaddleOCR(); // Now Cellular (Slice-then-Read)
+    } else if (ocrEngine === 'hybrid') {
+      runHybridOCR();
     } else {
-      runTesseractOCR();
+      runTesseractOCR(); // Now Parallel
     }
   };
 
@@ -808,11 +825,53 @@ const runPaddleOCR = async () => {
                   {/* NEW: ENGINE TOGGLE */}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
                     <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '6px', padding: '2px' }}>
-                        <button onClick={() => setOcrEngine('tesseract')} style={{ background: ocrEngine === 'tesseract' ? 'white' : 'transparent', color: ocrEngine === 'tesseract' ? '#0f172a' : '#64748b', border: '1px solid transparent', borderColor: ocrEngine === 'tesseract' ? '#cbd5e1' : 'transparent', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}>
+                        <button 
+                          onClick={() => setOcrEngine('tesseract')} 
+                          style={{ 
+                            background: ocrEngine === 'tesseract' ? 'white' : 'transparent', 
+                            color: ocrEngine === 'tesseract' ? '#0f172a' : '#64748b', 
+                            border: '1px solid transparent', 
+                            borderColor: ocrEngine === 'tesseract' ? '#cbd5e1' : 'transparent', 
+                            borderRadius: '4px', 
+                            padding: '4px 8px', 
+                            fontSize: '0.75rem', 
+                            fontWeight: 'bold', 
+                            cursor: 'pointer' 
+                          }}
+                        >
                           Safe
                         </button>
-                        <button onClick={() => setOcrEngine('paddle')} style={{ background: ocrEngine === 'paddle' ? 'var(--primary)' : 'transparent', color: ocrEngine === 'paddle' ? 'white' : '#64748b', border: 'none', borderRadius: '4px', padding: '4px 8px', fontSize: '0.75rem', fontWeight: 'bold', cursor: 'pointer' }}>
-                          Turbo AI
+                        <button 
+                          onClick={() => setOcrEngine('paddle')} 
+                          style={{ 
+                            background: ocrEngine === 'paddle' ? 'white' : 'transparent', 
+                            color: ocrEngine === 'paddle' ? '#0f172a' : '#64748b', 
+                            border: '1px solid transparent', 
+                            borderColor: ocrEngine === 'paddle' ? '#cbd5e1' : 'transparent', 
+                            borderRadius: '4px', 
+                            padding: '4px 8px', 
+                            fontSize: '0.75rem', 
+                            fontWeight: 'bold', 
+                            cursor: 'pointer' 
+                          }}
+                        >
+                          Turbo
+                        </button>
+                        <button 
+                          onClick={() => setOcrEngine('hybrid')} 
+                          style={{ 
+                            background: ocrEngine === 'hybrid' ? 'white' : 'transparent', 
+                            color: ocrEngine === 'hybrid' ? '#0f172a' : '#64748b', 
+                            border: '1px solid transparent', 
+                            borderColor: ocrEngine === 'hybrid' ? '#cbd5e1' : 'transparent', 
+                            borderRadius: '4px', 
+                            padding: '4px 8px', 
+                            fontSize: '0.75rem', 
+                            fontWeight: 'bold', 
+                            cursor: 'pointer' 
+                          }}
+                        >
+                          Hybrid
                         </button>
                     </div>
 
