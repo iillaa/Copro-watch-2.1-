@@ -268,6 +268,15 @@ export default function UniversalOCRModal({
     addLog('[DEBUG] Grille dessinée dans le cadre jaune.');
   };
 
+  // AUTO-DEBUG: Redraw whenever grid/debug mode changes
+  useEffect(() => {
+    if (debugMode && image) {
+      // Small timeout to ensure image ref is ready/layout stable
+      const timer = setTimeout(drawDebugGrid, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [debugMode, image, hLines, vLines, debugBoxes]);
+
   // ========== MODE 1: TESSERACT PARALLEL (SAFE) ==========
   const runTesseractOCR = async () => {
     if (!image || !imageRef.current) return;
@@ -412,10 +421,45 @@ export default function UniversalOCRModal({
         }
       });
 
-      // 1. Full Image Detection
-      addLog('[PADDLE] Scanning full image...');
-      // Pass the image source (Data URL) directly
-      const results = await ocr.detect(imageRef.current.src);
+      // 1. Pre-process Image: Inject Grid Lines (White Overlay)
+      // This forces PaddleOCR to see physical separation between columns, preventing horizontal text merging.
+      addLog('[PADDLE] Injecting grid lines to force column separation...');
+
+      const procCanvas = document.createElement('canvas');
+      procCanvas.width = imgDimensions.width;
+      procCanvas.height = imgDimensions.height;
+      const pCtx = procCanvas.getContext('2d');
+
+      // Draw original image
+      pCtx.drawImage(imageRef.current, 0, 0);
+
+      // Overlay White Grid Lines (5px width)
+      pCtx.strokeStyle = '#FFFFFF';
+      pCtx.lineWidth = 5;
+
+      // Draw Vertical Splits
+      vLines.forEach(v => {
+          const x = v * imgDimensions.width;
+          pCtx.beginPath();
+          pCtx.moveTo(x, 0);
+          pCtx.lineTo(x, imgDimensions.height);
+          pCtx.stroke();
+      });
+
+      // Draw Horizontal Splits (Optional but good for row isolation)
+      hLines.forEach(h => {
+          const y = h * imgDimensions.height;
+          pCtx.beginPath();
+          pCtx.moveTo(0, y);
+          pCtx.lineTo(imgDimensions.width, y);
+          pCtx.stroke();
+      });
+
+      const processedImageUrl = procCanvas.toDataURL('image/jpeg', 0.95);
+
+      // 2. Full Image Detection on PROCESSED Image
+      addLog('[PADDLE] Scanning processed image...');
+      const results = await ocr.detect(processedImageUrl);
 
       if (debugMode) {
          setDebugBoxes(results);
