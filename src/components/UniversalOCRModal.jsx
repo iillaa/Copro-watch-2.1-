@@ -426,6 +426,7 @@ export default function UniversalOCRModal({
 
       const totalCells = numRows * numCols;
       let cellsProcessed = 0;
+      let allDebugBoxes = [];
 
       // 2. DOUBLE LOOP: Rows then Columns (Ensures text stays in its box)
       for (let r = 0; r < numRows; r++) {
@@ -450,13 +451,27 @@ export default function UniversalOCRModal({
           };
 
           // Paddle needs grayscale (false) and can use scale 2 for speed
-          const cellUrl = getCellImage(imageRef.current, rect, 0, 0, false);
+          // FIX: Added 10px padding to avoid cutting off edge characters (like '8' in 8k338)
+          const cellUrl = getCellImage(imageRef.current, rect, 10, 10, false);
 
           if (debugMode) {
             setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
           }
 
           const results = await ocr.detect(cellUrl);
+
+          // Accumulate debug boxes with coordinate translation
+          if (debugMode) {
+             results.forEach(box => {
+                // Translate box coordinates from Crop Space -> Image Space
+                const translatedBox = {
+                   box: box.box.map(point => [point[0] + rect.x, point[1] + rect.y]),
+                   text: box.text
+                };
+                allDebugBoxes.push(translatedBox);
+             });
+          }
+
           let text = results.map(box => box.text).join(' ').trim();
 
           if (text) {
@@ -474,6 +489,13 @@ export default function UniversalOCRModal({
       }
 
       setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+
+      if (debugMode) {
+         setDebugBoxes(allDebugBoxes);
+         addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
+         // Force redraw
+         setTimeout(drawDebugGrid, 100);
+      }
 
       if (!debugMode && gridResults.length > 0) {
         setActiveTab('results');
