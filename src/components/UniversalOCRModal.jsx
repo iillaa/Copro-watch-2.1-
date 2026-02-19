@@ -69,6 +69,13 @@ const transliterateArToFr = (text) => {
     return text;
   };
 
+  // --- CAMELCASE FIX ---
+  // Detects merged words like "DribetAbdelmadjid" and inserts a space: "Dribet Abdelmadjid"
+  const fixCamelCase = (text) => {
+    if (!text) return '';
+    return text.replace(/([a-z])([A-Z])/g, '$1 $2');
+  };
+
 export default function UniversalOCRModal({
   mode = 'worker',
   onClose,
@@ -451,11 +458,9 @@ export default function UniversalOCRModal({
           };
 
           // Paddle needs grayscale (false) and can use scale 2 for speed
-          // FIX: INCREASED PADDING TO 20px (from 10) to avoid edge clipping (like '8' in 8k338)
-          // Also set binarize=true if user found French works better with it, or false if not.
-          // Based on user feedback "cellular worked", I'll keep the logic from Tesseract helper but maybe tweak it.
-          // Let's use padding 20 and binarize=false (Paddle usually prefers raw).
-          const cellUrl = getCellImage(imageRef.current, rect, 20, 20, false);
+          // FIX 1: INCREASED PADDING TO 50px (from 20) to ensure NO edges are cut off (8k338 fix)
+          // FIX 2: Binarize=TRUE as per user preference (French works better with it)
+          const cellUrl = getCellImage(imageRef.current, rect, 20, 50, true);
 
           if (debugMode) {
             setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
@@ -481,6 +486,11 @@ export default function UniversalOCRModal({
             // Clean vertical bars usually detected as noise from table borders
             text = text.replace(/[|]/g, '').trim();
             if (isRTL) text = text.split('').reverse().join('');
+
+            // FIX 3: Apply CamelCase splitting for merged names
+            if (field === 'full_name' || field === 'job_info') {
+                text = fixCamelCase(text);
+            }
 
             gridResults[r][field] = text;
             addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
@@ -604,8 +614,8 @@ export default function UniversalOCRModal({
                 const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
                 const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
 
-                // PADDLE CONFIG: 20px padding (Cellular Improved)
-                const cellUrl = getCellImage(imageRef.current, cropParams, 20, 20, false);
+                // PADDLE CONFIG: 50px padding (Cellular Improved)
+                const cellUrl = getCellImage(imageRef.current, cropParams, 20, 50, true);
 
                 const results = await paddleOcr.detect(cellUrl);
                 let text = results.map(b => b.text).join(' ').trim();
@@ -613,6 +623,12 @@ export default function UniversalOCRModal({
                 if (text) {
                    text = text.replace(/[|]/g, '').trim();
                    if (isRTL) text = fixArabicReversal(text);
+
+                   // Apply CamelCase splitting for Names
+                   if (field === 'full_name' || field === 'job_info') {
+                       text = fixCamelCase(text);
+                   }
+
                    gridResults[r][field] = text;
                    addLog(`[CELL] ${field}: ${text}`);
                 }
