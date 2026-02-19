@@ -394,7 +394,7 @@ export default function UniversalOCRModal({
     }
   };
 
-  // ========== MODE 2: PADDLE FULL PAGE (GLOBAL SCAN + GRID MAPPING) ==========
+  // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE RESTORED + IMPROVED) ==========
   const runPaddleOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
@@ -402,7 +402,7 @@ export default function UniversalOCRModal({
     setDebugCrops([]);
     setCandidates([]);
     setProgress(0);
-    setStatusText('Paddle AI (Global Scan)...');
+    setStatusText('Paddle AI (Cellular Mode)...');
     
     let ocr = null;
     try {
@@ -424,99 +424,81 @@ export default function UniversalOCRModal({
       const numCols = sortedV.length - 1;
       let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
 
-      addLog('[PADDLE] Running Global Detection...');
+      const totalCells = numRows * numCols;
+      let cellsProcessed = 0;
+      let allDebugBoxes = [];
 
-      // 2. Run ONE Detection on Full Image (Faster + More Context)
-      const results = await ocr.detect(image);
-      addLog(`[PADDLE] Found ${results.length} text regions.`);
-
-      if (debugMode) {
-         setDebugBoxes(results);
-         setTimeout(drawDebugGrid, 100);
-      }
-
-      // 3. Map Results to Grid Buckets
-      // Create a 2D array of buckets: bucket[row][col] = [ {text, box}, ... ]
-      const buckets = Array(numRows).fill(null).map(() => Array.from({length: numCols}, () => []));
-
-      results.forEach(item => {
-          // Calculate Center of Box
-          // box is [[x,y], [x,y], [x,y], [x,y]] (TopLeft, TopRight, BottomRight, BottomLeft)
-          const cx = (item.box[0][0] + item.box[1][0] + item.box[2][0] + item.box[3][0]) / 4;
-          const cy = (item.box[0][1] + item.box[1][1] + item.box[2][1] + item.box[3][1]) / 4;
-
-          // Find Row (y)
-          let rFound = -1;
-          for (let r = 0; r < numRows; r++) {
-             const y1 = sortedH[r] * imgDimensions.height;
-             const y2 = sortedH[r+1] * imgDimensions.height;
-             if (cy >= y1 && cy < y2) {
-                rFound = r;
-                break;
-             }
-          }
-
-          // Find Col (x)
-          let cFound = -1;
-          for (let c = 0; c < numCols; c++) {
-             const x1 = sortedV[c] * imgDimensions.width;
-             const x2 = sortedV[c+1] * imgDimensions.width;
-             if (cx >= x1 && cx < x2) {
-                cFound = c;
-                break;
-             }
-          }
-
-          if (rFound !== -1 && cFound !== -1) {
-             // Handle RTL column mapping if needed? No, 'c' is the visual column index (0=Left).
-             // If doc is RTL, visual 0 is usually the rightmost logical column if the UI flips it?
-             // No, the UI handles logical mapping via colMapping.
-             // If isRTL is true, colMapping is reversed?
-             // colMapping logic:
-             // const colIndex = isRTL ? numCols - 1 - c : c;
-             // Here, cFound is the visual index (0 is Left).
-             // So if the user drew the grid left-to-right, c=0 is the leftmost visual column.
-             buckets[rFound][cFound].push(item);
-          }
-      });
-
-      // 4. Process Buckets into Candidates
+      // 2. DOUBLE LOOP: Rows then Columns (Ensures text stays in its box)
       for (let r = 0; r < numRows; r++) {
-         for (let c = 0; c < numCols; c++) {
-            const bucket = buckets[r][c];
-            if (bucket.length === 0) continue;
+        for (let c = 0; c < numCols; c++) {
+          const colIndex = isRTL ? numCols - 1 - c : c;
+          const field = colMapping[colIndex];
 
-            // Logic to determine which field this column maps to
-            const colIndex = isRTL ? numCols - 1 - c : c;
-            const field = colMapping[colIndex];
+          // FIX: If column is marked 'ignore', skip the AI scan entirely
+          if (!field || field === 'ignore') {
+            cellsProcessed++;
+            continue;
+          }
 
-            if (!field || field === 'ignore') continue;
+          const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+          const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
 
-            // Sort text fragments in the cell (Top->Bottom, Left->Right)
-            bucket.sort((a, b) => {
-               const ay = a.box[0][1];
-               const by = b.box[0][1];
-               // If vertical difference is significant (>10px), sort by Y
-               if (Math.abs(ay - by) > 10) return ay - by;
-               // Otherwise sort by X
-               return a.box[0][0] - b.box[0][0];
-            });
+          const rect = {
+            x: sortedV[colIndex] * imgDimensions.width,
+            y: sortedH[r] * imgDimensions.height,
+            width: rawW,
+            height: rawH
+          };
 
-            // Join text
-            let text = bucket.map(b => b.text).join(' ').trim();
+          // Paddle needs grayscale (false) and can use scale 2 for speed
+          // FIX: INCREASED PADDING TO 20px (from 10) to avoid edge clipping (like '8' in 8k338)
+          // Also set binarize=true if user found French works better with it, or false if not.
+          // Based on user feedback "cellular worked", I'll keep the logic from Tesseract helper but maybe tweak it.
+          // Let's use padding 20 and binarize=false (Paddle usually prefers raw).
+          const cellUrl = getCellImage(imageRef.current, rect, 20, 20, false);
 
-            // Clean
+          if (debugMode) {
+            setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
+          }
+
+          const results = await ocr.detect(cellUrl);
+
+          // Accumulate debug boxes with coordinate translation
+          if (debugMode) {
+             results.forEach(box => {
+                // Translate box coordinates from Crop Space -> Image Space
+                const translatedBox = {
+                   box: box.box.map(point => [point[0] + rect.x, point[1] + rect.y]),
+                   text: box.text
+                };
+                allDebugBoxes.push(translatedBox);
+             });
+          }
+
+          let text = results.map(box => box.text).join(' ').trim();
+
+          if (text) {
+            // Clean vertical bars usually detected as noise from table borders
             text = text.replace(/[|]/g, '').trim();
-            if (isRTL) text = fixArabicReversal(text);
+            if (isRTL) text = text.split('').reverse().join('');
 
-            if (text) {
-               gridResults[r][field] = text;
-               addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
-            }
-         }
+            gridResults[r][field] = text;
+            addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
+          }
+
+          cellsProcessed++;
+          setProgress(Math.round((cellsProcessed / totalCells) * 100));
+        }
       }
 
       setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+
+      if (debugMode) {
+         setDebugBoxes(allDebugBoxes);
+         addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
+         // Force redraw
+         setTimeout(drawDebugGrid, 100);
+      }
 
       if (!debugMode && gridResults.length > 0) {
         setActiveTab('results');
@@ -532,14 +514,14 @@ export default function UniversalOCRModal({
     }
   };
 
-  // ========== MODE 3: HYBRID (SMART GLOBAL + TESSERACT) ==========
+  // ========== MODE 3: HYBRID (SMART CELLULAR) ==========
   const runHybridOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
     setLogs([]);
     setCandidates([]);
     setProgress(0);
-    setStatusText('Hybrid Mode (Smart)...');
+    setStatusText('Hybrid Mode (Smart Cellular)...');
 
     let tesseractWorkers = [];
     let paddleOcr = null;
@@ -547,9 +529,8 @@ export default function UniversalOCRModal({
     try {
        // 1. Initialize Both Engines
        addLog('[HYBRID] Starting Engines...');
-       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
 
-       // Only init Tesseract if needed (usually yes for IDs)
+       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
        const worker1 = await Tesseract.createWorker(langs, 1);
        const worker2 = await Tesseract.createWorker(langs, 1);
        tesseractWorkers = [worker1, worker2];
@@ -573,38 +554,7 @@ export default function UniversalOCRModal({
        const totalCells = numRows * numCols;
        let cellsProcessed = 0;
 
-       // 2. Run Global Paddle Scan FIRST (Optimize Text Columns)
-       addLog('[HYBRID] Running Global Paddle Scan...');
-       const paddleResults = await paddleOcr.detect(image);
-       if (debugMode) {
-          setDebugBoxes(paddleResults);
-          setTimeout(drawDebugGrid, 100);
-       }
-
-       // Bucket Paddle Results
-       const buckets = Array(numRows).fill(null).map(() => Array.from({length: numCols}, () => []));
-       paddleResults.forEach(item => {
-          const cx = (item.box[0][0] + item.box[1][0] + item.box[2][0] + item.box[3][0]) / 4;
-          const cy = (item.box[0][1] + item.box[1][1] + item.box[2][1] + item.box[3][1]) / 4;
-
-          let rFound = -1;
-          for (let r = 0; r < numRows; r++) {
-             const y1 = sortedH[r] * imgDimensions.height;
-             const y2 = sortedH[r+1] * imgDimensions.height;
-             if (cy >= y1 && cy < y2) { rFound = r; break; }
-          }
-          let cFound = -1;
-          for (let c = 0; c < numCols; c++) {
-             const x1 = sortedV[c] * imgDimensions.width;
-             const x2 = sortedV[c+1] * imgDimensions.width;
-             if (cx >= x1 && cx < x2) { cFound = c; break; }
-          }
-          if (rFound !== -1 && cFound !== -1) {
-             buckets[rFound][cFound].push(item);
-          }
-       });
-
-       // 3. Iterate Columns: Decide Tesseract (Cellular) vs Paddle (Global Buckets)
+       // 2. Iterate by Column to Optimize Engine Usage
        for (let c = 0; c < numCols; c++) {
           const colIndex = isRTL ? numCols - 1 - c : c;
           const field = colMapping[colIndex];
@@ -618,7 +568,7 @@ export default function UniversalOCRModal({
           const useTesseract = (field === 'national_id' || field === 'department_id');
           
           if (useTesseract) {
-             addLog(`[HYBRID] Column "${field}" -> Tesseract (Precision Scan)`);
+             addLog(`[HYBRID] Column "${field}" -> Tesseract (Numeric Safe)`);
              const params = {
                tessedit_pageseg_mode: '7',
                preserve_interword_spaces: '1',
@@ -630,17 +580,15 @@ export default function UniversalOCRModal({
              for (let r = 0; r < numRows; r++) {
                 const worker = tesseractWorkers[r % 2];
                 const task = async () => {
+                   // ... Crop Logic ...
                    const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
                    const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+                   // Use tight padding for Tesseract (numbers)
                    const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
-                   // Safety check
-                   if (cropParams.width < 5 || cropParams.height < 5) return;
-
-                   const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
+                   const cellUrl = getCellImage(imageRef.current, cropParams, 5, 5); // 5px padding for Tesseract
                    
                    const { data: { text } } = await worker.recognize(cellUrl);
                    if (text.trim()) gridResults[r][field] = text.trim();
-
                    cellsProcessed++;
                    setProgress(Math.round((cellsProcessed / totalCells) * 100));
                 };
@@ -649,27 +597,24 @@ export default function UniversalOCRModal({
              await Promise.all(promises);
 
           } else {
-             addLog(`[HYBRID] Column "${field}" -> Paddle (Mapped Global)`);
-             // Use pre-computed buckets! No API calls here.
+             addLog(`[HYBRID] Column "${field}" -> Paddle (Text Cellular)`);
+             // Sequential loop for Paddle (Single Threaded WASM)
              for (let r = 0; r < numRows; r++) {
-                const bucket = buckets[r][c]; // Use visual column index 'c' for bucket access
-                if (bucket.length > 0) {
-                    // Sort
-                    bucket.sort((a, b) => {
-                       const ay = a.box[0][1];
-                       const by = b.box[0][1];
-                       if (Math.abs(ay - by) > 10) return ay - by;
-                       return a.box[0][0] - b.box[0][0];
-                    });
+                const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+                const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+                const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
 
-                    let text = bucket.map(b => b.text).join(' ').trim();
-                    text = text.replace(/[|]/g, '').trim();
-                    if (isRTL) text = fixArabicReversal(text);
+                // PADDLE CONFIG: 20px padding (Cellular Improved)
+                const cellUrl = getCellImage(imageRef.current, cropParams, 20, 20, false);
 
-                    if (text) {
-                       gridResults[r][field] = text;
-                       addLog(`[CELL] ${field}: ${text}`);
-                    }
+                const results = await paddleOcr.detect(cellUrl);
+                let text = results.map(b => b.text).join(' ').trim();
+
+                if (text) {
+                   text = text.replace(/[|]/g, '').trim();
+                   if (isRTL) text = fixArabicReversal(text);
+                   gridResults[r][field] = text;
+                   addLog(`[CELL] ${field}: ${text}`);
                 }
                 cellsProcessed++;
                 setProgress(Math.round((cellsProcessed / totalCells) * 100));
@@ -679,6 +624,7 @@ export default function UniversalOCRModal({
        
        setCandidates(gridResults.filter(c => c.national_id || c.full_name));
        
+       // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
        if (!debugMode && gridResults.length > 0) {
          setActiveTab('results');
        } else if (debugMode) {
@@ -696,11 +642,11 @@ export default function UniversalOCRModal({
   // --- MASTER SWITCH ---
   const handleGo = () => {
     if (ocrEngine === 'paddle') {
-      runPaddleOCR(); // Now Global Scan
+      runPaddleOCR(); // Now Cellular (Slice-then-Read)
     } else if (ocrEngine === 'hybrid') {
-      runHybridOCR(); // Now Smart Hybrid
+      runHybridOCR();
     } else {
-      runTesseractOCR(); // Still Parallel Cellular
+      runTesseractOCR(); // Now Parallel
     }
   };
 
