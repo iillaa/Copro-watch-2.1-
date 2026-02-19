@@ -394,191 +394,97 @@ export default function UniversalOCRModal({
     }
   };
 
-  // ========== MODE 2: PADDLE FULL PAGE (CONTEXT AWARE) ==========
+  // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE) ==========
   const runPaddleOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
     setLogs([]);
     setDebugCrops([]);
-    setDebugBoxes([]); // Reset boxes
     setCandidates([]);
     setProgress(0);
-    setStatusText('Paddle AI (Full Context)...');
+    setStatusText('Paddle AI (Cellular Mode)...');
     
     let ocr = null;
-
     try {
+      // 1. Init Engine
       const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
       const modelsUrl = baseUrl + 'models/';
-      
-      addLog('[PADDLE] Loading Neural Engine...');
-      // Initialize Engine ONCE
       ocr = await Ocr.create({
         models: {
-            detectionPath: `${modelsUrl}det.onnx`,
-            recognitionPath: `${modelsUrl}rec_ara.onnx`,
-            dictionaryPath: `${modelsUrl}keys_ara.txt`
+          detectionPath: `${modelsUrl}det.onnx`,
+          recognitionPath: `${modelsUrl}rec_ara.onnx`,
+          dictionaryPath: `${modelsUrl}keys_ara.txt`
         }
       });
 
-      // 1. Pre-process Image: Inject Grid Lines (White Overlay)
-      // This forces PaddleOCR to see physical separation between columns, preventing horizontal text merging.
-      addLog('[PADDLE] Injecting grid lines to force column separation...');
-
-      const procCanvas = document.createElement('canvas');
-      procCanvas.width = imgDimensions.width;
-      procCanvas.height = imgDimensions.height;
-      const pCtx = procCanvas.getContext('2d');
-
-      // Draw original image
-      pCtx.drawImage(imageRef.current, 0, 0);
-
-      // Overlay White Grid Lines (Heavy width to force separation)
-      pCtx.strokeStyle = '#FFFFFF';
-      pCtx.lineWidth = 20; // Increased to ensure text splitting
-
-      // Draw Vertical Splits
-      vLines.forEach(v => {
-          const x = v * imgDimensions.width;
-          pCtx.beginPath();
-          pCtx.moveTo(x, 0);
-          pCtx.lineTo(x, imgDimensions.height);
-          pCtx.stroke();
-      });
-
-      // Draw Horizontal Splits (Optional but good for row isolation)
-      hLines.forEach(h => {
-          const y = h * imgDimensions.height;
-          pCtx.beginPath();
-          pCtx.moveTo(0, y);
-          pCtx.lineTo(imgDimensions.width, y);
-          pCtx.stroke();
-      });
-
-      const processedImageUrl = procCanvas.toDataURL('image/jpeg', 0.95);
-
-      // 2. Full Image Detection on PROCESSED Image
-      addLog('[PADDLE] Scanning processed image (Grid Injection Active)...');
-      const results = await ocr.detect(processedImageUrl);
-
-      if (debugMode) {
-         setDebugBoxes(results);
-         addLog(`[DEBUG] Detected ${results.length} text regions.`);
-      }
-
-      // 2. Map to Grid
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
       const isRTL = docLanguage === 'ara';
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
-
-      // Initialize Buckets: cellBuckets[row][col] = []
-      const cellBuckets = Array(numRows).fill(0).map(() => Array(numCols).fill(0).map(() => []));
-
-      results.forEach(item => {
-          const box = item.box;
-          // Calculate Box Center & Dimensions
-          const minX = Math.min(box[0][0], box[3][0]);
-          const maxX = Math.max(box[1][0], box[2][0]);
-          const minY = Math.min(box[0][1], box[1][1]);
-          const maxY = Math.max(box[2][1], box[3][1]);
-
-          const cx = (minX + maxX) / 2;
-          const cy = (minY + maxY) / 2;
-
-          const ny = cy / imgDimensions.height;
-
-          // Determine Row (using Center Y)
-          let r = -1;
-          for(let i=0; i<numRows; i++) {
-              if (ny >= sortedH[i] && ny < sortedH[i+1]) { r = i; break; }
-          }
-
-          // Determine Column (using Maximum Overlap)
-          let c = -1;
-          let maxOverlap = 0;
-          const boxWidth = maxX - minX;
-
-          for(let i=0; i<numCols; i++) {
-              // Column boundaries in pixels
-              const colStart = sortedV[i] * imgDimensions.width;
-              const colEnd = sortedV[i+1] * imgDimensions.width;
-
-              // Calculate horizontal overlap
-              const overlapStart = Math.max(minX, colStart);
-              const overlapEnd = Math.min(maxX, colEnd);
-              const overlap = Math.max(0, overlapEnd - overlapStart);
-
-              if (overlap > maxOverlap) {
-                  maxOverlap = overlap;
-                  c = i;
-              }
-          }
-
-          // Fallback: If no significant overlap (floating?), use Center X
-          if (c === -1 || (maxOverlap / boxWidth < 0.3)) { // 30% overlap threshold
-             const nx = cx / imgDimensions.width;
-             for(let i=0; i<numCols; i++) {
-                if (nx >= sortedV[i] && nx < sortedV[i+1]) { c = i; break; }
-             }
-          }
-
-          if(r !== -1 && c !== -1) {
-              cellBuckets[r][c].push({ text: item.text, x: cx, y: cy });
-          }
-      });
-
-      // 3. Aggregate
       let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
-      let cellsFilled = 0;
 
-      for(let r=0; r<numRows; r++) {
-          for(let c=0; c<numCols; c++) {
-              const bucket = cellBuckets[r][c];
-              if(bucket.length > 0) {
-                  // Sort: Top to Bottom (Y), then (RTL/LTR)
-                  bucket.sort((a,b) => {
-                      if (Math.abs(a.y - b.y) > 10) return a.y - b.y;
-                      return isRTL ? (b.x - a.x) : (a.x - b.x);
-                  });
+      const totalCells = numRows * numCols;
+      let cellsProcessed = 0;
 
-                  // Fix Arabic & Join
-                  const finalText = bucket.map(b => {
-                      let t = b.text.trim();
-                      if (isRTL) t = fixArabicReversal(t);
-                      return t;
-                  }).join(' ');
+      // 2. DOUBLE LOOP: Rows then Columns (Ensures text stays in its box)
+      for (let r = 0; r < numRows; r++) {
+        for (let c = 0; c < numCols; c++) {
+          const colIndex = isRTL ? numCols - 1 - c : c;
+          const field = colMapping[colIndex];
 
-                  // Map to Field
-                  const colIndex = isRTL ? numCols - 1 - c : c;
-                  const field = colMapping[colIndex];
-
-                  if (field && field !== 'ignore') {
-                      gridResults[r][field] = finalText;
-                      addLog(`[CELL] R${r+1}C${c+1}: ${finalText}`);
-                      cellsFilled++;
-                  }
-              }
+          // FIX: If column is marked 'ignore', skip the AI scan entirely
+          if (!field || field === 'ignore') {
+            cellsProcessed++;
+            continue;
           }
+
+          const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+          const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+
+          const rect = {
+            x: sortedV[colIndex] * imgDimensions.width,
+            y: sortedH[r] * imgDimensions.height,
+            width: rawW,
+            height: rawH
+          };
+
+          // Paddle needs grayscale (false) and can use scale 2 for speed
+          const cellUrl = getCellImage(imageRef.current, rect, 0, 0, false);
+
+          if (debugMode) {
+            setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
+          }
+
+          const results = await ocr.detect(cellUrl);
+          let text = results.map(box => box.text).join(' ').trim();
+
+          if (text) {
+            // Clean vertical bars usually detected as noise from table borders
+            text = text.replace(/[|]/g, '').trim();
+            if (isRTL) text = text.split('').reverse().join('');
+
+            gridResults[r][field] = text;
+            addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
+          }
+
+          cellsProcessed++;
+          setProgress(Math.round((cellsProcessed / totalCells) * 100));
+        }
       }
-      
-      setProgress(100);
+
       setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
 
       if (!debugMode && gridResults.length > 0) {
         setActiveTab('results');
       } else if (debugMode) {
-        addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
-        // Trigger redraw
-        setTimeout(drawDebugGrid, 100);
+        addLog('[DEBUG] Scan terminé. Resté sur l\'onglet Scan.');
       }
 
     } catch (e) {
       addLog(`[CRASH] ${e.message}`);
-      console.error(e);
     } finally {
-      if (ocr && ocr.dispose) await ocr.dispose(); // CRITICAL: Free WASM Heap
+      if (ocr && ocr.dispose) await ocr.dispose();
       setIsProcessing(false);
     }
   };
