@@ -85,6 +85,7 @@ export default function UniversalOCRModal({
   const [docLanguage, setDocLanguage] = useState('fra');
   const [debugMode, setDebugMode] = useState(false);
   const [debugCrops, setDebugCrops] = useState([]);
+  const [debugBoxes, setDebugBoxes] = useState([]);
   
   // NEW: Engine State
   const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle' or 'hybrid'
@@ -247,6 +248,23 @@ export default function UniversalOCRModal({
       ctx.fillText(`C${i + 1}`, x + 5, 60);
     });
 
+    // Draw Debug Boxes (Paddle)
+    if (debugBoxes.length > 0) {
+       ctx.strokeStyle = '#00ff00';
+       ctx.lineWidth = 2;
+       debugBoxes.forEach(box => {
+          // box.box is [[x,y],...]
+          // Draw polygon
+          ctx.beginPath();
+          ctx.moveTo(box.box[0][0], box.box[0][1]);
+          ctx.lineTo(box.box[1][0], box.box[1][1]);
+          ctx.lineTo(box.box[2][0], box.box[2][1]);
+          ctx.lineTo(box.box[3][0], box.box[3][1]);
+          ctx.closePath();
+          ctx.stroke();
+       });
+    }
+
     addLog('[DEBUG] Grille dessinée dans le cadre jaune.');
   };
 
@@ -367,15 +385,16 @@ export default function UniversalOCRModal({
     }
   };
 
-  // ========== MODE 2: PADDLE CELLULAR (TURBO) ==========
+  // ========== MODE 2: PADDLE FULL PAGE (CONTEXT AWARE) ==========
   const runPaddleOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
     setLogs([]);
     setDebugCrops([]);
+    setDebugBoxes([]); // Reset boxes
     setCandidates([]);
     setProgress(0);
-    setStatusText('Paddle AI (Cellular Mode)...');
+    setStatusText('Paddle AI (Full Context)...');
     
     let ocr = null;
 
@@ -393,78 +412,92 @@ export default function UniversalOCRModal({
         }
       });
 
+      // 1. Full Image Detection
+      addLog('[PADDLE] Scanning full image...');
+      // Pass the image source (Data URL) directly
+      const results = await ocr.detect(imageRef.current.src);
+
+      if (debugMode) {
+         setDebugBoxes(results);
+         addLog(`[DEBUG] Detected ${results.length} text regions.`);
+      }
+
+      // 2. Map to Grid
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
       const isRTL = docLanguage === 'ara';
-      
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
+
+      // Initialize Buckets: cellBuckets[row][col] = []
+      const cellBuckets = Array(numRows).fill(0).map(() => Array(numCols).fill(0).map(() => []));
+
+      results.forEach(item => {
+          const box = item.box;
+          const cx = (box[0][0] + box[2][0]) / 2;
+          const cy = (box[0][1] + box[2][1]) / 2;
+
+          const nx = cx / imgDimensions.width;
+          const ny = cy / imgDimensions.height;
+
+          let r = -1;
+          for(let i=0; i<numRows; i++) {
+              if (ny >= sortedH[i] && ny < sortedH[i+1]) { r = i; break; }
+          }
+
+          let c = -1;
+          for(let i=0; i<numCols; i++) {
+              if (nx >= sortedV[i] && nx < sortedV[i+1]) { c = i; break; }
+          }
+
+          if(r !== -1 && c !== -1) {
+              cellBuckets[r][c].push({ text: item.text, x: cx, y: cy });
+          }
+      });
+
+      // 3. Aggregate
       let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
-      let cellsProcessed = 0;
-      const totalCells = numRows * numCols;
+      let cellsFilled = 0;
 
-      // Iterate Grid (Slice-then-Read Strategy)
-      for (let r = 0; r < numRows; r++) {
-         for (let c = 0; c < numCols; c++) {
-            const colIndex = isRTL ? numCols - 1 - c : c;
-            const field = colMapping[colIndex];
-            
-            if (!field || field === 'ignore') {
-                cellsProcessed++;
-                continue;
-            }
+      for(let r=0; r<numRows; r++) {
+          for(let c=0; c<numCols; c++) {
+              const bucket = cellBuckets[r][c];
+              if(bucket.length > 0) {
+                  // Sort: Top to Bottom (Y), then (RTL/LTR)
+                  bucket.sort((a,b) => {
+                      if (Math.abs(a.y - b.y) > 10) return a.y - b.y;
+                      return isRTL ? (b.x - a.x) : (a.x - b.x);
+                  });
 
-            const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
-            const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-            const cropParams = {
-               x: sortedV[colIndex] * imgDimensions.width,
-               y: sortedH[r] * imgDimensions.height,
-               width: rawW,
-               height: rawH
-            };
-            
-            // Paddle needs specific padding/sizing, handled by getCellImage or just raw crop
-            // Here we use getCellImage but without high contrast thresholding if possible?
-            // Actually getCellImage applies thresholding which Tesseract needs. 
-            // Paddle works better with grayscale/color. 
-            // BUT for consistency we use the same crop logic but maybe less scale?
-            // Let's use getCellImage but we might want to relax thresholding for Paddle?
-            // For now, reuse getCellImage as it handles the canvas slicing. 
-            // NOTE: Paddle Engine expects an image URL or Blob. getCellImage returns DataURL.
-            
-            // TRY: Re-enable binarization (true) to see if it helps with French tables as per user feedback
-            const cellUrl = getCellImage(imageRef.current, cropParams, 0, 0, false); 
-            
-            // Pass to Engine
-            const results = await ocr.detect(cellUrl);
-            
-            // Extract text from results
-            let text = results.map(box => box.text).join(' ').trim();
-            
-            if (text) {
-                // FIX: Arabic Reversal
-                if (isRTL) text = fixArabicReversal(text);
+                  // Fix Arabic & Join
+                  const finalText = bucket.map(b => {
+                      let t = b.text.trim();
+                      if (isRTL) t = fixArabicReversal(t);
+                      return t;
+                  }).join(' ');
 
-                gridResults[r][field] = text;
-                addLog(`[CELL] R${r+1}C${c+1}: ${text}`);
-                
-                if (debugMode) {
-                   setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} [${text}]`, url: cellUrl }]);
-                }
-            }
-            
-            cellsProcessed++;
-            setProgress(Math.round((cellsProcessed / totalCells) * 100));
-         }
+                  // Map to Field
+                  const colIndex = isRTL ? numCols - 1 - c : c;
+                  const field = colMapping[colIndex];
+
+                  if (field && field !== 'ignore') {
+                      gridResults[r][field] = finalText;
+                      addLog(`[CELL] R${r+1}C${c+1}: ${finalText}`);
+                      cellsFilled++;
+                  }
+              }
+          }
       }
-
-      setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
       
-      // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
+      setProgress(100);
+      setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+
       if (!debugMode && gridResults.length > 0) {
         setActiveTab('results');
       } else if (debugMode) {
         addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+        // Trigger redraw
+        setTimeout(drawDebugGrid, 100);
       }
 
     } catch (e) {
