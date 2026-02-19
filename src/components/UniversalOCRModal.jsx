@@ -433,9 +433,9 @@ export default function UniversalOCRModal({
       // Draw original image
       pCtx.drawImage(imageRef.current, 0, 0);
 
-      // Overlay White Grid Lines (5px width)
+      // Overlay White Grid Lines (Heavy width to force separation)
       pCtx.strokeStyle = '#FFFFFF';
-      pCtx.lineWidth = 5;
+      pCtx.lineWidth = 20; // Increased to ensure text splitting
 
       // Draw Vertical Splits
       vLines.forEach(v => {
@@ -458,7 +458,7 @@ export default function UniversalOCRModal({
       const processedImageUrl = procCanvas.toDataURL('image/jpeg', 0.95);
 
       // 2. Full Image Detection on PROCESSED Image
-      addLog('[PADDLE] Scanning processed image...');
+      addLog('[PADDLE] Scanning processed image (Grid Injection Active)...');
       const results = await ocr.detect(processedImageUrl);
 
       if (debugMode) {
@@ -478,20 +478,50 @@ export default function UniversalOCRModal({
 
       results.forEach(item => {
           const box = item.box;
-          const cx = (box[0][0] + box[2][0]) / 2;
-          const cy = (box[0][1] + box[2][1]) / 2;
+          // Calculate Box Center & Dimensions
+          const minX = Math.min(box[0][0], box[3][0]);
+          const maxX = Math.max(box[1][0], box[2][0]);
+          const minY = Math.min(box[0][1], box[1][1]);
+          const maxY = Math.max(box[2][1], box[3][1]);
 
-          const nx = cx / imgDimensions.width;
+          const cx = (minX + maxX) / 2;
+          const cy = (minY + maxY) / 2;
+
           const ny = cy / imgDimensions.height;
 
+          // Determine Row (using Center Y)
           let r = -1;
           for(let i=0; i<numRows; i++) {
               if (ny >= sortedH[i] && ny < sortedH[i+1]) { r = i; break; }
           }
 
+          // Determine Column (using Maximum Overlap)
           let c = -1;
+          let maxOverlap = 0;
+          const boxWidth = maxX - minX;
+
           for(let i=0; i<numCols; i++) {
-              if (nx >= sortedV[i] && nx < sortedV[i+1]) { c = i; break; }
+              // Column boundaries in pixels
+              const colStart = sortedV[i] * imgDimensions.width;
+              const colEnd = sortedV[i+1] * imgDimensions.width;
+
+              // Calculate horizontal overlap
+              const overlapStart = Math.max(minX, colStart);
+              const overlapEnd = Math.min(maxX, colEnd);
+              const overlap = Math.max(0, overlapEnd - overlapStart);
+
+              if (overlap > maxOverlap) {
+                  maxOverlap = overlap;
+                  c = i;
+              }
+          }
+
+          // Fallback: If no significant overlap (floating?), use Center X
+          if (c === -1 || (maxOverlap / boxWidth < 0.3)) { // 30% overlap threshold
+             const nx = cx / imgDimensions.width;
+             for(let i=0; i<numCols; i++) {
+                if (nx >= sortedV[i] && nx < sortedV[i+1]) { c = i; break; }
+             }
           }
 
           if(r !== -1 && c !== -1) {
