@@ -5,8 +5,6 @@ import * as ort from 'onnxruntime-web';
 
 // 1. MATCH YOUR VERSION (Change 1.19.0 to whatever 'npm list' showed)
 const ORT_VERSION = '1.24.1'; 
-// NOTE: For offline support, these WASM files should be served locally from the public folder.
-// Using CDN here as a fallback/default for development or online usage.
 const CDN_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
 
 // 2. FORCE PATHS BEFORE THE LIBRARY LOADS
@@ -36,6 +34,26 @@ import {
   FaEye,
   FaLightbulb,
 } from 'react-icons/fa';
+
+// --- ALG-FR TRANSLITERATION ENGINE (RESTORED) ---
+const transliterateArToFr = (text) => {
+  if (!text) return '';
+  const map = {
+    ا: 'A', أ: 'A', إ: 'E', آ: 'A', ى: 'A', ة: 'A',
+    ب: 'B', ت: 'T', ث: 'T', ج: 'DJ', ح: 'H', خ: 'KH',
+    د: 'D', ذ: 'D', ر: 'R', ز: 'Z', س: 'S', ش: 'CH',
+    ص: 'S', ض: 'D', ط: 'T', ظ: 'Z', ع: 'A', غ: 'GH',
+    ف: 'F', ق: 'K', ك: 'K', ل: 'L', م: 'M', ن: 'N',
+    ه: 'H', و: 'OU', ي: 'Y', ' ': ' ', '-': '-', '.': '.',
+  };
+  return text
+    .split('')
+    .map((char) => map[char] || char)
+    .join('')
+    .toUpperCase()
+    .replace(/OUA/g, 'WA')
+    .replace(/IY/g, 'I');
+};
 
   // --- SMART ARABIC REVERSAL ---
   // Only reverses characters inside Arabic words. Protects Latin text and numbers.
@@ -70,12 +88,6 @@ export default function UniversalOCRModal({
   const [debugCrops, setDebugCrops] = useState([]);
   const [debugBoxes, setDebugBoxes] = useState([]);
   
-  // SAFETY: Prevent state updates after unmount
-  const isMounted = useRef(true);
-  useEffect(() => {
-    return () => { isMounted.current = false; };
-  }, []);
-
   // NEW: Engine State
   const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle' or 'hybrid'
 
@@ -340,7 +352,6 @@ export default function UniversalOCRModal({
           const workerIndex = r % numWorkers;
           
           const task = async () => {
-             if (!isMounted.current) return;
              const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
              const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
              const safetyMargin = 10;
@@ -354,7 +365,7 @@ export default function UniversalOCRModal({
              if (cropParams.width < 10 || cropParams.height < 10) return;
 
              const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
-             if (debugMode && isMounted.current) {
+             if (debugMode) {
                setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
              }
 
@@ -363,7 +374,7 @@ export default function UniversalOCRModal({
              let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
              if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) cleanText = '';
              
-             if (cleanText && isMounted.current) {
+             if (cleanText) {
                 gridResults[r][field] = cleanText;
                 addLog(`[CELL] R${r+1}C${c+1}: ${cleanText} (${confidence}%)`);
              }
@@ -377,25 +388,18 @@ export default function UniversalOCRModal({
         await Promise.all(promises);
       }
 
-      // CLEAN CANDIDATES
-      gridResults.forEach(c => cleanCandidate(c));
-
-      if (isMounted.current) {
-        setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
-        
-        // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
-        if (!debugMode && gridResults.length > 0) {
-          setActiveTab('results');
-        } else if (debugMode) {
-          addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
-        }
+      setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+      
+      // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
+      if (!debugMode && gridResults.length > 0) {
+        setActiveTab('results');
+      } else if (debugMode) {
+        addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
       }
 
     } catch (e) {
-      if (isMounted.current) {
-        addLog(`[CRASH] ${e.message}`);
-        console.error(e);
-      }
+      addLog(`[CRASH] ${e.message}`);
+      console.error(e);
     } finally {
       // Terminate all workers
       for (const w of workers) await w.terminate();
@@ -440,8 +444,6 @@ export default function UniversalOCRModal({
       // 2. DOUBLE LOOP: Rows then Columns (Ensures text stays in its box)
       for (let r = 0; r < numRows; r++) {
         for (let c = 0; c < numCols; c++) {
-          if (!isMounted.current) break; // Check for cancel
-
           const colIndex = isRTL ? numCols - 1 - c : c;
           const field = colMapping[colIndex];
           
@@ -462,14 +464,13 @@ export default function UniversalOCRModal({
           };
 
           // Scale 2 is 50% lighter on the CPU. Padding 5 prevents cross-column bleeding.
-          const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
+const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
           
-          if (debugMode && isMounted.current) {
+          if (debugMode) {
             setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
           }
 
           const results = await ocr.detect(cellUrl);
-          if (!isMounted.current) break;
           
           // Accumulate debug boxes with coordinate translation
           if (debugMode) {
@@ -491,39 +492,34 @@ export default function UniversalOCRModal({
             if (isRTL) text = smartRTLFix(text);
             
             gridResults[r][field] = text;
-            if (isMounted.current) addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
+            addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
           }
 
           cellsProcessed++;
-          if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
+          setProgress(Math.round((cellsProcessed / totalCells) * 100));
         }
       }
 
-      // CLEAN CANDIDATES
-      gridResults.forEach(c => cleanCandidate(c));
+      setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+      
+      if (debugMode) {
+         setDebugBoxes(allDebugBoxes);
+         addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
+         // Force redraw
+         setTimeout(drawDebugGrid, 100);
+      }
 
-      if (isMounted.current) {
-        setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
-        
-        if (debugMode) {
-           setDebugBoxes(allDebugBoxes);
-           addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
-           // Force redraw
-           setTimeout(drawDebugGrid, 100);
-        }
-
-        if (!debugMode && gridResults.length > 0) {
-          setActiveTab('results');
-        } else if (debugMode) {
-          addLog('[DEBUG] Scan terminé. Resté sur l\'onglet Scan.');
-        }
+      if (!debugMode && gridResults.length > 0) {
+        setActiveTab('results');
+      } else if (debugMode) {
+        addLog('[DEBUG] Scan terminé. Resté sur l\'onglet Scan.');
       }
 
     } catch (e) {
-      if (isMounted.current) addLog(`[CRASH] ${e.message}`);
+      addLog(`[CRASH] ${e.message}`);
     } finally {
       if (ocr && ocr.dispose) await ocr.dispose();
-      if (isMounted.current) setIsProcessing(false);
+      setIsProcessing(false);
     }
   };
 
@@ -569,7 +565,6 @@ export default function UniversalOCRModal({
 
        // 2. Iterate by Column to Optimize Engine Usage
        for (let c = 0; c < numCols; c++) {
-          if (!isMounted.current) break;
           const colIndex = isRTL ? numCols - 1 - c : c;
           const field = colMapping[colIndex];
           
@@ -594,7 +589,6 @@ export default function UniversalOCRModal({
              for (let r = 0; r < numRows; r++) {
                 const worker = tesseractWorkers[r % 2];
                 const task = async () => {
-                   if (!isMounted.current) return;
                    // ... Crop Logic ...
                    const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
                    const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
@@ -603,9 +597,9 @@ export default function UniversalOCRModal({
                    const cellUrl = getCellImage(imageRef.current, cropParams, 5, 5); // 5px padding for Tesseract
                    
                    const { data: { text } } = await worker.recognize(cellUrl);
-                   if (text.trim() && isMounted.current) gridResults[r][field] = text.trim();
+                   if (text.trim()) gridResults[r][field] = text.trim();
                    cellsProcessed++;
-                   if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
+                   setProgress(Math.round((cellsProcessed / totalCells) * 100));
                 };
                 promises.push(task());
              }
@@ -615,50 +609,44 @@ export default function UniversalOCRModal({
              addLog(`[HYBRID] Column "${field}" -> Paddle (Text Cellular)`);
              // Sequential loop for Paddle (Single Threaded WASM)
              for (let r = 0; r < numRows; r++) {
-                if (!isMounted.current) break;
                 const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
                 const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
                 const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
                 
                 // Scale 2 is 50% lighter on the CPU. Padding 5 prevents cross-column bleeding.
-                const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
+// 5px Vertical padding, 6px Horizontal padding
+const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
                 
                 const results = await paddleOcr.detect(cellUrl);
-                if (!isMounted.current) break;
                 let text = results.map(b => b.text).join(' ').trim();
                 
                 if (text) {
                    text = text.replace(/[|]/g, '').trim();
                    if (isRTL) text = smartRTLFix(text);
                    gridResults[r][field] = text;
-                   if (isMounted.current) addLog(`[CELL] ${field}: ${text}`);
+                   addLog(`[CELL] ${field}: ${text}`);
                 }
                 cellsProcessed++;
-                if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
+                setProgress(Math.round((cellsProcessed / totalCells) * 100));
              }
           }
        }
        
-       // CLEAN CANDIDATES
-       gridResults.forEach(c => cleanCandidate(c));
-
-       if (isMounted.current) {
-         setCandidates(gridResults.filter(c => c.national_id || c.full_name));
-         
-         // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
-         if (!debugMode && gridResults.length > 0) {
-           setActiveTab('results');
-         } else if (debugMode) {
-           addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
-         }
+       setCandidates(gridResults.filter(c => c.national_id || c.full_name));
+       
+       // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
+       if (!debugMode && gridResults.length > 0) {
+         setActiveTab('results');
+       } else if (debugMode) {
+         addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
        }
 
     } catch (e) {
-       if (isMounted.current) addLog(`[CRASH] ${e.message}`);
+       addLog(`[CRASH] ${e.message}`);
     } finally {
        for (const w of tesseractWorkers) await w.terminate();
        if (paddleOcr && paddleOcr.dispose) await paddleOcr.dispose();
-       if (isMounted.current) setIsProcessing(false);
+       setIsProcessing(false);
     }
   };
   // --- MASTER SWITCH ---
@@ -683,7 +671,7 @@ export default function UniversalOCRModal({
   });
 
   const cleanCandidate = (c) => {
-    // ID mutation filter completely removed to preserve raw OCR output.
+    if (c.national_id) c.national_id = c.national_id.replace(/^[lIiT]A/, '7A').replace(/O/g, '0');
     c.isArabic = /[\u0600-\u06FF]/.test(c.full_name);
     if (c.isArabic) c.original_name = c.full_name;
   };
@@ -1399,3 +1387,4 @@ export default function UniversalOCRModal({
     </div>
   );
 }
+

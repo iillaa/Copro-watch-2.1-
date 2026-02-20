@@ -17,6 +17,10 @@ import WeaponDetail from './components/Weapons/WeaponDetail';
 
 import { FaUsers, FaChartLine, FaCog, FaFlask, FaShieldAlt, FaUserShield } from 'react-icons/fa';
 
+// [FIX] Move these variables OUTSIDE the function to act as a global singleton
+let isAppListenerInitialized = false;
+let globalBackupLock = false;
+
 function App() {
   // --- STATE (Original) ---
   const [view, setView] = useState('dashboard');
@@ -48,45 +52,46 @@ function App() {
 // [CRITICAL FIX] Emergency Backup on App Close/Pause
   // This ensures that even 1 single unsaved edit is captured when the app is swiped away.
   useEffect(() => {
-    let appListener = null;
-    let isProcessing = false; // [NEW] The Throttle Lock
-
     const setupLifecycle = async () => {
+      // [FIX] If a listener already exists, do not create another one
+      if (isAppListenerInitialized) return;
+      
       try {
         const { App: CapApp } = await import('@capacitor/app');
         
-        appListener = await CapApp.addListener('appStateChange', async ({ isActive }) => {
+        // Ensure a clean slate
+        await CapApp.removeAllListeners();
+
+        await CapApp.addListener('appStateChange', async ({ isActive }) => {
           if (!isActive) {
-            // [FIX] If we are already running a backup, ignore the duplicate Android event
-            if (isProcessing) return; 
-            
-            isProcessing = true; // Lock the gates
+            // [FIX] Throttle Lock: Ignore duplicate events firing within 2 seconds
+            if (globalBackupLock) return;
+            globalBackupLock = true;
 
             console.log('[App] App moving to background. Forcing emergency backup check...');
             const status = await backupService.getBackupStatus();
             
             if (status.counter > 0) {
-               console.log(`[App] ${status.counter} unsaved changes detected. Forcing export before suspend...`);
-               await backupService.performAutoExport(async () => await db.exportData(), 'COUNTER');
+              console.log(`[App] ${status.counter} unsaved changes detected. Forcing export...`);
+              await backupService.performAutoExport(async () => await db.exportData(), 'COUNTER');
             }
-            
-            // Release the lock after 2 seconds to absorb any rapid-fire duplicate events
-            setTimeout(() => { isProcessing = false; }, 2000);
+
+            // Release lock after delay
+            setTimeout(() => { globalBackupLock = false; }, 2000);
           }
         });
-      } catch (e) {
-        console.warn('[App] Capacitor App Plugin not available or failed to load.');
-      }
-    };
-    
-    setupLifecycle();
 
-    // Proper React cleanup
-    return () => {
-      if (appListener) {
-        appListener.remove();
+        isAppListenerInitialized = true;
+        console.log('[App] Lifecycle singleton initialized.');
+      } catch (e) {
+        console.warn('[App] Capacitor App Plugin not available.');
       }
     };
+
+    setupLifecycle();
+    
+    // Note: We don't remove the listener on unmount anymore because we want 
+    // it to persist as a singleton across React's development remounts.
   }, []);
   // --- ENGINE STARTUP (The Only Change) ---
   const initApp = async () => {
