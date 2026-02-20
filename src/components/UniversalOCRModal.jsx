@@ -11,7 +11,7 @@ const CDN_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dis
 ort.env.wasm.wasmPaths = CDN_URL;
 // This tells the engine to use the main thread to fetch WASM, 
 // which avoids the "Worker 404" problem.
-ort.env.wasm.proxy = false;
+ort.env.wasm.proxy = true;
 ort.env.wasm.numThreads = 1;
 window.ort = ort; 
 
@@ -35,24 +35,32 @@ import {
   FaLightbulb,
 } from 'react-icons/fa';
 
-// --- ALG-FR TRANSLITERATION ENGINE (RESTORED) ---
+// --- ALG-FR TRANSLITERATION ENGINE (UPGRADED) ---
 const transliterateArToFr = (text) => {
   if (!text) return '';
+  
+  // Improved Algerian phonetic mapping
   const map = {
     ا: 'A', أ: 'A', إ: 'E', آ: 'A', ى: 'A', ة: 'A',
-    ب: 'B', ت: 'T', ث: 'T', ج: 'DJ', ح: 'H', خ: 'KH',
-    د: 'D', ذ: 'D', ر: 'R', ز: 'Z', س: 'S', ش: 'CH',
-    ص: 'S', ض: 'D', ط: 'T', ظ: 'Z', ع: 'A', غ: 'GH',
+    ب: 'B', ت: 'T', ث: 'T', ج: 'Dj', ح: 'H', خ: 'Kh',
+    د: 'D', ذ: 'D', ر: 'R', ز: 'Z', س: 'S', ش: 'Ch',
+    ص: 'S', ض: 'D', ط: 'T', ظ: 'Z', ع: 'A', غ: 'Gh',
     ف: 'F', ق: 'K', ك: 'K', ل: 'L', م: 'M', ن: 'N',
-    ه: 'H', و: 'OU', ي: 'Y', ' ': ' ', '-': '-', '.': '.',
+    ه: 'H', و: 'Ou', ي: 'Y', ' ': ' ', '-': '-', '.': '.',
   };
-  return text
+
+  let lat = text
     .split('')
     .map((char) => map[char] || char)
     .join('')
-    .toUpperCase()
-    .replace(/OUA/g, 'WA')
+    .replace(/OuA/g, 'Wa')
     .replace(/IY/g, 'I');
+
+  // Convert to Title Case (e.g., "Dounyasalh" instead of "DOUNYASALH")
+  return lat.split(' ').map(word => {
+     if (!word) return '';
+     return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+  }).join(' ');
 };
 
   // --- SMART ARABIC REVERSAL ---
@@ -87,6 +95,14 @@ export default function UniversalOCRModal({
   const [showHelp, setShowHelp] = useState(false);
   const [debugCrops, setDebugCrops] = useState([]);
   const [debugBoxes, setDebugBoxes] = useState([]);
+
+  // NEW: SAFE COMPONENT MOUNT TRACKER (Prevents memory leaks/crashes)
+  const isMounted = useRef(true);
+  useEffect(() => {
+    isMounted.current = true; // FIX: Forces true on remount for React 18 Strict Mode
+    return () => { isMounted.current = false; };
+  }, []);
+
   
   // NEW: Engine State
   const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle' or 'hybrid'
@@ -302,10 +318,9 @@ export default function UniversalOCRModal({
 
     let workers = [];
     try {
-      // 1. Initialize Worker Pool (2 Workers for Dual-Core Optimization)
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
       const numWorkers = 2;
-      addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
+      if (isMounted.current) addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
       
       for (let i = 0; i < numWorkers; i++) {
         const w = await Tesseract.createWorker(langs, 1);
@@ -316,14 +331,12 @@ export default function UniversalOCRModal({
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
       const isRTL = docLanguage === 'ara';
       
-      // Initialize Results Array
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
       let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
       let cellsProcessed = 0;
       const totalCells = numRows * numCols;
 
-      // 2. Column-based Processing (To minimize parameter switching)
       for (let c = 0; c < numCols; c++) {
         const colIndex = isRTL ? numCols - 1 - c : c;
         const field = colMapping[colIndex];
@@ -333,7 +346,6 @@ export default function UniversalOCRModal({
           continue;
         }
 
-        // Configure all workers for this column type
         const params = (field === 'national_id') ? {
            tessedit_pageseg_mode: '7',
            preserve_interword_spaces: '1',
@@ -341,20 +353,20 @@ export default function UniversalOCRModal({
         } : {
            tessedit_pageseg_mode: '7',
            preserve_interword_spaces: '1',
-           tessedit_char_whitelist: '' // Allow Arabic
+           tessedit_char_whitelist: '' 
         };
-
         await Promise.all(workers.map(w => w.setParameters(params)));
 
-        // Split rows between workers
         const promises = [];
         for (let r = 0; r < numRows; r++) {
           const workerIndex = r % numWorkers;
-          
           const task = async () => {
+             if (!isMounted.current) return;
              const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
              const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-             const safetyMargin = 10;
+             
+             // FIX: Reduced margin to 2px so it does not physically crop out letters
+             const safetyMargin = 2;
              const cropParams = {
                 x: sortedV[colIndex] * imgDimensions.width + safetyMargin,
                 y: sortedH[r] * imgDimensions.height + safetyMargin,
@@ -365,45 +377,47 @@ export default function UniversalOCRModal({
              if (cropParams.width < 10 || cropParams.height < 10) return;
 
              const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
-             if (debugMode) {
+             if (debugMode && isMounted.current) {
                setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
              }
 
              const { data: { text, confidence } } = await workers[workerIndex].recognize(cellUrl);
-             
              let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
              if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) cleanText = '';
              
-             if (cleanText) {
+             if (cleanText && isMounted.current) {
                 gridResults[r][field] = cleanText;
                 addLog(`[CELL] R${r+1}C${c+1}: ${cleanText} (${confidence}%)`);
              }
              
              cellsProcessed++;
-             setProgress(Math.round((cellsProcessed / totalCells) * 100));
+             if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
           };
-          
           promises.push(task());
         }
         await Promise.all(promises);
       }
 
-      setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
-      
-      // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
-      if (!debugMode && gridResults.length > 0) {
-        setActiveTab('results');
-      } else if (debugMode) {
-        addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+      // RESTORED: Trigger Arabic detection before setting candidates
+      gridResults.forEach(c => cleanCandidate(c));
+
+      if (isMounted.current) {
+        setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+        if (!debugMode && gridResults.length > 0) {
+          setActiveTab('results');
+        } else if (debugMode) {
+          addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+        }
       }
 
     } catch (e) {
-      addLog(`[CRASH] ${e.message}`);
-      console.error(e);
+      if (isMounted.current) {
+        addLog(`[CRASH] ${e.message}`);
+        console.error(e);
+      }
     } finally {
-      // Terminate all workers
       for (const w of workers) await w.terminate();
-      setIsProcessing(false);
+      if (isMounted.current) setIsProcessing(false);
     }
   };
 
@@ -419,7 +433,6 @@ export default function UniversalOCRModal({
     
     let ocr = null;
     try {
-      // 1. Init Engine
       const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
       const modelsUrl = baseUrl + 'models/';
       ocr = await Ocr.create({
@@ -436,18 +449,17 @@ export default function UniversalOCRModal({
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
       let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
-      
       const totalCells = numRows * numCols;
       let cellsProcessed = 0;
       let allDebugBoxes = [];
 
-      // 2. DOUBLE LOOP: Rows then Columns (Ensures text stays in its box)
       for (let r = 0; r < numRows; r++) {
         for (let c = 0; c < numCols; c++) {
+          if (!isMounted.current) break;
+
           const colIndex = isRTL ? numCols - 1 - c : c;
           const field = colMapping[colIndex];
           
-          // FIX: If column is marked 'ignore', skip the AI scan entirely
           if (!field || field === 'ignore') {
             cellsProcessed++;
             continue;
@@ -455,7 +467,6 @@ export default function UniversalOCRModal({
 
           const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
           const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-          
           const rect = {
             x: sortedV[colIndex] * imgDimensions.width,
             y: sortedH[r] * imgDimensions.height,
@@ -463,19 +474,17 @@ export default function UniversalOCRModal({
             height: rawH
           };
 
-          // Scale 2 is 50% lighter on the CPU. Padding 5 prevents cross-column bleeding.
-const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
+          const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
           
-          if (debugMode) {
+          if (debugMode && isMounted.current) {
             setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
           }
 
           const results = await ocr.detect(cellUrl);
-          
-          // Accumulate debug boxes with coordinate translation
+          if (!isMounted.current) break;
+
           if (debugMode) {
              results.forEach(box => {
-                // Translate box coordinates from Crop Space -> Image Space
                 const translatedBox = {
                    box: box.box.map(point => [point[0] + rect.x, point[1] + rect.y]),
                    text: box.text
@@ -485,41 +494,41 @@ const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
           }
 
           let text = results.map(box => box.text).join(' ').trim();
-          
           if (text) {
-            // Clean vertical bars usually detected as noise from table borders
             text = text.replace(/[|]/g, '').trim();
             if (isRTL) text = smartRTLFix(text);
-            
             gridResults[r][field] = text;
-            addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
+            if (isMounted.current) addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
           }
 
           cellsProcessed++;
-          setProgress(Math.round((cellsProcessed / totalCells) * 100));
+          if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
         }
       }
 
-      setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
-      
-      if (debugMode) {
-         setDebugBoxes(allDebugBoxes);
-         addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
-         // Force redraw
-         setTimeout(drawDebugGrid, 100);
-      }
+      // RESTORED: Trigger Arabic detection before setting candidates
+      gridResults.forEach(c => cleanCandidate(c));
 
-      if (!debugMode && gridResults.length > 0) {
-        setActiveTab('results');
-      } else if (debugMode) {
-        addLog('[DEBUG] Scan terminé. Resté sur l\'onglet Scan.');
+      if (isMounted.current) {
+        setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+        if (debugMode) {
+           setDebugBoxes(allDebugBoxes);
+           addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
+           setTimeout(drawDebugGrid, 100);
+        }
+
+        if (!debugMode && gridResults.length > 0) {
+          setActiveTab('results');
+        } else if (debugMode) {
+          addLog('[DEBUG] Scan terminé. Resté sur l\'onglet Scan.');
+        }
       }
 
     } catch (e) {
-      addLog(`[CRASH] ${e.message}`);
+      if (isMounted.current) addLog(`[CRASH] ${e.message}`);
     } finally {
       if (ocr && ocr.dispose) await ocr.dispose();
-      setIsProcessing(false);
+      if (isMounted.current) setIsProcessing(false);
     }
   };
 
@@ -534,11 +543,8 @@ const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
 
     let tesseractWorkers = [];
     let paddleOcr = null;
-
     try {
-       // 1. Initialize Both Engines
-       addLog('[HYBRID] Starting Engines...');
-       
+       if (isMounted.current) addLog('[HYBRID] Starting Engines...');
        const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
        const worker1 = await Tesseract.createWorker(langs, 1);
        const worker2 = await Tesseract.createWorker(langs, 1);
@@ -553,7 +559,7 @@ const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
              dictionaryPath: `${modelsUrl}keys_ara.txt`
          }
        });
-
+       
        const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
        const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
        const isRTL = docLanguage === 'ara';
@@ -563,8 +569,8 @@ const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
        const totalCells = numRows * numCols;
        let cellsProcessed = 0;
 
-       // 2. Iterate by Column to Optimize Engine Usage
        for (let c = 0; c < numCols; c++) {
+          if (!isMounted.current) break;
           const colIndex = isRTL ? numCols - 1 - c : c;
           const field = colMapping[colIndex];
           
@@ -573,80 +579,77 @@ const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
              continue;
           }
 
-          // DECISION LOGIC: User-Selected Routing
           const enginePreference = colEngines[colIndex] || 'paddle';
           
           if (enginePreference === 'tesseract') {
-             addLog(`[HYBRID] Column "${field}" -> Tesseract (User Selected)`);
+             if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Tesseract (User Selected)`);
              const params = {
                tessedit_pageseg_mode: '7',
                preserve_interword_spaces: '1',
                tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. '
              };
              await Promise.all(tesseractWorkers.map(w => w.setParameters(params)));
-
              const promises = [];
              for (let r = 0; r < numRows; r++) {
                 const worker = tesseractWorkers[r % 2];
                 const task = async () => {
-                   // ... Crop Logic ...
+                   if (!isMounted.current) return;
                    const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
                    const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-                   // Use tight padding for Tesseract (numbers)
                    const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
-                   const cellUrl = getCellImage(imageRef.current, cropParams, 5, 5); // 5px padding for Tesseract
+                   const cellUrl = getCellImage(imageRef.current, cropParams, 5, 5); 
                    
                    const { data: { text } } = await worker.recognize(cellUrl);
-                   if (text.trim()) gridResults[r][field] = text.trim();
+                   if (text.trim() && isMounted.current) gridResults[r][field] = text.trim();
                    cellsProcessed++;
-                   setProgress(Math.round((cellsProcessed / totalCells) * 100));
+                   if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
                 };
                 promises.push(task());
              }
              await Promise.all(promises);
-
           } else {
-             addLog(`[HYBRID] Column "${field}" -> Paddle (Text Cellular)`);
-             // Sequential loop for Paddle (Single Threaded WASM)
+             if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Paddle (Text Cellular)`);
              for (let r = 0; r < numRows; r++) {
+                if (!isMounted.current) break;
                 const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
                 const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
                 const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
-                
-                // Scale 2 is 50% lighter on the CPU. Padding 5 prevents cross-column bleeding.
-// 5px Vertical padding, 6px Horizontal padding
-const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
+                const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
                 
                 const results = await paddleOcr.detect(cellUrl);
+                if (!isMounted.current) break;
                 let text = results.map(b => b.text).join(' ').trim();
                 
                 if (text) {
                    text = text.replace(/[|]/g, '').trim();
                    if (isRTL) text = smartRTLFix(text);
                    gridResults[r][field] = text;
-                   addLog(`[CELL] ${field}: ${text}`);
+                   if (isMounted.current) addLog(`[CELL] ${field}: ${text}`);
                 }
                 cellsProcessed++;
-                setProgress(Math.round((cellsProcessed / totalCells) * 100));
+                if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
              }
           }
        }
        
-       setCandidates(gridResults.filter(c => c.national_id || c.full_name));
-       
-       // DEBUG LOGIC FIX: Do not switch tab if debug mode is active
-       if (!debugMode && gridResults.length > 0) {
-         setActiveTab('results');
-       } else if (debugMode) {
-         addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+       // RESTORED: Trigger Arabic detection before setting candidates
+       gridResults.forEach(c => cleanCandidate(c));
+
+       if (isMounted.current) {
+         setCandidates(gridResults.filter(c => c.national_id || c.full_name));
+         if (!debugMode && gridResults.length > 0) {
+           setActiveTab('results');
+         } else if (debugMode) {
+           addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+         }
        }
 
     } catch (e) {
-       addLog(`[CRASH] ${e.message}`);
+       if (isMounted.current) addLog(`[CRASH] ${e.message}`);
     } finally {
        for (const w of tesseractWorkers) await w.terminate();
        if (paddleOcr && paddleOcr.dispose) await paddleOcr.dispose();
-       setIsProcessing(false);
+       if (isMounted.current) setIsProcessing(false);
     }
   };
   // --- MASTER SWITCH ---
@@ -671,7 +674,7 @@ const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
   });
 
   const cleanCandidate = (c) => {
-    if (c.national_id) c.national_id = c.national_id.replace(/^[lIiT]A/, '7A').replace(/O/g, '0');
+    // ID mutation filter removed to preserve raw OCR output.
     c.isArabic = /[\u0600-\u06FF]/.test(c.full_name);
     if (c.isArabic) c.original_name = c.full_name;
   };
@@ -1304,13 +1307,37 @@ const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
                           style={{ width: '80px', fontFamily: 'monospace' }}
                         />
                       </td>
-                      <td style={{ padding: '8px' }}>
+                      <td style={{ padding: '8px', display: 'flex', gap: '5px', alignItems: 'center' }}>
                         <input
                           className="input"
                           value={c.full_name}
                           onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)}
-                          style={{ fontWeight: 'bold' }}
+                          style={{ fontWeight: 'bold', flex: 1 }}
                         />
+                        {/* TWO-WAY TOGGLE: Shows permanently if the row was originally Arabic */}
+                        {c.isArabic && (
+                          <button
+                            onClick={() => {
+                               const isCurrentlyArabic = /[\u0600-\u06FF]/.test(c.full_name);
+                               if (isCurrentlyArabic) {
+                                   // Translate to French
+                                   updateCandidate(c.id, 'full_name', transliterateArToFr(c.full_name));
+                               } else {
+                                   // Revert back to Original Arabic
+                                   updateCandidate(c.id, 'full_name', c.original_name);
+                               }
+                            }}
+                            className="btn btn-outline btn-sm"
+                            title={/[\u0600-\u06FF]/.test(c.full_name) ? "Convertir en Français" : "Restaurer l'Arabe"}
+                            style={{ 
+                               padding: '4px 8px', 
+                               borderColor: /[\u0600-\u06FF]/.test(c.full_name) ? '#3b82f6' : '#10b981', 
+                               color: /[\u0600-\u06FF]/.test(c.full_name) ? '#3b82f6' : '#10b981' 
+                            }}
+                          >
+                            <FaGlobeAfrica />
+                          </button>
+                        )}
                       </td>
                       <td style={{ padding: '8px' }}>
                         <select
@@ -1387,4 +1414,3 @@ const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
     </div>
   );
 }
-
