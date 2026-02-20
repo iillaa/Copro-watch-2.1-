@@ -35,31 +35,53 @@ import {
   FaLightbulb,
 } from 'react-icons/fa';
 
-// --- ALG-FR TRANSLITERATION ENGINE (UPGRADED) ---
+// --- ALG-FR TRANSLITERATION ENGINE (SMART DICTIONARY + PHONETIC) ---
 const transliterateArToFr = (text) => {
   if (!text) return '';
-  
-  // Improved Algerian phonetic mapping
-  const map = {
-    ا: 'A', أ: 'A', إ: 'E', آ: 'A', ى: 'A', ة: 'A',
-    ب: 'B', ت: 'T', ث: 'T', ج: 'Dj', ح: 'H', خ: 'Kh',
-    د: 'D', ذ: 'D', ر: 'R', ز: 'Z', س: 'S', ش: 'Ch',
-    ص: 'S', ض: 'D', ط: 'T', ظ: 'Z', ع: 'A', غ: 'Gh',
-    ف: 'F', ق: 'K', ك: 'K', ل: 'L', م: 'M', ن: 'N',
-    ه: 'H', و: 'Ou', ي: 'Y', ' ': ' ', '-': '-', '.': '.',
+
+  // 1. THE "SMART" MEMORY CHECK
+  // Fetch the self-learning dictionary from the phone's memory
+  try {
+    const customDict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{}');
+    const rawKey = text.replace(/\s+/g, ''); // Remove spaces to match OCR raw output
+    if (customDict[rawKey]) {
+      return customDict[rawKey]; // Instantly return your previous human correction
+    }
+  } catch (e) {
+    console.warn("Dictionary read error");
+  }
+
+  // 2. ALGERIAN NAMES DICTIONARY (Fallback 1)
+  let processedText = text;
+  const commonNames = {
+    'عبد': 'Abdel ', 'بن ': 'Ben ', 'بو': 'Bou ', 'محمد': 'Mohamed ', 'فاطمة': 'Fatima ',
+    'صالح': 'Salah ', 'فضيلة': 'Fadila ', 'دونية': 'Dounia ', 'احمد': 'Ahmed ', 'علي': 'Ali ',
+    'عمر': 'Omar ', 'خديجة': 'Khadidja ', 'عائشة': 'Aicha ', 'ابراهيم': 'Brahim ',
+    'حسين': 'Hocine ', 'حسن': 'Hassan ', 'سعيد': 'Said ', 'كريم': 'Karim ', 'امين': 'Amine ',
+    'الدين': ' Eddine ', 'نور': 'Nour ', 'عبدال': 'Abdel ', 'ال': 'El '
   };
 
-  let lat = text
-    .split('')
-    .map((char) => map[char] || char)
-    .join('')
-    .replace(/OuA/g, 'Wa')
-    .replace(/IY/g, 'I');
+  for (const [ar, fr] of Object.entries(commonNames)) {
+      processedText = processedText.replace(new RegExp(ar, 'g'), fr);
+  }
 
-  // Convert to Title Case (e.g., "Dounyasalh" instead of "DOUNYASALH")
+  // 3. PHONETIC MAP (Fallback 2)
+  const map = {
+    ا: 'a', أ: 'a', إ: 'i', آ: 'a', ى: 'a', ة: 'a', ب: 'b', ت: 't', ث: 't', ج: 'dj',
+    ح: 'h', خ: 'kh', د: 'd', ذ: 'd', ر: 'r', ز: 'z', س: 's', ش: 'ch', ص: 's', ض: 'd',
+    ط: 't', ظ: 'z', ع: 'a', غ: 'gh', ف: 'f', ق: 'k', ك: 'k', ل: 'l', م: 'm', ن: 'n',
+    ه: 'h', و: 'ou', ي: 'i', ' ': ' ', '-': '-', '.': '.',
+  };
+
+  let lat = processedText.split('').map((char) => map[char] || char).join('');
+
+  // 4. CLEANUP
+  lat = lat.replace(/oua/g, 'wa').replace(/ouou/g, 'ou').replace(/ii/g, 'i')
+           .replace(/\s+/g, ' ').trim();
+
   return lat.split(' ').map(word => {
      if (!word) return '';
-     return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+     return word.charAt(0).toUpperCase() + word.toLowerCase().slice(1);
   }).join(' ');
 };
 
@@ -687,6 +709,24 @@ export default function UniversalOCRModal({
   const handleBulkImport = async () => {
     if (candidates.length === 0) return;
     const valid = candidates.filter((c) => c.full_name || c.national_id);
+
+    // --- NEW: MACHINE LEARNING MEMORY UPDATE ---
+    try {
+      let customDict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{}');
+      valid.forEach(c => {
+         // If it started as Arabic, and was converted/corrected to French
+         if (c.isArabic && c.original_name && c.full_name && c.full_name !== c.original_name) {
+            const rawKey = c.original_name.replace(/\s+/g, '');
+            // Save the exact final spelling the user approved
+            customDict[rawKey] = c.full_name.trim();
+         }
+      });
+      localStorage.setItem('ocr_smart_dict', JSON.stringify(customDict));
+    } catch(e) {
+      console.warn("Failed to save to smart dictionary", e);
+    }
+    // -------------------------------------------
+
     for (const c of valid) {
       const data = {
         full_name: c.full_name || 'Inconnu',
