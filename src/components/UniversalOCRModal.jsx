@@ -35,32 +35,64 @@ import {
   FaLightbulb,
 } from 'react-icons/fa';
 
-// --- ALG-FR TRANSLITERATION ENGINE (UPGRADED) ---
+// --- ALG-FR TRANSLITERATION ENGINE (SMART DICTIONARY + PHONETIC) ---
 const transliterateArToFr = (text) => {
   if (!text) return '';
-  
-  // Improved Algerian phonetic mapping
-  const map = {
-    ا: 'A', أ: 'A', إ: 'E', آ: 'A', ى: 'A', ة: 'A',
-    ب: 'B', ت: 'T', ث: 'T', ج: 'Dj', ح: 'H', خ: 'Kh',
-    د: 'D', ذ: 'D', ر: 'R', ز: 'Z', س: 'S', ش: 'Ch',
-    ص: 'S', ض: 'D', ط: 'T', ظ: 'Z', ع: 'A', غ: 'Gh',
-    ف: 'F', ق: 'K', ك: 'K', ل: 'L', م: 'M', ن: 'N',
-    ه: 'H', و: 'Ou', ي: 'Y', ' ': ' ', '-': '-', '.': '.',
+  try {
+    const customDict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
+    const rawKey = text.replace(/\s+/g, '');
+    if (customDict.full_name && customDict.full_name[rawKey]) return customDict.full_name[rawKey];
+  } catch (e) {}
+
+  let processedText = text;
+  const commonNames = {
+    'عبد': 'Abdel ', 'بن ': 'Ben ', 'بو': 'Bou ', 'محمد': 'Mohamed ', 'فاطمة': 'Fatima ',
+    'صالح': 'Salah ', 'فضيلة': 'Fadila ', 'دونية': 'Dounia ', 'احمد': 'Ahmed ', 'علي': 'Ali ',
+    'عمر': 'Omar ', 'خديجة': 'Khadidja ', 'عائشة': 'Aicha ', 'ابراهيم': 'Brahim ',
+    'حسين': 'Hocine ', 'حسن': 'Hassan ', 'سعيد': 'Said ', 'كريم': 'Karim ', 'امين': 'Amine ',
+    'الدين': ' Eddine ', 'نور': 'Nour ', 'عبدال': 'Abdel ', 'ال': 'El '
   };
-
-  let lat = text
-    .split('')
-    .map((char) => map[char] || char)
-    .join('')
-    .replace(/OuA/g, 'Wa')
-    .replace(/IY/g, 'I');
-
-  // Convert to Title Case (e.g., "Dounyasalh" instead of "DOUNYASALH")
+  for (const [ar, fr] of Object.entries(commonNames)) {
+      processedText = processedText.replace(new RegExp(ar, 'g'), fr);
+  }
+  const map = {
+    ا: 'a', أ: 'a', إ: 'i', آ: 'a', ى: 'a', ة: 'a', ب: 'b', ت: 't', ث: 't', ج: 'dj',
+    ح: 'h', خ: 'kh', د: 'd', ذ: 'd', ر: 'r', ز: 'z', س: 's', ش: 'ch', ص: 's', ض: 'd',
+    ط: 't', ظ: 'z', ع: 'a', غ: 'gh', ف: 'f', ق: 'k', ك: 'k', ل: 'l', م: 'm', ن: 'n',
+    ه: 'h', و: 'ou', ي: 'i', ' ': ' ', '-': '-', '.': '.',
+  };
+  let lat = processedText.split('').map((char) => map[char] || char).join('');
+  lat = lat.replace(/oua/g, 'wa').replace(/ouou/g, 'ou').replace(/ii/g, 'i').replace(/\s+/g, ' ').trim();
   return lat.split(' ').map(word => {
      if (!word) return '';
-     return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+     return word.charAt(0).toUpperCase() + word.toLowerCase().slice(1);
   }).join(' ');
+};
+
+// --- FR-ALG TRANSLITERATION ENGINE (HYBRID DICTIONARY + PHONETIC) ---
+const transliterateFrToAr = (text) => {
+  if (!text) return '';
+  let processed = text.toLowerCase().trim();
+
+  const commonNames = {
+    'abdel': 'عبد ال', 'ben': 'بن ', 'bou': 'بو ', 'mohamed': 'محمد', 'fatima': 'فاطمة',
+    'salah': 'صالح', 'fadila': 'فضيلة', 'dounia': 'دونية', 'ahmed': 'أحمد', 'ali': 'علي',
+    'omar': 'عمر', 'khadidja': 'خديجة', 'aicha': 'عائشة', 'brahim': 'إبراهيم',
+    'hocine': 'حسين', 'hassan': 'حسن', 'said': 'سعيد', 'karim': 'كريم', 'amine': 'أمين',
+    'eddine': 'الدين', 'nour': 'نور', 'el': 'ال'
+  };
+  for (const [fr, ar] of Object.entries(commonNames)) {
+      processed = processed.replace(new RegExp('\\b' + fr + '\\b', 'g'), ar);
+  }
+
+  const map = {
+    'a': 'ا', 'b': 'ب', 'c': 'ك', 'd': 'د', 'e': 'ي', 'f': 'ف', 'g': 'ق', 'h': 'ح',
+    'i': 'ي', 'j': 'ج', 'k': 'ك', 'l': 'ل', 'm': 'م', 'n': 'ن', 'o': 'و', 'p': 'ب',
+    'q': 'ق', 'r': 'ر', 's': 'س', 't': 'ت', 'u': 'و', 'v': 'ف', 'w': 'و', 'x': 'كس',
+    'y': 'ي', 'z': 'ز', ' ': ' '
+  };
+  processed = processed.replace(/ch/g, 'ش').replace(/kh/g, 'خ').replace(/dj/g, 'ج').replace(/ou/g, 'و').replace(/gh/g, 'غ');
+  return processed.split('').map(char => map[char] || char).join('').replace(/\s+/g, ' ').trim();
 };
 
   // --- SMART ARABIC REVERSAL ---
@@ -666,17 +698,38 @@ export default function UniversalOCRModal({
   // --- HELPERS (RESTORED) ---
   const createEmptyCandidate = () => ({
     id: Math.random(),
-    national_id: '',
-    full_name: '',
+    national_id: '', raw_id: '',
+    full_name: '', raw_name: '',
     department_id: '',
-    job_info: '',
+    job_info: '', raw_job: '',
     isArabic: false,
   });
 
   const cleanCandidate = (c) => {
-    // ID mutation filter removed to preserve raw OCR output.
+    // 1. Lock in the pure raw OCR output before any modifications
+    c.raw_id = c.national_id;
+    c.raw_name = c.full_name;
+    c.raw_job = c.job_info;
+
+    // 2. Global Auto-Correction (SPACE-IMMUNE)
+    try {
+      const dict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
+      
+      if (c.national_id) {
+         const key = c.national_id.replace(/\s+/g, ''); // Strip spaces for lookup
+         if (dict.national_id[key]) c.national_id = dict.national_id[key];
+      }
+      if (c.full_name) {
+         const key = c.full_name.replace(/\s+/g, ''); // Strip spaces for lookup
+         if (dict.full_name[key]) c.full_name = dict.full_name[key];
+      }
+      if (c.job_info) {
+         const key = c.job_info.replace(/\s+/g, ''); // Strip spaces for lookup
+         if (dict.job_info[key]) c.job_info = dict.job_info[key];
+      }
+    } catch(e) { console.warn("Dictionary error", e); }
+
     c.isArabic = /[\u0600-\u06FF]/.test(c.full_name);
-    if (c.isArabic) c.original_name = c.full_name;
   };
 
   const updateCandidate = (id, field, val) => {
@@ -684,9 +737,29 @@ export default function UniversalOCRModal({
   };
   const removeCandidate = (id) => setCandidates((prev) => prev.filter((c) => c.id !== id));
 
-  const handleBulkImport = async () => {
+const handleBulkImport = async () => {
     if (candidates.length === 0) return;
     const valid = candidates.filter((c) => c.full_name || c.national_id);
+
+    // --- MACHINE LEARNING MEMORY UPDATE (SPACE-IMMUNE) ---
+    try {
+      let dict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
+      valid.forEach(c => {
+         // Save corrections by stripping spaces from the raw OCR key
+         if (c.raw_id && c.national_id && c.raw_id !== c.national_id) {
+             dict.national_id[c.raw_id.replace(/\s+/g, '')] = c.national_id.trim();
+         }
+         if (c.raw_name && c.full_name && c.raw_name !== c.full_name) {
+             dict.full_name[c.raw_name.replace(/\s+/g, '')] = c.full_name.trim();
+         }
+         if (c.raw_job && c.job_info && c.raw_job !== c.job_info) {
+             dict.job_info[c.raw_job.replace(/\s+/g, '')] = c.job_info.trim();
+         }
+      });
+      localStorage.setItem('ocr_smart_dict', JSON.stringify(dict));
+    } catch(e) {}
+    // ---------------------------------------------------
+
     for (const c of valid) {
       const data = {
         full_name: c.full_name || 'Inconnu',
@@ -705,6 +778,40 @@ export default function UniversalOCRModal({
     }
     onImportSuccess(valid.length);
     onClose();
+  };
+
+  // --- DICTIONARY MANAGEMENT ---
+  const exportDictionary = () => {
+    const dict = localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}';
+    const blob = new Blob([dict], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Copro_Dictionary_${new Date().toISOString().split('T')[0]}.json`;
+    a.click();
+  };
+
+  const importDictionary = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const imported = JSON.parse(event.target.result);
+        const existing = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
+        
+        // Merge the uploaded dictionary with the existing one
+        existing.national_id = { ...existing.national_id, ...(imported.national_id || {}) };
+        existing.full_name = { ...existing.full_name, ...(imported.full_name || {}) };
+        existing.job_info = { ...existing.job_info, ...(imported.job_info || {}) };
+        
+        localStorage.setItem('ocr_smart_dict', JSON.stringify(existing));
+        alert('Dictionnaire importé et fusionné avec succès !');
+      } catch (err) {
+        alert('Erreur : Fichier JSON invalide.');
+      }
+    };
+    reader.readAsText(file);
   };
 
   return (
@@ -1314,30 +1421,31 @@ export default function UniversalOCRModal({
                           onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)}
                           style={{ fontWeight: 'bold', flex: 1 }}
                         />
-                        {/* TWO-WAY TOGGLE: Shows permanently if the row was originally Arabic */}
-                        {c.isArabic && (
-                          <button
-                            onClick={() => {
-                               const isCurrentlyArabic = /[\u0600-\u06FF]/.test(c.full_name);
-                               if (isCurrentlyArabic) {
-                                   // Translate to French
-                                   updateCandidate(c.id, 'full_name', transliterateArToFr(c.full_name));
-                               } else {
-                                   // Revert back to Original Arabic
-                                   updateCandidate(c.id, 'full_name', c.original_name);
-                               }
-                            }}
-                            className="btn btn-outline btn-sm"
-                            title={/[\u0600-\u06FF]/.test(c.full_name) ? "Convertir en Français" : "Restaurer l'Arabe"}
-                            style={{ 
-                               padding: '4px 8px', 
-                               borderColor: /[\u0600-\u06FF]/.test(c.full_name) ? '#3b82f6' : '#10b981', 
-                               color: /[\u0600-\u06FF]/.test(c.full_name) ? '#3b82f6' : '#10b981' 
-                            }}
-                          >
-                            <FaGlobeAfrica />
-                          </button>
-                        )}
+                        {/* SMART TOGGLE BUTTON (No infinite loops) */}
+                        <button
+                          onClick={() => {
+                             if (c.alt_name) {
+                                 // State 2: Revert to the exact original text you typed/scanned
+                                 updateCandidate(c.id, 'full_name', c.alt_name);
+                                 updateCandidate(c.id, 'alt_name', ''); // Clear memory to reset toggle
+                             } else {
+                                 // State 1: Save current text to memory, then translate
+                                 updateCandidate(c.id, 'alt_name', c.full_name);
+                                 const isCurrentlyArabic = /[\u0600-\u06FF]/.test(c.full_name);
+                                 const translation = isCurrentlyArabic ? transliterateArToFr(c.full_name) : transliterateFrToAr(c.full_name);
+                                 updateCandidate(c.id, 'full_name', translation);
+                             }
+                          }}
+                          className="btn btn-outline btn-sm"
+                          title={c.alt_name ? "Restaurer l'original" : ( /[\u0600-\u06FF]/.test(c.full_name) ? "Traduire en Français" : "Traduire en Arabe" )}
+                          style={{ 
+                              padding: '4px 8px', 
+                              borderColor: c.alt_name ? '#10b981' : '#3b82f6', 
+                              color: c.alt_name ? '#10b981' : '#3b82f6' 
+                          }}
+                        >
+                          <FaGlobeAfrica />
+                        </button>
                       </td>
                       <td style={{ padding: '8px' }}>
                         <select
@@ -1395,18 +1503,34 @@ export default function UniversalOCRModal({
             </button>
           </div>
         )}
-        {/* NEW: HELP OVERLAY MODAL */}
+        {/* NEW: HELP OVERLAY & DICTIONARY MANAGER */}
         {showHelp && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
             <div style={{ background: 'white', borderRadius: '8px', padding: '20px', maxWidth: '500px', width: '100%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+               
                <h3 style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaLightbulb /> Guide de Scan OCR</h3>
                <ul style={{ paddingLeft: '20px', fontSize: '0.9rem', lineHeight: '1.6', color: '#334155' }}>
-                 <li style={{ marginBottom: '10px' }}><b>Règle d'Or (Les Lignes) :</b> Placez les <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>Colonnes (Bleues)</span> et les <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Lignes (Rouges)</span> <u>à l'intérieur</u> des cases. Ne touchez <b>jamais</b> le trait noir du tableau imprimé, sinon l'IA lira le trait comme un "1", un "L" ou un "د".</li>
-                 <li style={{ marginBottom: '10px' }}><b>Éclairage :</b> Évitez les ombres projetées par votre téléphone. Utilisez le flash si la pièce est sombre pour éviter les zones noires.</li>
-                 <li style={{ marginBottom: '10px' }}><b>Angle :</b> Tenez le téléphone parfaitement parallèle (à plat) au-dessus de la feuille. Ne prenez pas la photo de biais.</li>
-                 <li><b>Papier :</b> La feuille doit être parfaitement plate. Les plis courbent le texte et faussent le découpage des cases.</li>
+                 <li style={{ marginBottom: '10px' }}><b>Les Lignes :</b> Placez les lignes <u>à l'intérieur</u> des cases. Ne touchez jamais le trait noir du tableau.</li>
+                 <li style={{ marginBottom: '10px' }}><b>Papier :</b> La feuille doit être parfaitement plate. L'éclairage doit être uniforme.</li>
                </ul>
-               <button onClick={() => setShowHelp(false)} className="btn btn-primary" style={{ width: '100%', marginTop: '15px', fontWeight: 'bold' }}>J'ai compris</button>
+
+               <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '20px 0' }} />
+
+               <h3 style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaSave /> Mémoire IA (Dictionnaire)</h3>
+               <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '15px' }}>
+                 Le système apprend automatiquement vos corrections. Vous pouvez sauvegarder ce cerveau ou importer une base de données existante.
+               </p>
+               <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                 <button onClick={exportDictionary} className="btn btn-outline" style={{ flex: 1, borderColor: '#10b981', color: '#10b981' }}>
+                   Exporter (Backup)
+                 </button>
+                 <label className="btn btn-outline" style={{ flex: 1, borderColor: '#3b82f6', color: '#3b82f6', textAlign: 'center', cursor: 'pointer' }}>
+                   Importer JSON
+                   <input type="file" accept=".json" onChange={importDictionary} style={{ display: 'none' }} />
+                 </label>
+               </div>
+
+               <button onClick={() => setShowHelp(false)} className="btn btn-primary" style={{ width: '100%', fontWeight: 'bold' }}>Fermer</button>
             </div>
           </div>
         )}
