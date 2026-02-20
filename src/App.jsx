@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { db } from './services/db';
 import { hashString } from './services/crypto'; // [NEW]
+import DiagnosticPanel from './components/DiagnosticPanel';
 import backupService from './services/backup';
 
 import Dashboard from './components/Dashboard';
@@ -44,31 +45,49 @@ function App() {
 
   const [pin, setPin] = useState('0000');
 
-  // [CRITICAL FIX] Emergency Backup on App Close/Pause
+// [CRITICAL FIX] Emergency Backup on App Close/Pause
   // This ensures that even 1 single unsaved edit is captured when the app is swiped away.
   useEffect(() => {
+    let appListener = null;
+    let isProcessing = false; // [NEW] The Throttle Lock
+
     const setupLifecycle = async () => {
       try {
         const { App: CapApp } = await import('@capacitor/app');
-        await CapApp.addListener('appStateChange', async ({ isActive }) => {
+        
+        appListener = await CapApp.addListener('appStateChange', async ({ isActive }) => {
           if (!isActive) {
+            // [FIX] If we are already running a backup, ignore the duplicate Android event
+            if (isProcessing) return; 
+            
+            isProcessing = true; // Lock the gates
+
             console.log('[App] App moving to background. Forcing emergency backup check...');
             const status = await backupService.getBackupStatus();
-            // If there is even 1 unsaved edit, force the export immediately
+            
             if (status.counter > 0) {
                console.log(`[App] ${status.counter} unsaved changes detected. Forcing export before suspend...`);
-               // Bypass threshold and force an export
                await backupService.performAutoExport(async () => await db.exportData(), 'COUNTER');
             }
+            
+            // Release the lock after 2 seconds to absorb any rapid-fire duplicate events
+            setTimeout(() => { isProcessing = false; }, 2000);
           }
         });
       } catch (e) {
         console.warn('[App] Capacitor App Plugin not available or failed to load.');
       }
     };
+    
     setupLifecycle();
-  }, []);
 
+    // Proper React cleanup
+    return () => {
+      if (appListener) {
+        appListener.remove();
+      }
+    };
+  }, []);
   // --- ENGINE STARTUP (The Only Change) ---
   const initApp = async () => {
     try {
@@ -203,6 +222,7 @@ function App() {
   // --- MAIN UI (Original Layout Restored) ---
   return (
     <div className={`app-shell ${isSidebarOpen ? '' : 'sidebar-closed'}`}>
+      <DiagnosticPanel /> 
       {/* SIDEBAR */}
       <aside className="sidebar no-print">
         <div className="brand">

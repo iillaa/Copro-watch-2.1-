@@ -31,6 +31,15 @@ export default function Settings({
   // --- NAVIGATION STATE ---
   const [activeTab, setActiveTab] = useState('general');
 
+  // [NEW] DEV MODE LOGIC
+  const [devMode, setDevMode] = useState(() => localStorage.getItem('copro_dev_mode') === 'true');
+  const toggleDevMode = () => {
+    const newState = !devMode;
+    setDevMode(newState);
+    localStorage.setItem('copro_dev_mode', newState);
+    window.dispatchEvent(new CustomEvent('dev-mode-changed', { detail: newState }));
+  };
+
   // --- EXISTING STATE & LOGIC ---
   // Initialize empty. We only set it if the user types a NEW pin.
   const [pin, setPin] = useState('');
@@ -671,7 +680,7 @@ export default function Settings({
               </button>
             </div>
 
-            {/* [INSERT THIS BLOCK START] */}
+
             {/* Force Mobile Toggle */}
             <div
               style={{
@@ -695,7 +704,31 @@ export default function Settings({
                 {forceMobile ? 'ON' : 'OFF'}
               </button>
             </div>
-            {/* [INSERT THIS BLOCK END] */}
+
+            {/* [NEW] DEV Mode Toggle */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                borderTop: '1px solid #eee',
+                paddingTop: '1rem',
+                marginTop: '1rem'
+              }}
+            >
+              <div>
+                <div style={{ fontWeight: 'bold' }}>Mode Développeur</div>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Affiche le terminal de diagnostic (Bouton DEV).
+                </div>
+              </div>
+              <button
+                className={`btn ${devMode ? 'btn-primary' : 'btn-outline'}`}
+                onClick={toggleDevMode}
+              >
+                {devMode ? 'ON' : 'OFF'}
+              </button>
+            </div>
           </div>
 
           {/* Section: Sécurité */}
