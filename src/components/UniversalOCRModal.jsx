@@ -32,6 +32,7 @@ import {
   FaList,
   FaImage,
   FaEye,
+  FaLightbulb,
 } from 'react-icons/fa';
 
 // --- ALG-FR TRANSLITERATION ENGINE (RESTORED) ---
@@ -54,19 +55,18 @@ const transliterateArToFr = (text) => {
     .replace(/IY/g, 'I');
 };
 
-  // --- ARABIC REVERSAL FIX ---
-  // PaddleOCR often returns Arabic text LTR (e.g. "CBA" instead of "ABC").
-  // This function detects Arabic and reverses the string if needed.
-  const fixArabicReversal = (text) => {
+  // --- SMART ARABIC REVERSAL ---
+  // Only reverses characters inside Arabic words. Protects Latin text and numbers.
+  const smartRTLFix = (text) => {
     if (!text) return '';
-    // Check if the text contains Arabic characters
-    const hasArabic = /[\u0600-\u06FF]/.test(text);
-    if (hasArabic) {
-        // Reverse characters to correct LTR rendering of RTL text
-        // Also split by space to reverse word order if necessary, but usually character reversal is the main issue with raw OCR output
-        return text.split('').reverse().join('');
-    }
-    return text;
+    return text.split(' ').map(word => {
+        // If the specific word contains Arabic, reverse it
+        if (/[\u0600-\u06FF]/.test(word)) {
+            return word.split('').reverse().join('');
+        }
+        // If it's a number or French word, leave it completely alone
+        return word;
+    }).join(' ');
   };
 
 export default function UniversalOCRModal({
@@ -84,6 +84,7 @@ export default function UniversalOCRModal({
   const [statusText, setStatusText] = useState('');
   const [docLanguage, setDocLanguage] = useState('fra');
   const [debugMode, setDebugMode] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
   const [debugCrops, setDebugCrops] = useState([]);
   const [debugBoxes, setDebugBoxes] = useState([]);
   
@@ -105,6 +106,14 @@ export default function UniversalOCRModal({
     'full_name',
     'department_id',
     'job_info',
+  ]);
+  
+  // NEW: Track which engine handles which column in Hybrid Mode
+  const [colEngines, setColEngines] = useState([
+    'tesseract', // Default for Col 1
+    'paddle',    // Default for Col 2
+    'paddle',    // Default for Col 3
+    'paddle'     // Default for Col 4
   ]);
 
   const [imgDimensions, setImgDimensions] = useState({ width: 0, height: 0 });
@@ -152,12 +161,16 @@ export default function UniversalOCRModal({
 
           const cleanUrl = canvas.toDataURL('image/jpeg', 0.95);
 
-          setImage(cleanUrl);
+         setImage(cleanUrl);
           setImgDimensions({ width, height });
           setCandidates([]);
           setHLines([]);
+          
+          // MEMORY MANAGEMENT: Aggressively dump old base64 images
+          setDebugCrops([]); 
+          setDebugBoxes([]);
+          
           setActiveTab('scan');
-
           setLogs([]); // Reset logs
           addLog(`[LOAD] Image chargée. Dimensions: ${width}x${height}px`);
         };
@@ -168,12 +181,11 @@ export default function UniversalOCRModal({
   };
 
   // ========== TESSERACT HELPER (RESTORED EXACTLY) ==========
-  const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8, binarize = true) => {
+ const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8, binarize = true, customScale = 4) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
-
-    // FIX 1: Increase Scale to 4x (Critical for separating Arabic words)
-    const scale = 4;
+    const scale = customScale; // Use the parameter, not a hardcoded 4
+    
     const targetW = (rect.width + paddingX * 2) * scale;
     const targetH = (rect.height + paddingY * 2) * scale;
     canvas.width = targetW;
@@ -190,20 +202,21 @@ export default function UniversalOCRModal({
       paddingX * scale, paddingY * scale, rect.width * scale, rect.height * scale
     );
 
+    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    const data = imageData.data;
+
     if (binarize) {
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const data = imageData.data;
-
-      // FIX 2: Hard Threshold (175) - Makes text solid black, background solid white.
+      // TESSERACT: Hard Threshold (Pure Black & White)
       const threshold = 175;
-
       for (let i = 0; i < data.length; i += 4) {
         const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
         let v = gray < threshold ? 0 : 255;
         data[i] = data[i + 1] = data[i + 2] = v;
       }
-      ctx.putImageData(imageData, 0, 0);
     }
+    // For Paddle (!binarize), do absolutely nothing. Return the raw, natural image.
+    
+    ctx.putImageData(imageData, 0, 0);
     
     return canvas.toDataURL('image/png'); 
   };
@@ -394,7 +407,7 @@ export default function UniversalOCRModal({
     }
   };
 
-  // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE) ==========
+  // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE RESTORED + IMPROVED) ==========
   const runPaddleOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
@@ -450,9 +463,8 @@ export default function UniversalOCRModal({
             height: rawH
           };
 
-          // Paddle needs grayscale (false) and can use scale 2 for speed
-          // FIX: Added 10px padding to avoid cutting off edge characters (like '8' in 8k338)
-          const cellUrl = getCellImage(imageRef.current, rect, 10, 10, false);
+          // Scale 2 is 50% lighter on the CPU. Padding 5 prevents cross-column bleeding.
+const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
           
           if (debugMode) {
             setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
@@ -477,7 +489,7 @@ export default function UniversalOCRModal({
           if (text) {
             // Clean vertical bars usually detected as noise from table borders
             text = text.replace(/[|]/g, '').trim();
-            if (isRTL) text = text.split('').reverse().join('');
+            if (isRTL) text = smartRTLFix(text);
             
             gridResults[r][field] = text;
             addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
@@ -511,14 +523,14 @@ export default function UniversalOCRModal({
     }
   };
 
-  // ========== MODE 3: HYBRID (SMART) ==========
+  // ========== MODE 3: HYBRID (SMART CELLULAR) ==========
   const runHybridOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
     setLogs([]);
     setCandidates([]);
     setProgress(0);
-    setStatusText('Hybrid Mode (Smart)...');
+    setStatusText('Hybrid Mode (Smart Cellular)...');
 
     let tesseractWorkers = [];
     let paddleOcr = null;
@@ -561,11 +573,11 @@ export default function UniversalOCRModal({
              continue;
           }
 
-          // DECISION LOGIC
-          const useTesseract = (field === 'national_id' || field === 'department_id');
+          // DECISION LOGIC: User-Selected Routing
+          const enginePreference = colEngines[colIndex] || 'paddle';
           
-          if (useTesseract) {
-             addLog(`[HYBRID] Column "${field}" -> Tesseract (Numeric Safe)`);
+          if (enginePreference === 'tesseract') {
+             addLog(`[HYBRID] Column "${field}" -> Tesseract (User Selected)`);
              const params = {
                tessedit_pageseg_mode: '7',
                preserve_interword_spaces: '1',
@@ -580,8 +592,9 @@ export default function UniversalOCRModal({
                    // ... Crop Logic ...
                    const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
                    const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+                   // Use tight padding for Tesseract (numbers)
                    const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
-                   const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
+                   const cellUrl = getCellImage(imageRef.current, cropParams, 5, 5); // 5px padding for Tesseract
                    
                    const { data: { text } } = await worker.recognize(cellUrl);
                    if (text.trim()) gridResults[r][field] = text.trim();
@@ -593,23 +606,23 @@ export default function UniversalOCRModal({
              await Promise.all(promises);
 
           } else {
-             addLog(`[HYBRID] Column "${field}" -> Paddle (Text Turbo)`);
+             addLog(`[HYBRID] Column "${field}" -> Paddle (Text Cellular)`);
              // Sequential loop for Paddle (Single Threaded WASM)
              for (let r = 0; r < numRows; r++) {
                 const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
                 const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
                 const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
                 
-                // Use getCellImage but maybe less aggressive processing? 
-                // Using standard for now.
-                // TRY: Re-enable binarization (true) to see if it helps with French tables as per user feedback
-                const cellUrl = getCellImage(imageRef.current, cropParams, 0, 0, false);
+                // Scale 2 is 50% lighter on the CPU. Padding 5 prevents cross-column bleeding.
+// 5px Vertical padding, 6px Horizontal padding
+const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
                 
                 const results = await paddleOcr.detect(cellUrl);
                 let text = results.map(b => b.text).join(' ').trim();
                 
                 if (text) {
-                   if (isRTL) text = fixArabicReversal(text);
+                   text = text.replace(/[|]/g, '').trim();
+                   if (isRTL) text = smartRTLFix(text);
                    gridResults[r][field] = text;
                    addLog(`[CELL] ${field}: ${text}`);
                 }
@@ -816,12 +829,14 @@ export default function UniversalOCRModal({
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => setVLines([...vLines, 0.5])}
+                    style={{ color: '#3b82f6', borderColor: '#3b82f6', fontWeight: 'bold' }}
                   >
                     + Col
                   </button>
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => setHLines([...hLines, 0.5])}
+                    style={{ color: '#ef4444', borderColor: '#ef4444', fontWeight: 'bold' }}
                   >
                     + Ligne
                   </button>
@@ -856,6 +871,16 @@ export default function UniversalOCRModal({
                     />
                     <FaBug /> Debug
                   </label>
+
+                  {/* NEW: HELP BUTTON */}
+                  <button 
+                    className="btn btn-sm" 
+                    onClick={() => setShowHelp(true)}
+                    title="Guide de Scan OCR"
+                    style={{ border: '1px solid #0284c7', color: '#0284c7', background: 'white', padding: '6px 8px', minWidth: 'auto' }}
+                  >
+                    <FaLightbulb />
+                  </button>
 
                   {/* NEW: ENGINE TOGGLE */}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
@@ -919,6 +944,8 @@ export default function UniversalOCRModal({
                 </>
               )}
             </div>
+
+
 
             {/* CANVAS EDITOR */}
             {image && (
@@ -1023,120 +1050,94 @@ export default function UniversalOCRModal({
                               </option>
                             ))}
                           </select>
+                          
+                          {/* NEW: Explicit Engine Routing for Hybrid Mode */}
+                          {ocrEngine === 'hybrid' && (
+                            <select
+                              className="input"
+                              style={{
+                                fontSize: '0.6rem',
+                                padding: 0,
+                                height: '18px',
+                                width: '90%',
+                                background: '#e2e8f0',
+                                marginTop: '2px',
+                                border: '1px solid #cbd5e1'
+                              }}
+                              value={colEngines[i] || 'paddle'}
+                              onChange={(e) => {
+                                const n = [...colEngines];
+                                n[i] = e.target.value;
+                                setColEngines(n);
+                              }}
+                            >
+                              <option value="tesseract">Engine: Tess</option>
+                              <option value="paddle">Engine: Paddle</option>
+                            </select>
+                          )}
                         </div>
                       ));
                     })()}
                   </div>
 
-                  {/* MAIN IMAGE */}
-                  <img
-                    ref={imageRef}
-                    src={image}
-                    style={{
-                      display: 'block',
-                      width: '100%',
-                      marginTop: '30px',
-                      touchAction: 'pan-y',
-                    }}
-                    alt="Scan"
-                  />
+                  {/* STRICT IMAGE WRAPPER (Fixes the coordinate offset drift) */}
+                  <div style={{ position: 'relative', marginTop: '30px' }}>
+                    
+                    {/* MAIN IMAGE */}
+                    <img
+                      ref={imageRef}
+                      src={image}
+                      style={{ display: 'block', width: '100%', touchAction: 'pan-y' }}
+                      alt="Scan"
+                    />
 
-                  {/* VERTICAL HANDLES */}
-                  {vLines.map((x, i) => (
-                    <div
-                      key={`v-${i}`}
-                      style={{
-                        position: 'absolute',
-                        top: 30,
-                        bottom: 0,
-                        left: `${x * 100}%`,
-                        width: '2px',
-                        background: '#3b82f6',
-                        zIndex: 40,
-                      }}
-                    >
+                    {/* VERTICAL HANDLES */}
+                    {vLines.map((x, i) => (
                       <div
-                        style={{
-                          position: 'absolute',
-                          top: '50%',
-                          left: '-16px',
-                          transform: 'translateY(-50%)',
-                          width: '32px',
-                          height: '32px',
-                          background: '#3b82f6',
-                          color: 'white',
-                          borderRadius: '50%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
-                          touchAction: 'none',
-                        }}
-                        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-                        onPointerMove={(e) => {
-                          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-                          const rect =
-                            e.currentTarget.parentElement.parentElement.getBoundingClientRect();
-                          const nx = (e.clientX - rect.left) / (rect.width - 50);
-                          const nv = [...vLines];
-                          nv[i] = Math.max(0, Math.min(1, nx));
-                          setVLines(nv.sort((a, b) => a - b));
-                        }}
-                        onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+                        key={`v-${i}`}
+                        style={{ position: 'absolute', top: 0, bottom: 0, left: `${x * 100}%`, width: '2px', background: '#3b82f6', zIndex: 40 }}
                       >
-                        <FaArrowsAltH size={12} />
+                        <div
+                          style={{ position: 'absolute', top: '50%', left: '-16px', transform: 'translateY(-50%)', width: '32px', height: '32px', background: '#3b82f6', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', touchAction: 'none' }}
+                          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+                          onPointerMove={(e) => {
+                            if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                            const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+                            // MATH FIXED: Clean percentage of image width
+                            const nx = (e.clientX - rect.left) / rect.width;
+                            const nv = [...vLines];
+                            nv[i] = Math.max(0, Math.min(1, nx));
+                            setVLines(nv.sort((a, b) => a - b));
+                          }}
+                          onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+                        ><FaArrowsAltH size={12} /></div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
 
-                  {/* HORIZONTAL HANDLES */}
-                  {hLines.map((y, i) => (
-                    <div
-                      key={`h-${i}`}
-                      style={{
-                        position: 'absolute',
-                        left: 0,
-                        right: '50px',
-                        top: `calc(${y * 100}% + 30px)`,
-                        height: '2px',
-                        background: '#ef4444',
-                        zIndex: 40,
-                      }}
-                    >
+                    {/* HORIZONTAL HANDLES */}
+                    {hLines.map((y, i) => (
                       <div
-                        style={{
-                          position: 'absolute',
-                          left: '50%',
-                          top: '-16px',
-                          transform: 'translateX(-50%)',
-                          width: '32px',
-                          height: '32px',
-                          background: '#ef4444',
-                          color: 'white',
-                          borderRadius: '50%',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
-                          touchAction: 'none',
-                        }}
-                        onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
-                        onPointerMove={(e) => {
-                          if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-                          const rect =
-                            e.currentTarget.parentElement.parentElement.getBoundingClientRect();
-                          const ny = (e.clientY - rect.top - 30) / (rect.height - 30);
-                          const nh = [...hLines];
-                          nh[i] = Math.max(0, Math.min(1, ny));
-                          setHLines(nh.sort((a, b) => a - b));
-                        }}
-                        onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
-                        onDoubleClick={() => setHLines(hLines.filter((_, idx) => idx !== i))}
+                        key={`h-${i}`}
+                        style={{ position: 'absolute', left: 0, right: 0, top: `${y * 100}%`, height: '2px', background: '#ef4444', zIndex: 40 }}
                       >
-                        <FaArrowsAltV size={12} />
+                        <div
+                          style={{ position: 'absolute', left: '50%', top: '-16px', transform: 'translateX(-50%)', width: '32px', height: '32px', background: '#ef4444', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', touchAction: 'none' }}
+                          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+                          onPointerMove={(e) => {
+                            if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
+                            const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+                            // MATH FIXED: Clean percentage of image height (No more -30px drift)
+                            const ny = (e.clientY - rect.top) / rect.height;
+                            const nh = [...hLines];
+                            nh[i] = Math.max(0, Math.min(1, ny));
+                            setHLines(nh.sort((a, b) => a - b));
+                          }}
+                          onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+                          onDoubleClick={() => setHLines(hLines.filter((_, idx) => idx !== i))}
+                        ><FaArrowsAltV size={12} /></div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
@@ -1365,6 +1366,21 @@ export default function UniversalOCRModal({
             >
               <FaSave /> Sauvegarder {candidates.length} fiches
             </button>
+          </div>
+        )}
+        {/* NEW: HELP OVERLAY MODAL */}
+        {showHelp && (
+          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
+            <div style={{ background: 'white', borderRadius: '8px', padding: '20px', maxWidth: '500px', width: '100%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+               <h3 style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaLightbulb /> Guide de Scan OCR</h3>
+               <ul style={{ paddingLeft: '20px', fontSize: '0.9rem', lineHeight: '1.6', color: '#334155' }}>
+                 <li style={{ marginBottom: '10px' }}><b>Règle d'Or (Les Lignes) :</b> Placez les <span style={{ color: '#3b82f6', fontWeight: 'bold' }}>Colonnes (Bleues)</span> et les <span style={{ color: '#ef4444', fontWeight: 'bold' }}>Lignes (Rouges)</span> <u>à l'intérieur</u> des cases. Ne touchez <b>jamais</b> le trait noir du tableau imprimé, sinon l'IA lira le trait comme un "1", un "L" ou un "د".</li>
+                 <li style={{ marginBottom: '10px' }}><b>Éclairage :</b> Évitez les ombres projetées par votre téléphone. Utilisez le flash si la pièce est sombre pour éviter les zones noires.</li>
+                 <li style={{ marginBottom: '10px' }}><b>Angle :</b> Tenez le téléphone parfaitement parallèle (à plat) au-dessus de la feuille. Ne prenez pas la photo de biais.</li>
+                 <li><b>Papier :</b> La feuille doit être parfaitement plate. Les plis courbent le texte et faussent le découpage des cases.</li>
+               </ul>
+               <button onClick={() => setShowHelp(false)} className="btn btn-primary" style={{ width: '100%', marginTop: '15px', fontWeight: 'bold' }}>J'ai compris</button>
+            </div>
           </div>
         )}
       </div>
