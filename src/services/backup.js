@@ -553,6 +553,14 @@ export async function checkAndAutoImport(dbInstance) {
   if (!autoImportEnabled) return { imported: false, reason: 'disabled' };
 
   try {
+    // [CRITICAL FIX] 1. Check if we have local data first.
+    // NEVER overwrite an existing local database with an auto-import.
+    const workerCount = await dbInstance.workers.count();
+    if (workerCount > 0) {
+      console.log('[Backup] Local data exists. Skipping auto-import to prevent the Reversion Trap.');
+      return { imported: false, reason: 'local_data_exists' };
+    }
+
     // readBackupJSON now automatically finds the newest of the 3 files
     const backup = await readBackupJSON();
     if (!backup) return { imported: false, reason: 'no_data' };

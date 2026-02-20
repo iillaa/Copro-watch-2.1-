@@ -78,30 +78,20 @@ function stringifyInWorker(data) {
   });
 }
 
-// [FIXED] Split Logic: Increment NOW (Async), Export LATER (Background)
+// [CRITICAL FIX] Synchronous-ish Export to prevent data loss on force close
 async function triggerBackupCheck() {
   try {
-    // 1. IMMEDIATE: Increment counter & save to DB.
-    // We await this so the UI updates instantly.
     const triggerType = await backupService.registerChange();
 
-    // 2. BACKGROUND: If backup is due, schedule the heavy export lazily
     if (triggerType) {
-      console.log(`[DB] Backup due (${triggerType}). Scheduling export...`);
-
-      const runExport = async () => {
-        try {
-          await backupService.performAutoExport(async () => await exportData(), triggerType);
-        } catch (e) {
-          console.warn('[DB] Background export failed', e);
-        }
-      };
-
-      // Use idle callback for heavy JSON generation
-      if ('requestIdleCallback' in window) {
-        window.requestIdleCallback(runExport, { timeout: 10000 });
-      } else {
-        setTimeout(runExport, 1000);
+      console.log(`[DB] Backup due (${triggerType}). Executing export IMMEDIATELY...`);
+      // We removed requestIdleCallback. It is too dangerous on mobile because 
+      // the OS kills it if the user swipes the app away. 
+      // Execute immediately to guarantee data reaches the file system.
+      try {
+        await backupService.performAutoExport(async () => await exportData(), triggerType);
+      } catch (e) {
+        console.warn('[DB] Background export failed', e);
       }
     }
   } catch (e) {

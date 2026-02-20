@@ -43,6 +43,32 @@ function App() {
   }, [forceMobile]);
 
   const [pin, setPin] = useState('0000');
+
+  // [CRITICAL FIX] Emergency Backup on App Close/Pause
+  // This ensures that even 1 single unsaved edit is captured when the app is swiped away.
+  useEffect(() => {
+    const setupLifecycle = async () => {
+      try {
+        const { App: CapApp } = await import('@capacitor/app');
+        await CapApp.addListener('appStateChange', async ({ isActive }) => {
+          if (!isActive) {
+            console.log('[App] App moving to background. Forcing emergency backup check...');
+            const status = await backupService.getBackupStatus();
+            // If there is even 1 unsaved edit, force the export immediately
+            if (status.counter > 0) {
+               console.log(`[App] ${status.counter} unsaved changes detected. Forcing export before suspend...`);
+               // Bypass threshold and force an export
+               await backupService.performAutoExport(async () => await db.exportData(), 'COUNTER');
+            }
+          }
+        });
+      } catch (e) {
+        console.warn('[App] Capacitor App Plugin not available or failed to load.');
+      }
+    };
+    setupLifecycle();
+  }, []);
+
   // --- ENGINE STARTUP (The Only Change) ---
   const initApp = async () => {
     try {
