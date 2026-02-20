@@ -296,15 +296,8 @@ export default function UniversalOCRModal({
       addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
       
       for (let i = 0; i < numWorkers; i++) {
-        addLog(`[TESSERACT] Creating worker ${i + 1}/${numWorkers}...`);
-        try {
-          const w = await Tesseract.createWorker(langs, 1);
-          addLog(`[TESSERACT] Worker ${i + 1} ready.`);
-          workers.push(w);
-        } catch (err) {
-          addLog(`[TESSERACT] Worker ${i + 1} failed: ${err.message}`);
-          throw err;
-        }
+        const w = await Tesseract.createWorker(langs, 1);
+        workers.push(w);
       }
       
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
@@ -425,8 +418,6 @@ export default function UniversalOCRModal({
       // 1. Init Engine
       const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
       const modelsUrl = baseUrl + 'models/';
-      addLog(`[PADDLE] Loading models from ${modelsUrl}...`);
-
       ocr = await Ocr.create({
         models: {
           detectionPath: `${modelsUrl}det.onnx`,
@@ -434,7 +425,6 @@ export default function UniversalOCRModal({
           dictionaryPath: `${modelsUrl}keys_ara.txt`
         }
       });
-      addLog(`[PADDLE] Engine ready.`);
 
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
@@ -693,15 +683,9 @@ export default function UniversalOCRModal({
   });
 
   const cleanCandidate = (c) => {
-    try {
-      if (c.national_id && typeof c.national_id === 'string') {
-        c.national_id = c.national_id.replace(/^[lIiT]A/, '7A').replace(/O/g, '0');
-      }
-      c.isArabic = /[\u0600-\u06FF]/.test(c.full_name || '');
-      if (c.isArabic) c.original_name = c.full_name;
-    } catch (e) {
-      console.error("CleanCandidate Error:", e);
-    }
+    // ID mutation filter completely removed to preserve raw OCR output.
+    c.isArabic = /[\u0600-\u06FF]/.test(c.full_name);
+    if (c.isArabic) c.original_name = c.full_name;
   };
 
   const updateCandidate = (id, field, val) => {
