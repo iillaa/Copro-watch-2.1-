@@ -35,54 +35,104 @@ import {
   FaLightbulb,
 } from 'react-icons/fa';
 
-// --- ALG-FR TRANSLITERATION ENGINE (SMART DICTIONARY + PHONETIC) ---
+// --- ALG-FR TRANSLITERATION ENGINE (HYBRID DICTIONARY + PHONETIC) ---
 const transliterateArToFr = (text) => {
   if (!text) return '';
 
-  // 1. THE "SMART" MEMORY CHECK
-  // Fetch the self-learning dictionary from the phone's memory
-  try {
-    const customDict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{}');
-    const rawKey = text.replace(/\s+/g, ''); // Remove spaces to match OCR raw output
-    if (customDict[rawKey]) {
-      return customDict[rawKey]; // Instantly return your previous human correction
-    }
-  } catch (e) {
-    console.warn("Dictionary read error");
-  }
-
-  // 2. ALGERIAN NAMES DICTIONARY (Fallback 1)
   let processedText = text;
+
+  // 1. ALGERIAN NAMES DICTIONARY (Injects spaces and missing short vowels)
+  // Feel free to add more names to this list as you encounter them in your restaurant
   const commonNames = {
-    'عبد': 'Abdel ', 'بن ': 'Ben ', 'بو': 'Bou ', 'محمد': 'Mohamed ', 'فاطمة': 'Fatima ',
-    'صالح': 'Salah ', 'فضيلة': 'Fadila ', 'دونية': 'Dounia ', 'احمد': 'Ahmed ', 'علي': 'Ali ',
-    'عمر': 'Omar ', 'خديجة': 'Khadidja ', 'عائشة': 'Aicha ', 'ابراهيم': 'Brahim ',
-    'حسين': 'Hocine ', 'حسن': 'Hassan ', 'سعيد': 'Said ', 'كريم': 'Karim ', 'امين': 'Amine ',
-    'الدين': ' Eddine ', 'نور': 'Nour ', 'عبدال': 'Abdel ', 'ال': 'El '
+    'عبد': 'Abdel ',
+    'بن ': 'Ben ',
+    'بو': 'Bou ',
+    'محمد': 'Mohamed ',
+    'فاطمة': 'Fatima ',
+    'صالح': 'Salah ',
+    'فضيلة': 'Fadila ',
+    'دونية': 'Dounia ',
+    'احمد': 'Ahmed ',
+    'علي': 'Ali ',
+    'عمر': 'Omar ',
+    'خديجة': 'Khadidja ',
+    'عائشة': 'Aicha ',
+    'ابراهيم': 'Brahim ',
+    'حسين': 'Hocine ',
+    'حسن': 'Hassan ',
+    'سعيد': 'Said ',
+    'كريم': 'Karim ',
+    'امين': 'Amine ',
+    'الدين': ' Eddine ',
+    'نور': 'Nour ',
+    'عبدال': 'Abdel ',
+    'ال': 'El '
   };
 
+  // Scan and replace known Arabic words with their proper French equivalents
   for (const [ar, fr] of Object.entries(commonNames)) {
       processedText = processedText.replace(new RegExp(ar, 'g'), fr);
   }
 
-  // 3. PHONETIC MAP (Fallback 2)
+  // 2. PHONETIC MAP FOR UNKNOWN WORDS (The raw letters)
   const map = {
-    ا: 'a', أ: 'a', إ: 'i', آ: 'a', ى: 'a', ة: 'a', ب: 'b', ت: 't', ث: 't', ج: 'dj',
-    ح: 'h', خ: 'kh', د: 'd', ذ: 'd', ر: 'r', ز: 'z', س: 's', ش: 'ch', ص: 's', ض: 'd',
-    ط: 't', ظ: 'z', ع: 'a', غ: 'gh', ف: 'f', ق: 'k', ك: 'k', ل: 'l', م: 'm', ن: 'n',
+    ا: 'a', أ: 'a', إ: 'i', آ: 'a', ى: 'a', ة: 'a',
+    ب: 'b', ت: 't', ث: 't', ج: 'dj', ح: 'h', خ: 'kh',
+    د: 'd', ذ: 'd', ر: 'r', ز: 'z', س: 's', ش: 'ch',
+    ص: 's', ض: 'd', ط: 't', ظ: 'z', ع: 'a', غ: 'gh',
+    ف: 'f', ق: 'k', ك: 'k', ل: 'l', م: 'm', ن: 'n',
     ه: 'h', و: 'ou', ي: 'i', ' ': ' ', '-': '-', '.': '.',
   };
 
-  let lat = processedText.split('').map((char) => map[char] || char).join('');
+  let lat = processedText
+    .split('')
+    .map((char) => map[char] || char)
+    .join('');
 
-  // 4. CLEANUP
-  lat = lat.replace(/oua/g, 'wa').replace(/ouou/g, 'ou').replace(/ii/g, 'i')
-           .replace(/\s+/g, ' ').trim();
+  // 3. CLEANUP & FORMATTING
+  lat = lat
+    .replace(/oua/g, 'wa')
+    .replace(/ouou/g, 'ou')
+    .replace(/ii/g, 'i')
+    .replace(/\s+/g, ' ') // Remove double spaces
+    .trim();
 
+  // Convert to clean Title Case (e.g., "Dounia Salah" instead of "DOUNIA SALAH")
   return lat.split(' ').map(word => {
      if (!word) return '';
      return word.charAt(0).toUpperCase() + word.toLowerCase().slice(1);
   }).join(' ');
+};
+
+// --- FR-ALG TRANSLITERATION ENGINE (HYBRID DICTIONARY + PHONETIC) ---
+const transliterateFrToAr = (text) => {
+  if (!text) return '';
+  let processed = text.toLowerCase().trim();
+
+  // 1. ALGERIAN NAMES DICTIONARY (Reverse)
+  const commonNames = {
+    'abdel': 'عبد ال', 'ben': 'بن ', 'bou': 'بو ', 'mohamed': 'محمد', 'fatima': 'فاطمة',
+    'salah': 'صالح', 'fadila': 'فضيلة', 'dounia': 'دونية', 'ahmed': 'أحمد', 'ali': 'علي',
+    'omar': 'عمر', 'khadidja': 'خديجة', 'aicha': 'عائشة', 'brahim': 'إبراهيم',
+    'hocine': 'حسين', 'hassan': 'حسن', 'said': 'سعيد', 'karim': 'كريم', 'amine': 'أمين',
+    'eddine': 'الدين', 'nour': 'نور', 'el': 'ال'
+  };
+
+  for (const [fr, ar] of Object.entries(commonNames)) {
+      processed = processed.replace(new RegExp('\\b' + fr + '\\b', 'g'), ar);
+  }
+
+  // 2. PHONETIC MAP (Fallback)
+  const map = {
+    'a': 'ا', 'b': 'ب', 'c': 'ك', 'd': 'د', 'e': 'ي', 'f': 'ف', 'g': 'ق', 'h': 'ح',
+    'i': 'ي', 'j': 'ج', 'k': 'ك', 'l': 'ل', 'm': 'م', 'n': 'ن', 'o': 'و', 'p': 'ب',
+    'q': 'ق', 'r': 'ر', 's': 'س', 't': 'ت', 'u': 'و', 'v': 'ف', 'w': 'و', 'x': 'كس',
+    'y': 'ي', 'z': 'ز', ' ': ' '
+  };
+
+  processed = processed.replace(/ch/g, 'ش').replace(/kh/g, 'خ').replace(/dj/g, 'ج').replace(/ou/g, 'و').replace(/gh/g, 'غ');
+
+  return processed.split('').map(char => map[char] || char).join('').replace(/\s+/g, ' ').trim();
 };
 
   // --- SMART ARABIC REVERSAL ---
@@ -688,17 +738,29 @@ export default function UniversalOCRModal({
   // --- HELPERS (RESTORED) ---
   const createEmptyCandidate = () => ({
     id: Math.random(),
-    national_id: '',
-    full_name: '',
+    national_id: '', raw_id: '',
+    full_name: '', raw_name: '',
     department_id: '',
-    job_info: '',
+    job_info: '', raw_job: '',
     isArabic: false,
   });
 
   const cleanCandidate = (c) => {
-    // ID mutation filter removed to preserve raw OCR output.
+    // 1. Lock in the pure raw OCR output before any modifications
+    c.raw_id = c.national_id;
+    c.raw_name = c.full_name;
+    c.raw_job = c.job_info;
+
+    // 2. Global Auto-Correction: Fetch memory and apply instant fixes
+    try {
+      const dict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
+
+      if (c.national_id && dict.national_id[c.national_id]) c.national_id = dict.national_id[c.national_id];
+      if (c.full_name && dict.full_name[c.full_name]) c.full_name = dict.full_name[c.full_name];
+      if (c.job_info && dict.job_info[c.job_info]) c.job_info = dict.job_info[c.job_info];
+    } catch(e) { console.warn("Dictionary error", e); }
+
     c.isArabic = /[\u0600-\u06FF]/.test(c.full_name);
-    if (c.isArabic) c.original_name = c.full_name;
   };
 
   const updateCandidate = (id, field, val) => {
@@ -710,22 +772,18 @@ export default function UniversalOCRModal({
     if (candidates.length === 0) return;
     const valid = candidates.filter((c) => c.full_name || c.national_id);
 
-    // --- NEW: MACHINE LEARNING MEMORY UPDATE ---
+    // --- MACHINE LEARNING MEMORY UPDATE (ALL FIELDS) ---
     try {
-      let customDict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{}');
+      let dict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
       valid.forEach(c => {
-         // If it started as Arabic, and was converted/corrected to French
-         if (c.isArabic && c.original_name && c.full_name && c.full_name !== c.original_name) {
-            const rawKey = c.original_name.replace(/\s+/g, '');
-            // Save the exact final spelling the user approved
-            customDict[rawKey] = c.full_name.trim();
-         }
+         // If what the user is saving is different from what the OCR originally saw, memorize the fix
+         if (c.raw_id && c.national_id && c.raw_id !== c.national_id) dict.national_id[c.raw_id] = c.national_id.trim();
+         if (c.raw_name && c.full_name && c.raw_name !== c.full_name) dict.full_name[c.raw_name] = c.full_name.trim();
+         if (c.raw_job && c.job_info && c.raw_job !== c.job_info) dict.job_info[c.raw_job] = c.job_info.trim();
       });
-      localStorage.setItem('ocr_smart_dict', JSON.stringify(customDict));
-    } catch(e) {
-      console.warn("Failed to save to smart dictionary", e);
-    }
-    // -------------------------------------------
+      localStorage.setItem('ocr_smart_dict', JSON.stringify(dict));
+    } catch(e) {}
+    // ---------------------------------------------------
 
     for (const c of valid) {
       const data = {
@@ -1354,30 +1412,22 @@ export default function UniversalOCRModal({
                           onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)}
                           style={{ fontWeight: 'bold', flex: 1 }}
                         />
-                        {/* TWO-WAY TOGGLE: Shows permanently if the row was originally Arabic */}
-                        {c.isArabic && (
-                          <button
-                            onClick={() => {
-                               const isCurrentlyArabic = /[\u0600-\u06FF]/.test(c.full_name);
-                               if (isCurrentlyArabic) {
-                                   // Translate to French
-                                   updateCandidate(c.id, 'full_name', transliterateArToFr(c.full_name));
-                               } else {
-                                   // Revert back to Original Arabic
-                                   updateCandidate(c.id, 'full_name', c.original_name);
-                               }
-                            }}
-                            className="btn btn-outline btn-sm"
-                            title={/[\u0600-\u06FF]/.test(c.full_name) ? "Convertir en Français" : "Restaurer l'Arabe"}
-                            style={{ 
-                               padding: '4px 8px', 
-                               borderColor: /[\u0600-\u06FF]/.test(c.full_name) ? '#3b82f6' : '#10b981', 
-                               color: /[\u0600-\u06FF]/.test(c.full_name) ? '#3b82f6' : '#10b981' 
-                            }}
-                          >
-                            <FaGlobeAfrica />
-                          </button>
-                        )}
+                        {/* UNIVERSAL TRANSLATE BUTTON (Works in both directions) */}
+                        <button
+                          onClick={() => {
+                             const isCurrentlyArabic = /[\u0600-\u06FF]/.test(c.full_name);
+                             if (isCurrentlyArabic) {
+                                 updateCandidate(c.id, 'full_name', transliterateArToFr(c.full_name));
+                             } else {
+                                 updateCandidate(c.id, 'full_name', transliterateFrToAr(c.full_name));
+                             }
+                          }}
+                          className="btn btn-outline btn-sm"
+                          title={/[\u0600-\u06FF]/.test(c.full_name) ? "Traduire en Français" : "Traduire en Arabe"}
+                          style={{ padding: '4px 8px', borderColor: '#3b82f6', color: '#3b82f6' }}
+                        >
+                          <FaGlobeAfrica />
+                        </button>
                       </td>
                       <td style={{ padding: '8px' }}>
                         <select
