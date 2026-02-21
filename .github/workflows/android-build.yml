@@ -15,7 +15,7 @@ jobs:
       # Java MUST come before cap sync
       - uses: actions/setup-java@v4
         with:
-          java-version: '17'
+          java-version: '21'
           distribution: 'temurin'
 
       - name: Setup Android SDK
