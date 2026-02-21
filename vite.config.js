@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import wasm from 'vite-plugin-wasm';
 
 // [FIX] We remove topLevelAwait because it often causes silent hangs in Android WebViews.
-// es2022 handles the necessary logic natively without the extra plugin wrapper.
+// es2020 handles the necessary logic natively without the extra plugin wrapper.
 
 export default defineConfig({
   assetsInclude: ['**/*.onnx', '**/*.wasm'],
@@ -13,24 +13,16 @@ export default defineConfig({
   ],
   
   // [CRITICAL FIX] Capacitor requires an absolute base path ('/') to resolve 
-  // dynamic chunks correctly. './' will cause a blank screen in APKs.
+  // dynamic chunks correctly. './' causes 404 errors for JS files in APKs.
   base: '/', 
-
-  server: {
-    host: '0.0.0.0',
-    headers: {
-      'Cross-Origin-Opener-Policy': 'same-origin',
-      'Cross-Origin-Embedder-Policy': 'require-corp',
-    },
-  },
 
   build: {
     // [FIX] target es2020 is the most stable for modern Android WebViews.
+    // 'esnext' can produce code that older WebViews cannot parse.
     target: 'es2020', 
-    chunkSizeWarningLimit: 4000,
+    chunkSizeWarningLimit: 5000,
     rollupOptions: {
       output: {
-        // [STRATEGY] We keep the chunks but use a simpler naming convention
         manualChunks(id) {
           if (id.includes('@techstark/opencv-js')) return 'opencv-lib';
           if (id.includes('UniversalOCRModal')) return 'ocr-feature';

@@ -3,29 +3,6 @@ import Tesseract from 'tesseract.js';
 import Ocr from '@gutenye/ocr-browser';
 import * as ort from 'onnxruntime-web';
 
-const isProd = import.meta.env.PROD;
-
-// [FIX] Hybrid Detection for Standard vs Standalone
-// 1. If we are in a single-file build, 'ort-wasm.wasm' is often inlined.
-// 2. By NOT setting wasmPaths if the file is inlined, we let Vite's transform handle it.
-if (isProd) {
-  // Check if we are running from a local file (Standalone) or a server (Standard)
-  const isStandalone = window.location.protocol === 'file:';
-  
-  if (!isStandalone) {
-    // Standard Production Build: Use local assets folder
-    ort.env.wasm.wasmPaths = '/assets/';
-  } 
-  // Else: Let the 'assetsInclude' from vite.config handle the inlined Base64
-} else {
-  // Development: Use CDN
-  ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
-}
-
-ort.env.wasm.proxy = true;
-ort.env.wasm.numThreads = 1;
-window.ort = ort;
-
 import { db } from '../services/db';
 import {
   FaCamera,
@@ -262,6 +239,51 @@ export default function UniversalOCRModal({
     isMounted.current = true; // FIX: Forces true on remount for React 18 Strict Mode
     return () => {
       isMounted.current = false;
+    };
+  }, []);
+
+  // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
+  useEffect(() => {
+    console.log("Initializing OCR Engine in Sandbox...");
+    const isProd = import.meta.env.PROD;
+    
+    // Detect if running as an isolated local file (No Server)
+    const isStandaloneFile = window.location.protocol === 'file:' || window.location.origin === 'null';
+
+    // 1. Thread & Worker Rules
+    // If standalone file, disable Proxy (Workers) to prevent SecurityError. Otherwise, use Workers.
+    ort.env.wasm.proxy = !isStandaloneFile; 
+    ort.env.wasm.numThreads = isStandaloneFile ? 1 : 2;
+
+    // 2. Path Rules
+    if (isProd) {
+      if (!isStandaloneFile) {
+        // APK (Capacitor) or PC Local Server
+        ort.env.wasm.wasmPaths = '/assets/';
+      }
+    } else {
+      // npm run dev
+      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
+    }
+    window.ort = ort;
+
+    // THE KILL SWITCH
+    return () => {
+      console.log("Modal closed: Executing Memory Kill Switch...");
+      
+      // Destroy ONNX Runtime
+      if (window.ort) {
+        window.ort.env.wasm.numThreads = 0;
+        window.ort = null;
+      }
+      
+      // Destroy OpenCV Global
+      if (window.cv) {
+        window.cv = null;
+      }
+      
+      // Force Garbage Collection hint (browser decides when to actually clear it)
+      console.log("OCR RAM flagged for deletion.");
     };
   }, []);
 
