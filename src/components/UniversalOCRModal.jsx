@@ -251,14 +251,16 @@ export default function UniversalOCRModal({
     const isStandaloneFile = window.location.protocol === 'file:' || window.location.origin === 'null';
 
     // 1. Thread & Worker Rules
-    // If standalone file, disable Proxy (Workers) to prevent SecurityError. Otherwise, use Workers.
-    ort.env.wasm.proxy = !isStandaloneFile; 
+    // [FIX] Disable Proxy completely for Android WebView compatibility
+    // This prevents the "Failed to fetch dynamically imported module" error
+    ort.env.wasm.proxy = false; 
     ort.env.wasm.numThreads = isStandaloneFile ? 1 : 2;
 
     // 2. Path Rules
     if (isProd) {
-      // FIX: Use relative path so it works on both APK (file://) and web server
-      ort.env.wasm.wasmPaths = './assets/'; // was '/assets/' (absolute = broken on APK)
+      // [FIX] Use absolute-ish path for Capacitor 'https://localhost/'
+      // If we use './assets/', it might double up if the base is already assets/
+      ort.env.wasm.wasmPaths = 'https://localhost/'; 
     } else {
       // npm run dev
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
@@ -549,9 +551,16 @@ export default function UniversalOCRModal({
       const numWorkers = 2;
       if (isMounted.current) addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
 
+      // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
       for (let i = 0; i < numWorkers; i++) {
-        const w = await Tesseract.createWorker(langs, 1);
-        workers.push(w);
+        try {
+          const w = await Tesseract.createWorker(langs, 1);
+          workers.push(w);
+        } catch (e) {
+          console.error('[TESSERACT] Worker init failed:', e);
+          addLog(`[TESSERACT ERROR] Impossible de charger le moteur (Vérifiez votre connexion au premier démarrage).`);
+          throw new Error('Moteur OCR indisponible. Connexion internet requise au premier lancement.');
+        }
       }
 
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
@@ -661,12 +670,14 @@ export default function UniversalOCRModal({
   // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE RESTORED + IMPROVED) ==========
   // Helper function to get the correct models URL for Capacitor APK
   const getModelsUrl = () => {
-    // Capacitor APK uses file:// — models must be relative to index.html
+    // [FIX] In Capacitor Android, the app is served from https://localhost/
+    if (window.location.protocol === 'https:' && window.location.hostname === 'localhost') {
+      return 'https://localhost/models/';
+    }
+    // Fallback for standalone file or dev
     if (window.location.protocol === 'file:' || window.location.origin === 'null') {
-      // Capacitor serves from the www/ folder root
       return './models/';
     }
-    // Dev server or production web server
     const base = window.location.origin + 
       window.location.pathname.split('/').slice(0, -1).join('/') + '/';
     return base + 'models/';
@@ -802,9 +813,15 @@ export default function UniversalOCRModal({
     try {
       if (isMounted.current) addLog('[HYBRID] Starting Engines...');
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
-      const worker1 = await Tesseract.createWorker(langs, 1);
-      const worker2 = await Tesseract.createWorker(langs, 1);
-      tesseractWorkers = [worker1, worker2];
+      
+      // [FIX] Safe init for Hybrid mode
+      try {
+        const worker1 = await Tesseract.createWorker(langs, 1);
+        const worker2 = await Tesseract.createWorker(langs, 1);
+        tesseractWorkers = [worker1, worker2];
+      } catch (e) {
+        throw new Error('Moteur Tesseract indisponible (Requis pour Hybrid).');
+      }
 
       const modelsUrl = getModelsUrl();
       paddleOcr = await Ocr.create({
