@@ -14,7 +14,13 @@ jobs:
 
       - name: Build Web Assets
         run: |
-          npm install
+          # 1. Force install despite the ESLint conflict
+          npm install --legacy-peer-deps
+          
+          # 2. Grant the compiler 4GB of RAM (just like on your phone)
+          export NODE_OPTIONS="--max-old-space-size=4096"
+          
+          # 3. Build and Sync
           npm run build
           npx cap sync android
 
