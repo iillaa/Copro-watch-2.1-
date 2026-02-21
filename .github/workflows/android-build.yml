@@ -12,27 +12,41 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Build Web Assets
-        run: |
-          # 1. Force install despite the ESLint conflict
-          npm install --legacy-peer-deps
-          
-          # 2. Grant the compiler 4GB of RAM (just like on your phone)
-          export NODE_OPTIONS="--max-old-space-size=4096"
-          
-          # 3. Build and Sync
-          npm run build
-          npx cap sync android
-
+      # Java MUST come before cap sync
       - uses: actions/setup-java@v4
         with:
-          java-version: '21'
+          java-version: '17'
           distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Build Web Assets
+        run: |
+          npm install --legacy-peer-deps
+          export NODE_OPTIONS="--max-old-space-size=4096"
+          npm run build
+
+      - name: Verify dist output
+        run: |
+          echo "=== dist/index.html ==="
+          cat dist/index.html
+
+      - name: Sync Capacitor
+        run: npx cap sync android
+
+      - name: Verify Android assets
+        run: |
+          echo "=== Android public folder ==="
+          ls -la android/app/src/main/assets/public/
+          echo "=== index.html in APK ==="
+          cat android/app/src/main/assets/public/index.html
 
       - name: Build Release APK
         run: |
           cd android
-          bash gradlew assembleRelease
+          chmod +x gradlew
+          ./gradlew assembleRelease
 
       - name: Sign Release APK
         env:
@@ -43,7 +57,13 @@ jobs:
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.keystore
           BUILD_TOOLS_PATH=$(ls -d $ANDROID_HOME/build-tools/* | tail -1)
-          "$BUILD_TOOLS_PATH/apksigner" sign --ks release.keystore --ks-key-alias "$ANDROID_KEY_ALIAS" --ks-pass pass:"$ANDROID_KEYSTORE_PASSWORD" --key-pass pass:"$ANDROID_KEY_PASSWORD" --out android/app/build/outputs/apk/release/app-release-signed.apk android/app/build/outputs/apk/release/app-release.apk
+          "$BUILD_TOOLS_PATH/apksigner" sign \
+            --ks release.keystore \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass pass:"$ANDROID_KEYSTORE_PASSWORD" \
+            --key-pass pass:"$ANDROID_KEY_PASSWORD" \
+            --out android/app/build/outputs/apk/release/app-release-signed.apk \
+            android/app/build/outputs/apk/release/app-release.apk
 
       - uses: actions/upload-artifact@v4
         with:
