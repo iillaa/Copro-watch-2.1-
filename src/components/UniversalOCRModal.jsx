@@ -33,6 +33,7 @@ import {
   FaImage,
   FaEye,
   FaLightbulb,
+  FaTrash,
 } from 'react-icons/fa';
 
 // --- ALG-FR TRANSLITERATION ENGINE (SMART DICTIONARY + PHONETIC) ---
@@ -144,6 +145,39 @@ export default function UniversalOCRModal({
   const addLog = (msg) => {
     const time = new Date().toLocaleTimeString();
     setLogs((prev) => [...prev, `[${time}] ${msg}`]);
+  };
+
+  // ========== GRID PRESET MANAGER ==========
+  const saveGridPreset = () => {
+    const name = prompt("Nom du template (ex: Tableau_Resto_V1):");
+    if (!name) return;
+    const presets = JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}');
+    presets[name] = { vLines, hLines, colMapping, colEngines };
+    localStorage.setItem('ocr_grid_presets', JSON.stringify(presets));
+    addLog(`[GRID] Preset "${name}" sauvegardé.`);
+  };
+
+  const loadGridPreset = (name) => {
+    const presets = JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}');
+    const p = presets[name];
+    if (p) {
+      setVLines(p.vLines);
+      setHLines(p.hLines);
+      setColMapping(p.colMapping);
+      if (p.colEngines) setColEngines(p.colEngines);
+      addLog(`[GRID] Preset "${name}" appliqué.`);
+    }
+  };
+
+  const deleteGridPreset = (name) => {
+    if (!confirm(`Supprimer le preset "${name}" ?`)) return;
+    const presets = JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}');
+    delete presets[name];
+    localStorage.setItem('ocr_grid_presets', JSON.stringify(presets));
+    addLog(`[GRID] Preset "${name}" supprimé.`);
+    // Force re-render by toggling a state
+    setShowHelp(false);
+    setTimeout(() => setShowHelp(true), 100);
   };
 
   // Grid State
@@ -696,10 +730,13 @@ export default function UniversalOCRModal({
   };
 
   // --- HELPERS (RESTORED) ---
-  const createEmptyCandidate = () => ({
+ const createEmptyCandidate = () => ({
     id: Math.random(),
+    full_name: '',       // Text currently shown in the box
+    original_ar: '',     // The Arabic anchor
+    manual_fr: '',       // Your specific French correction
+    is_viewing_ar: true, 
     national_id: '', raw_id: '',
-    full_name: '', raw_name: '',
     department_id: '',
     job_info: '', raw_job: '',
     isArabic: false,
@@ -711,25 +748,41 @@ export default function UniversalOCRModal({
     c.raw_name = c.full_name;
     c.raw_job = c.job_info;
 
-    // 2. Global Auto-Correction (SPACE-IMMUNE)
+    // 2. Identify the base language from the raw scan
+    const isAr = /[\u0600-\u06FF]/.test(c.full_name);
+    c.isArabic = isAr;
+    c.is_viewing_ar = isAr; 
+
+    // 3. Set the Arabic Anchor FIRST (The Master Source)
+    if (isAr) {
+      c.original_ar = c.full_name;
+    } else {
+      // If the document was scanned in French, generate an Arabic anchor
+      c.original_ar = transliterateFrToAr(c.full_name);
+    }
+
+    // 4. Global Auto-Correction (SPACE-IMMUNE)
     try {
       const dict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
       
       if (c.national_id) {
-         const key = c.national_id.replace(/\s+/g, ''); // Strip spaces for lookup
+         const key = c.national_id.replace(/\s+/g, ''); 
          if (dict.national_id[key]) c.national_id = dict.national_id[key];
       }
-      if (c.full_name) {
-         const key = c.full_name.replace(/\s+/g, ''); // Strip spaces for lookup
-         if (dict.full_name[key]) c.full_name = dict.full_name[key];
-      }
       if (c.job_info) {
-         const key = c.job_info.replace(/\s+/g, ''); // Strip spaces for lookup
+         const key = c.job_info.replace(/\s+/g, ''); 
          if (dict.job_info[key]) c.job_info = dict.job_info[key];
       }
+      
+      // INTELLIGENCE FIX: If the dictionary knows the name, save it to the French Master Slot,
+      // but do NOT overwrite the Arabic anchor.
+      if (c.original_ar) {
+         const key = c.original_ar.replace(/\s+/g, '');
+         if (dict.full_name[key]) {
+             c.manual_fr = dict.full_name[key]; 
+         }
+      }
     } catch(e) { console.warn("Dictionary error", e); }
-
-    c.isArabic = /[\u0600-\u06FF]/.test(c.full_name);
   };
 
   const updateCandidate = (id, field, val) => {
@@ -938,14 +991,38 @@ const handleBulkImport = async () => {
                   ></div>
                   <button
                     className="btn btn-outline btn-sm"
-                    onClick={() => setVLines([...vLines, 0.5])}
+                    onClick={() => {
+                      const sorted = [...vLines].sort((a, b) => a - b);
+                      const lastPos = sorted.length > 0 ? sorted[sorted.length - 1] : 0.5;
+                      let nextPos;
+                      if (sorted.length >= 2) {
+                        const delta = sorted[sorted.length - 1] - sorted[sorted.length - 2];
+                        nextPos = (lastPos + delta > 0.98) ? (lastPos + 0.04) : (lastPos + delta);
+                      } else {
+                        nextPos = lastPos + 0.1;
+                      }
+                      setVLines([...vLines, Math.min(0.99, nextPos)]);
+                    }}
                     style={{ color: '#3b82f6', borderColor: '#3b82f6', fontWeight: 'bold' }}
                   >
                     + Col
                   </button>
                   <button
                     className="btn btn-outline btn-sm"
-                    onClick={() => setHLines([...hLines, 0.5])}
+                    onClick={() => {
+                       const sorted = [...hLines].sort((a, b) => a - b);
+                       let newH = 0.5;
+                       if (sorted.length >= 2) {
+                           // SMART SPACING: Calculate distance between last two lines
+                           const delta = sorted[sorted.length - 1] - sorted[sorted.length - 2];
+                           newH = sorted[sorted.length - 1] + delta;
+                       } else if (sorted.length === 1) {
+                           newH = sorted[0] + 0.05;
+                       }
+                       // Prevent spawning completely off-screen
+                       if (newH > 0.98) newH = 0.95; 
+                       setHLines([...hLines, newH]);
+                    }}
                     style={{ color: '#ef4444', borderColor: '#ef4444', fontWeight: 'bold' }}
                   >
                     + Ligne
@@ -961,28 +1038,7 @@ const handleBulkImport = async () => {
                     Reset
                   </button>
 
-                  <label
-                    className="btn btn-sm"
-                    style={{
-                      border: '1px solid #f59e0b',
-                      color: '#f59e0b',
-                      background: debugMode ? '#fef3c7' : 'white',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      gap: '5px',
-                      alignItems: 'center',
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={debugMode}
-                      onChange={(e) => setDebugMode(e.target.checked)}
-                      style={{ display: 'none' }}
-                    />
-                    <FaBug /> Debug
-                  </label>
-
-                  {/* NEW: HELP BUTTON */}
+                  {/* HELP BUTTON (moved debug toggle to bulb panel) */}
                   <button 
                     className="btn btn-sm" 
                     onClick={() => setShowHelp(true)}
@@ -1213,11 +1269,11 @@ const handleBulkImport = async () => {
                           onPointerMove={(e) => {
                             if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
                             const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
-                            // MATH FIXED: Clean percentage of image width
                             const nx = (e.clientX - rect.left) / rect.width;
                             const nv = [...vLines];
                             nv[i] = Math.max(0, Math.min(1, nx));
-                            setVLines(nv.sort((a, b) => a - b));
+                            // FIX: Removed the real-time .sort() to stop lines from jumping out of your finger
+                            setVLines(nv);
                           }}
                           onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
                         ><FaArrowsAltH size={12} /></div>
@@ -1236,11 +1292,11 @@ const handleBulkImport = async () => {
                           onPointerMove={(e) => {
                             if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
                             const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
-                            // MATH FIXED: Clean percentage of image height (No more -30px drift)
                             const ny = (e.clientY - rect.top) / rect.height;
                             const nh = [...hLines];
                             nh[i] = Math.max(0, Math.min(1, ny));
-                            setHLines(nh.sort((a, b) => a - b));
+                            // FIX: Removed the real-time .sort() to stop lines from jumping out of your finger
+                            setHLines(nh);
                           }}
                           onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
                           onDoubleClick={() => setHLines(hLines.filter((_, idx) => idx !== i))}
@@ -1285,8 +1341,8 @@ const handleBulkImport = async () => {
               </div>
             )}
 
-            {/* Logs */}
-            {logs.length > 0 && (
+            {/* Logs - Only show when debug mode is active */}
+            {debugMode && logs.length > 0 && (
               <div
                 style={{
                   marginTop: '10px',
@@ -1418,30 +1474,46 @@ const handleBulkImport = async () => {
                         <input
                           className="input"
                           value={c.full_name}
-                          onChange={(e) => updateCandidate(c.id, 'full_name', e.target.value)}
+                          onChange={(e) => {
+                            const newVal = e.target.value;
+                            updateCandidate(c.id, 'full_name', newVal);
+                            
+                            if (c.is_viewing_ar) {
+                              // You are editing the SOURCE. 
+                              // This is the Master Reset: Discard manual French edit.
+                              updateCandidate(c.id, 'original_ar', newVal);
+                              updateCandidate(c.id, 'manual_fr', ''); 
+                            } else {
+                              // You are editing the TRANSLATION.
+                              // Save this as the "Master" version for the French slot.
+                              updateCandidate(c.id, 'manual_fr', newVal);
+                            }
+                          }}
                           style={{ fontWeight: 'bold', flex: 1 }}
                         />
-                        {/* SMART TOGGLE BUTTON (No infinite loops) */}
+                        {/* SMART TOGGLE BUTTON - Complementary Logic */}
                         <button
                           onClick={() => {
-                             if (c.alt_name) {
-                                 // State 2: Revert to the exact original text you typed/scanned
-                                 updateCandidate(c.id, 'full_name', c.alt_name);
-                                 updateCandidate(c.id, 'alt_name', ''); // Clear memory to reset toggle
-                             } else {
-                                 // State 1: Save current text to memory, then translate
-                                 updateCandidate(c.id, 'alt_name', c.full_name);
-                                 const isCurrentlyArabic = /[\u0600-\u06FF]/.test(c.full_name);
-                                 const translation = isCurrentlyArabic ? transliterateArToFr(c.full_name) : transliterateFrToAr(c.full_name);
-                                 updateCandidate(c.id, 'full_name', translation);
-                             }
+                            if (c.is_viewing_ar) {
+                              // GOING TO FRENCH: 
+                              // If you already have a manual edit, show it. Otherwise, ask the AI.
+                              const targetFr = c.manual_fr || transliterateArToFr(c.full_name);
+                              updateCandidate(c.id, 'original_ar', c.full_name); // Lock the Ar before switching
+                              updateCandidate(c.id, 'full_name', targetFr);
+                              updateCandidate(c.id, 'is_viewing_ar', false);
+                            } else {
+                              // GOING TO ARABIC:
+                              // Always return to the locked original_ar anchor.
+                              updateCandidate(c.id, 'full_name', c.original_ar);
+                              updateCandidate(c.id, 'is_viewing_ar', true);
+                            }
                           }}
                           className="btn btn-outline btn-sm"
-                          title={c.alt_name ? "Restaurer l'original" : ( /[\u0600-\u06FF]/.test(c.full_name) ? "Traduire en Français" : "Traduire en Arabe" )}
+                          title={c.is_viewing_ar ? "Traduire en Français" : "Traduire en Arabe"}
                           style={{ 
                               padding: '4px 8px', 
-                              borderColor: c.alt_name ? '#10b981' : '#3b82f6', 
-                              color: c.alt_name ? '#10b981' : '#3b82f6' 
+                              borderColor: c.manual_fr ? '#10b981' : '#3b82f6', 
+                              color: c.manual_fr ? '#10b981' : '#3b82f6' 
                           }}
                         >
                           <FaGlobeAfrica />
@@ -1503,37 +1575,77 @@ const handleBulkImport = async () => {
             </button>
           </div>
         )}
-        {/* NEW: HELP OVERLAY & DICTIONARY MANAGER */}
+        {/* HELP OVERLAY WITH DICTIONARY & PRESETS */}
         {showHelp && (
           <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
             <div style={{ background: 'white', borderRadius: '8px', padding: '20px', maxWidth: '500px', width: '100%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
                
                <h3 style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaLightbulb /> Guide de Scan OCR</h3>
+               
+               {/* DEBUG TOGGLE BUTTON - Moved here from toolbar */}
+               <div style={{ marginBottom: '15px', padding: '10px', background: debugMode ? '#fef3c7' : '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
+                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold', color: debugMode ? '#f59e0b' : '#64748b' }}>
+                   <input
+                     type="checkbox"
+                     checked={debugMode}
+                     onChange={(e) => setDebugMode(e.target.checked)}
+                     style={{ width: '18px', height: '18px', accentColor: '#f59e0b' }}
+                   />
+                   <FaBug /> Mode Debug
+                 </label>
+                 <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '5px 0 0 28px', marginTop: '5px' }}>
+                   Affiche les logs de la console OCR et les traces des cellules découpées.
+                 </p>
+               </div>
+
+               <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '15px 0' }} />
                <ul style={{ paddingLeft: '20px', fontSize: '0.9rem', lineHeight: '1.6', color: '#334155' }}>
-                 <li style={{ marginBottom: '10px' }}><b>Les Lignes :</b> Placez les lignes <u>à l'intérieur</u> des cases. Ne touchez jamais le trait noir du tableau.</li>
-                 <li style={{ marginBottom: '10px' }}><b>Papier :</b> La feuille doit être parfaitement plate. L'éclairage doit être uniforme.</li>
+                 <li style={{ marginBottom: '10px' }}><b>Les Lignes :</b> Placez les lignes <u>à l'intérieur</u> des cases.</li>
+                 <li style={{ marginBottom: '10px' }}><b>Papier :</b> La feuille doit être parfaitement plate.</li>
                </ul>
 
                <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '20px 0' }} />
 
-               <h3 style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaSave /> Mémoire IA (Dictionnaire)</h3>
-               <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '15px' }}>
-                 Le système apprend automatiquement vos corrections. Vous pouvez sauvegarder ce cerveau ou importer une base de données existante.
-               </p>
+               <h3 style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaSave /> Mémoire IA (Dictionaire)</h3>
                <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                 <button onClick={exportDictionary} className="btn btn-outline" style={{ flex: 1, borderColor: '#10b981', color: '#10b981' }}>
-                   Exporter (Backup)
-                 </button>
+                 <button onClick={exportDictionary} className="btn btn-outline" style={{ flex: 1, borderColor: '#10b981', color: '#10b981' }}>Exporter</button>
                  <label className="btn btn-outline" style={{ flex: 1, borderColor: '#3b82f6', color: '#3b82f6', textAlign: 'center', cursor: 'pointer' }}>
-                   Importer JSON
+                   Importer
                    <input type="file" accept=".json" onChange={importDictionary} style={{ display: 'none' }} />
                  </label>
                </div>
+
+               <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '20px 0' }} />
+
+               <h3 style={{ color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaSave /> Grilles Prédéfinies</h3>
+               <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '15px' }}>
+                 Sauvegardez vos configurations de grille.
+               </p>
+               <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                <button onClick={saveGridPreset} className="btn btn-outline" style={{ flex: 1, borderColor: '#8b5cf6', color: '#8b5cf6' }}>💾 Sauvegarder</button>
+                <select className="input" style={{ flex: 1 }} onChange={(e) => { if (e.target.value) { loadGridPreset(e.target.value); e.target.value = ''; } }} defaultValue="">
+                  <option value="" disabled>Charger...</option>
+                  {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).map(name => (<option key={name} value={name}>{name}</option>))}
+                </select>
+              </div>
+              {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).length > 0 && (
+                <div style={{ marginBottom: '20px' }}>
+                  <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '5px' }}>Supprimer un preset:</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                    {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).map(name => (
+                      <button key={name} onClick={() => deleteGridPreset(name)} className="btn btn-sm" style={{ border: '1px solid #ef4444', color: '#ef4444', padding: '2px 6px', fontSize: '0.7rem' }}>
+                        <FaTrash /> {name}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
                <button onClick={() => setShowHelp(false)} className="btn btn-primary" style={{ width: '100%', fontWeight: 'bold' }}>Fermer</button>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
