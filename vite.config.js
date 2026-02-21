@@ -16,6 +16,14 @@ export default defineConfig({
   // dynamic chunks correctly. './' will cause a blank screen in APKs.
   base: '/', 
 
+  server: {
+    host: '0.0.0.0',
+    headers: {
+      'Cross-Origin-Opener-Policy': 'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
+    },
+  },
+
   build: {
     // [FIX] target es2020 is the most stable for modern Android WebViews.
     target: 'es2020', 
