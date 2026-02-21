@@ -40,6 +40,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const [holders, setHolders] = useState([]);
   const [departments, setDepartments] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState(null);
 
   const [searchTerm, setSearchTerm] = useState('');
   const deferredSearch = useDeferredValue(searchTerm);
@@ -171,6 +172,34 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const toggleSelectAll = () => {
     if (selectedIds.size === filteredHolders.length) setSelectedIds(new Set());
     else setSelectedIds(new Set(filteredHolders.map((h) => h.id)));
+  };
+
+  const handleDelete = async (e, holder) => {
+    e.stopPropagation();
+    if (window.confirm(`Êtes-vous sûr de vouloir supprimer ${holder.full_name} ?`)) {
+      try {
+        setDeletingId(holder.id);
+        await db.deleteWeaponHolder(holder.id); // Wait for DB to finish
+        await loadData(); // Reload safely
+        showToast('Agent supprimé.', 'success');
+      } catch (error) {
+        console.error('Delete failed', error);
+        showToast('Erreur lors de la suppression', 'error');
+      } finally {
+        setDeletingId(null);
+      }
+    }
+  };
+
+  // [RESTORED PARITY] Search Highlighting Function
+  const highlightMatch = (text) => {
+    if (!searchTerm || !text) return text;
+    const parts = String(text).split(new RegExp(`(${searchTerm})`, 'gi'));
+    return parts.map((part, i) => 
+      part.toLowerCase() === searchTerm.toLowerCase() 
+        ? <span key={i} style={{ backgroundColor: '#fef08a', padding: '0 2px', borderRadius: '2px' }}>{part}</span> 
+        : part
+    );
   };
 
   const handleBatchDelete = async () => {
@@ -506,8 +535,20 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
 
       {/* [SURGICAL FIX] Disable internal scroll when not in compact mode */}
       <div className="scroll-wrapper" style={{ maxHeight: compactMode ? '75vh' : 'none' }}>
-        <div className="hybrid-container">
-          <div className="hybrid-header" style={{ gridTemplateColumns: gridTemplate }}>
+        
+        {/* [RESTORED PARITY] Empty State UI */}
+        {filteredHolders.length === 0 ? (
+          <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
+            <FaUserPlus style={{ fontSize: '3rem', color: '#cbd5e1', marginBottom: '1rem' }} />
+            <h3>Aucun agent trouvé</h3>
+            <p>Commencez par ajouter un détenteur d'arme ou modifiez vos filtres de recherche.</p>
+            <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={() => setShowForm(true)}>
+              <FaPlus /> Ajouter un agent
+            </button>
+          </div>
+        ) : (
+          <div className="hybrid-container">
+            <div className="hybrid-header" style={{ gridTemplateColumns: gridTemplate }}>
             <div style={{ textAlign: 'center' }}>
               {isSelectionMode && (
                 <input
@@ -572,13 +613,13 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                   )}
                 </div>
                 <div className="hybrid-cell" style={{ fontWeight: 600 }}>
-                  {h.full_name}
+                  {highlightMatch(h.full_name)} {/* <--- HIGHLIGHT APPLIED */}
                 </div>
                 <div className="hybrid-cell">
-                  <span className="badge-id">{h.national_id}</span>
+                  <span className="badge-id">{highlightMatch(h.national_id)}</span> {/* <--- HIGHLIGHT APPLIED */}
                 </div>
                 <div className="hybrid-cell">{deptName}</div>
-                <div className="hybrid-cell">{h.job_function}</div>
+                <div className="hybrid-cell">{highlightMatch(h.job_function)}</div> {/* <--- HIGHLIGHT APPLIED */}
                 <div className="hybrid-cell">
                   <span
                     style={{
@@ -628,22 +669,30 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                   </button>
                   <button
                     className="btn btn-sm btn-outline"
-                    style={{ color: 'var(--danger)' }}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (window.confirm('Supprimer ?')) {
-                        db.deleteWeaponHolder(h.id);
-                        loadData();
-                      }
+                    onClick={(e) => handleDelete(e, h)}
+                    disabled={deletingId === h.id}
+                    style={{
+                      color: 'var(--danger)',
+                      borderColor: 'var(--danger)',
+                      backgroundColor: '#fff1f2',
                     }}
+                    title="Supprimer"
                   >
-                    <FaTrash />
+                    {deletingId === h.id ? (
+                      <div
+                        className="loading-spinner"
+                        style={{ width: '12px', height: '12px', borderWidth: '2px', borderTopColor: 'var(--danger)' }}
+                      ></div>
+                    ) : (
+                      <FaTrash />
+                    )}
                   </button>
                 </div>
               </div>
             );
           })}
-        </div>
+          </div>
+        )}
       </div>
 
       {selectedIds.size > 0 && (
