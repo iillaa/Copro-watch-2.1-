@@ -58,7 +58,7 @@ const dbInstance = new CoproDatabase();
 function stringifyInWorker(data) {
   return new Promise((resolve, reject) => {
     const worker = new ExportWorker();
-    
+
     worker.onmessage = (e) => {
       if (e.data.success) {
         resolve(e.data.json);
@@ -85,8 +85,8 @@ async function triggerBackupCheck() {
 
     if (triggerType) {
       console.log(`[DB] Backup due (${triggerType}). Executing export IMMEDIATELY...`);
-      // We removed requestIdleCallback. It is too dangerous on mobile because 
-      // the OS kills it if the user swipes the app away. 
+      // We removed requestIdleCallback. It is too dangerous on mobile because
+      // the OS kills it if the user swipes the app away.
       // Execute immediately to guarantee data reaches the file system.
       try {
         await backupService.performAutoExport(async () => await exportData(), triggerType);
@@ -119,7 +119,7 @@ async function exportData() {
     weapon_exams: await dbInstance.weapon_exams.toArray(),
     weapon_departments: await dbInstance.weapon_departments.toArray(),
   };
-  
+
   // B. Stringify in Background (No UI Freeze)
   // This replaces "return JSON.stringify(rawData)"
   return await stringifyInWorker(rawData);
@@ -409,7 +409,7 @@ export const db = {
       return false;
     }
   },
-  
+
   // [NEW] JANITOR FUNCTION
   async cleanupOrphans() {
     console.log('🧹 Starting Cleanup...');

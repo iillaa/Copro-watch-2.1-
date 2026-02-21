@@ -3,17 +3,28 @@ import Tesseract from 'tesseract.js';
 import Ocr from '@gutenye/ocr-browser';
 import * as ort from 'onnxruntime-web';
 
-// 1. MATCH YOUR VERSION (Change 1.19.0 to whatever 'npm list' showed)
-const ORT_VERSION = '1.24.1'; 
-const CDN_URL = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+const isProd = import.meta.env.PROD;
 
-// 2. FORCE PATHS BEFORE THE LIBRARY LOADS
-ort.env.wasm.wasmPaths = CDN_URL;
-// This tells the engine to use the main thread to fetch WASM, 
-// which avoids the "Worker 404" problem.
+// [FIX] Hybrid Detection for Standard vs Standalone
+// 1. If we are in a single-file build, 'ort-wasm.wasm' is often inlined.
+// 2. By NOT setting wasmPaths if the file is inlined, we let Vite's transform handle it.
+if (isProd) {
+  // Check if we are running from a local file (Standalone) or a server (Standard)
+  const isStandalone = window.location.protocol === 'file:';
+  
+  if (!isStandalone) {
+    // Standard Production Build: Use local assets folder
+    ort.env.wasm.wasmPaths = '/assets/';
+  } 
+  // Else: Let the 'assetsInclude' from vite.config handle the inlined Base64
+} else {
+  // Development: Use CDN
+  ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
+}
+
 ort.env.wasm.proxy = true;
 ort.env.wasm.numThreads = 1;
-window.ort = ort; 
+window.ort = ort;
 
 import { db } from '../services/db';
 import {
@@ -40,34 +51,97 @@ import {
 const transliterateArToFr = (text) => {
   if (!text) return '';
   try {
-    const customDict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
+    const customDict = JSON.parse(
+      localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
+    );
     const rawKey = text.replace(/\s+/g, '');
     if (customDict.full_name && customDict.full_name[rawKey]) return customDict.full_name[rawKey];
   } catch (e) {}
 
   let processedText = text;
   const commonNames = {
-    'عبد': 'Abdel ', 'بن ': 'Ben ', 'بو': 'Bou ', 'محمد': 'Mohamed ', 'فاطمة': 'Fatima ',
-    'صالح': 'Salah ', 'فضيلة': 'Fadila ', 'دونية': 'Dounia ', 'احمد': 'Ahmed ', 'علي': 'Ali ',
-    'عمر': 'Omar ', 'خديجة': 'Khadidja ', 'عائشة': 'Aicha ', 'ابراهيم': 'Brahim ',
-    'حسين': 'Hocine ', 'حسن': 'Hassan ', 'سعيد': 'Said ', 'كريم': 'Karim ', 'امين': 'Amine ',
-    'الدين': ' Eddine ', 'نور': 'Nour ', 'عبدال': 'Abdel ', 'ال': 'El '
+    عبد: 'Abdel ',
+    'بن ': 'Ben ',
+    بو: 'Bou ',
+    محمد: 'Mohamed ',
+    فاطمة: 'Fatima ',
+    صالح: 'Salah ',
+    فضيلة: 'Fadila ',
+    دونية: 'Dounia ',
+    احمد: 'Ahmed ',
+    علي: 'Ali ',
+    عمر: 'Omar ',
+    خديجة: 'Khadidja ',
+    عائشة: 'Aicha ',
+    ابراهيم: 'Brahim ',
+    حسين: 'Hocine ',
+    حسن: 'Hassan ',
+    سعيد: 'Said ',
+    كريم: 'Karim ',
+    امين: 'Amine ',
+    الدين: ' Eddine ',
+    نور: 'Nour ',
+    عبدال: 'Abdel ',
+    ال: 'El ',
   };
   for (const [ar, fr] of Object.entries(commonNames)) {
-      processedText = processedText.replace(new RegExp(ar, 'g'), fr);
+    processedText = processedText.replace(new RegExp(ar, 'g'), fr);
   }
   const map = {
-    ا: 'a', أ: 'a', إ: 'i', آ: 'a', ى: 'a', ة: 'a', ب: 'b', ت: 't', ث: 't', ج: 'dj',
-    ح: 'h', خ: 'kh', د: 'd', ذ: 'd', ر: 'r', ز: 'z', س: 's', ش: 'ch', ص: 's', ض: 'd',
-    ط: 't', ظ: 'z', ع: 'a', غ: 'gh', ف: 'f', ق: 'k', ك: 'k', ل: 'l', م: 'm', ن: 'n',
-    ه: 'h', و: 'ou', ي: 'i', ' ': ' ', '-': '-', '.': '.',
+    ا: 'a',
+    أ: 'a',
+    إ: 'i',
+    آ: 'a',
+    ى: 'a',
+    ة: 'a',
+    ب: 'b',
+    ت: 't',
+    ث: 't',
+    ج: 'dj',
+    ح: 'h',
+    خ: 'kh',
+    د: 'd',
+    ذ: 'd',
+    ر: 'r',
+    ز: 'z',
+    س: 's',
+    ش: 'ch',
+    ص: 's',
+    ض: 'd',
+    ط: 't',
+    ظ: 'z',
+    ع: 'a',
+    غ: 'gh',
+    ف: 'f',
+    ق: 'k',
+    ك: 'k',
+    ل: 'l',
+    م: 'm',
+    ن: 'n',
+    ه: 'h',
+    و: 'ou',
+    ي: 'i',
+    ' ': ' ',
+    '-': '-',
+    '.': '.',
   };
-  let lat = processedText.split('').map((char) => map[char] || char).join('');
-  lat = lat.replace(/oua/g, 'wa').replace(/ouou/g, 'ou').replace(/ii/g, 'i').replace(/\s+/g, ' ').trim();
-  return lat.split(' ').map(word => {
-     if (!word) return '';
-     return word.charAt(0).toUpperCase() + word.toLowerCase().slice(1);
-  }).join(' ');
+  let lat = processedText
+    .split('')
+    .map((char) => map[char] || char)
+    .join('');
+  lat = lat
+    .replace(/oua/g, 'wa')
+    .replace(/ouou/g, 'ou')
+    .replace(/ii/g, 'i')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return lat
+    .split(' ')
+    .map((word) => {
+      if (!word) return '';
+      return word.charAt(0).toUpperCase() + word.toLowerCase().slice(1);
+    })
+    .join(' ');
 };
 
 // --- FR-ALG TRANSLITERATION ENGINE (HYBRID DICTIONARY + PHONETIC) ---
@@ -76,39 +150,92 @@ const transliterateFrToAr = (text) => {
   let processed = text.toLowerCase().trim();
 
   const commonNames = {
-    'abdel': 'عبد ال', 'ben': 'بن ', 'bou': 'بو ', 'mohamed': 'محمد', 'fatima': 'فاطمة',
-    'salah': 'صالح', 'fadila': 'فضيلة', 'dounia': 'دونية', 'ahmed': 'أحمد', 'ali': 'علي',
-    'omar': 'عمر', 'khadidja': 'خديجة', 'aicha': 'عائشة', 'brahim': 'إبراهيم',
-    'hocine': 'حسين', 'hassan': 'حسن', 'said': 'سعيد', 'karim': 'كريم', 'amine': 'أمين',
-    'eddine': 'الدين', 'nour': 'نور', 'el': 'ال'
+    abdel: 'عبد ال',
+    ben: 'بن ',
+    bou: 'بو ',
+    mohamed: 'محمد',
+    fatima: 'فاطمة',
+    salah: 'صالح',
+    fadila: 'فضيلة',
+    dounia: 'دونية',
+    ahmed: 'أحمد',
+    ali: 'علي',
+    omar: 'عمر',
+    khadidja: 'خديجة',
+    aicha: 'عائشة',
+    brahim: 'إبراهيم',
+    hocine: 'حسين',
+    hassan: 'حسن',
+    said: 'سعيد',
+    karim: 'كريم',
+    amine: 'أمين',
+    eddine: 'الدين',
+    nour: 'نور',
+    el: 'ال',
   };
   for (const [fr, ar] of Object.entries(commonNames)) {
-      processed = processed.replace(new RegExp('\\b' + fr + '\\b', 'g'), ar);
+    processed = processed.replace(new RegExp('\\b' + fr + '\\b', 'g'), ar);
   }
 
   const map = {
-    'a': 'ا', 'b': 'ب', 'c': 'ك', 'd': 'د', 'e': 'ي', 'f': 'ف', 'g': 'ق', 'h': 'ح',
-    'i': 'ي', 'j': 'ج', 'k': 'ك', 'l': 'ل', 'm': 'م', 'n': 'ن', 'o': 'و', 'p': 'ب',
-    'q': 'ق', 'r': 'ر', 's': 'س', 't': 'ت', 'u': 'و', 'v': 'ف', 'w': 'و', 'x': 'كس',
-    'y': 'ي', 'z': 'ز', ' ': ' '
+    a: 'ا',
+    b: 'ب',
+    c: 'ك',
+    d: 'د',
+    e: 'ي',
+    f: 'ف',
+    g: 'ق',
+    h: 'ح',
+    i: 'ي',
+    j: 'ج',
+    k: 'ك',
+    l: 'ل',
+    m: 'م',
+    n: 'ن',
+    o: 'و',
+    p: 'ب',
+    q: 'ق',
+    r: 'ر',
+    s: 'س',
+    t: 'ت',
+    u: 'و',
+    v: 'ف',
+    w: 'و',
+    x: 'كس',
+    y: 'ي',
+    z: 'ز',
+    ' ': ' ',
   };
-  processed = processed.replace(/ch/g, 'ش').replace(/kh/g, 'خ').replace(/dj/g, 'ج').replace(/ou/g, 'و').replace(/gh/g, 'غ');
-  return processed.split('').map(char => map[char] || char).join('').replace(/\s+/g, ' ').trim();
+  processed = processed
+    .replace(/ch/g, 'ش')
+    .replace(/kh/g, 'خ')
+    .replace(/dj/g, 'ج')
+    .replace(/ou/g, 'و')
+    .replace(/gh/g, 'غ');
+  return processed
+    .split('')
+    .map((char) => map[char] || char)
+    .join('')
+    .replace(/\s+/g, ' ')
+    .trim();
 };
 
-  // --- SMART ARABIC REVERSAL ---
-  // Only reverses characters inside Arabic words. Protects Latin text and numbers.
-  const smartRTLFix = (text) => {
-    if (!text) return '';
-    return text.split(' ').map(word => {
-        // If the specific word contains Arabic, reverse it
-        if (/[\u0600-\u06FF]/.test(word)) {
-            return word.split('').reverse().join('');
-        }
-        // If it's a number or French word, leave it completely alone
-        return word;
-    }).join(' ');
-  };
+// --- SMART ARABIC REVERSAL ---
+// Only reverses characters inside Arabic words. Protects Latin text and numbers.
+const smartRTLFix = (text) => {
+  if (!text) return '';
+  return text
+    .split(' ')
+    .map((word) => {
+      // If the specific word contains Arabic, reverse it
+      if (/[\u0600-\u06FF]/.test(word)) {
+        return word.split('').reverse().join('');
+      }
+      // If it's a number or French word, leave it completely alone
+      return word;
+    })
+    .join(' ');
+};
 
 export default function UniversalOCRModal({
   mode = 'worker',
@@ -133,10 +260,11 @@ export default function UniversalOCRModal({
   const isMounted = useRef(true);
   useEffect(() => {
     isMounted.current = true; // FIX: Forces true on remount for React 18 Strict Mode
-    return () => { isMounted.current = false; };
+    return () => {
+      isMounted.current = false;
+    };
   }, []);
 
-  
   // NEW: Engine State
   const [ocrEngine, setOcrEngine] = useState('tesseract'); // 'tesseract' or 'paddle' or 'hybrid'
 
@@ -149,7 +277,7 @@ export default function UniversalOCRModal({
 
   // ========== GRID PRESET MANAGER ==========
   const saveGridPreset = () => {
-    const name = prompt("Nom du template (ex: Tableau_Resto_V1):");
+    const name = prompt('Nom du template (ex: Tableau_Resto_V1):');
     if (!name) return;
     const presets = JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}');
     presets[name] = { vLines, hLines, colMapping, colEngines };
@@ -189,13 +317,13 @@ export default function UniversalOCRModal({
     'department_id',
     'job_info',
   ]);
-  
+
   // NEW: Track which engine handles which column in Hybrid Mode
   const [colEngines, setColEngines] = useState([
     'tesseract', // Default for Col 1
-    'paddle',    // Default for Col 2
-    'paddle',    // Default for Col 3
-    'paddle'     // Default for Col 4
+    'paddle', // Default for Col 2
+    'paddle', // Default for Col 3
+    'paddle', // Default for Col 4
   ]);
 
   const [imgDimensions, setImgDimensions] = useState({ width: 0, height: 0 });
@@ -243,15 +371,15 @@ export default function UniversalOCRModal({
 
           const cleanUrl = canvas.toDataURL('image/jpeg', 0.95);
 
-         setImage(cleanUrl);
+          setImage(cleanUrl);
           setImgDimensions({ width, height });
           setCandidates([]);
           setHLines([]);
-          
+
           // MEMORY MANAGEMENT: Aggressively dump old base64 images
-          setDebugCrops([]); 
+          setDebugCrops([]);
           setDebugBoxes([]);
-          
+
           setActiveTab('scan');
           setLogs([]); // Reset logs
           addLog(`[LOAD] Image chargée. Dimensions: ${width}x${height}px`);
@@ -263,11 +391,18 @@ export default function UniversalOCRModal({
   };
 
   // ========== TESSERACT HELPER (RESTORED EXACTLY) ==========
- const getCellImage = (imgElement, rect, paddingY = 15, paddingX = 8, binarize = true, customScale = 4) => {
+  const getCellImage = (
+    imgElement,
+    rect,
+    paddingY = 15,
+    paddingX = 8,
+    binarize = true,
+    customScale = 4
+  ) => {
     const canvas = document.createElement('canvas');
     const ctx = canvas.getContext('2d');
     const scale = customScale; // Use the parameter, not a hardcoded 4
-    
+
     const targetW = (rect.width + paddingX * 2) * scale;
     const targetH = (rect.height + paddingY * 2) * scale;
     canvas.width = targetW;
@@ -280,8 +415,14 @@ export default function UniversalOCRModal({
 
     ctx.drawImage(
       imgElement,
-      rect.x, rect.y, rect.width, rect.height,
-      paddingX * scale, paddingY * scale, rect.width * scale, rect.height * scale
+      rect.x,
+      rect.y,
+      rect.width,
+      rect.height,
+      paddingX * scale,
+      paddingY * scale,
+      rect.width * scale,
+      rect.height * scale
     );
 
     const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -297,10 +438,10 @@ export default function UniversalOCRModal({
       }
     }
     // For Paddle (!binarize), do absolutely nothing. Return the raw, natural image.
-    
+
     ctx.putImageData(imageData, 0, 0);
-    
-    return canvas.toDataURL('image/png'); 
+
+    return canvas.toDataURL('image/png');
   };
 
   // ========== VISUAL DEBUGGER (RESTORED) ==========
@@ -345,19 +486,19 @@ export default function UniversalOCRModal({
 
     // Draw Debug Boxes (Paddle)
     if (debugBoxes.length > 0) {
-       ctx.strokeStyle = '#00ff00';
-       ctx.lineWidth = 2;
-       debugBoxes.forEach(box => {
-          // box.box is [[x,y],...]
-          // Draw polygon
-          ctx.beginPath();
-          ctx.moveTo(box.box[0][0], box.box[0][1]);
-          ctx.lineTo(box.box[1][0], box.box[1][1]);
-          ctx.lineTo(box.box[2][0], box.box[2][1]);
-          ctx.lineTo(box.box[3][0], box.box[3][1]);
-          ctx.closePath();
-          ctx.stroke();
-       });
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 2;
+      debugBoxes.forEach((box) => {
+        // box.box is [[x,y],...]
+        // Draw polygon
+        ctx.beginPath();
+        ctx.moveTo(box.box[0][0], box.box[0][1]);
+        ctx.lineTo(box.box[1][0], box.box[1][1]);
+        ctx.lineTo(box.box[2][0], box.box[2][1]);
+        ctx.lineTo(box.box[3][0], box.box[3][1]);
+        ctx.closePath();
+        ctx.stroke();
+      });
     }
 
     addLog('[DEBUG] Grille dessinée dans le cadre jaune.');
@@ -387,77 +528,88 @@ export default function UniversalOCRModal({
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
       const numWorkers = 2;
       if (isMounted.current) addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
-      
+
       for (let i = 0; i < numWorkers; i++) {
         const w = await Tesseract.createWorker(langs, 1);
         workers.push(w);
       }
-      
+
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
       const isRTL = docLanguage === 'ara';
-      
+
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
-      let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
+      let gridResults = Array(numRows)
+        .fill(null)
+        .map(() => createEmptyCandidate());
       let cellsProcessed = 0;
       const totalCells = numRows * numCols;
 
       for (let c = 0; c < numCols; c++) {
         const colIndex = isRTL ? numCols - 1 - c : c;
         const field = colMapping[colIndex];
-        
+
         if (!field || field === 'ignore') {
           cellsProcessed += numRows;
           continue;
         }
 
-        const params = (field === 'national_id') ? {
-           tessedit_pageseg_mode: '7',
-           preserve_interword_spaces: '1',
-           tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. '
-        } : {
-           tessedit_pageseg_mode: '7',
-           preserve_interword_spaces: '1',
-           tessedit_char_whitelist: '' 
-        };
-        await Promise.all(workers.map(w => w.setParameters(params)));
+        const params =
+          field === 'national_id'
+            ? {
+                tessedit_pageseg_mode: '7',
+                preserve_interword_spaces: '1',
+                tessedit_char_whitelist:
+                  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. ',
+              }
+            : {
+                tessedit_pageseg_mode: '7',
+                preserve_interword_spaces: '1',
+                tessedit_char_whitelist: '',
+              };
+        await Promise.all(workers.map((w) => w.setParameters(params)));
 
         const promises = [];
         for (let r = 0; r < numRows; r++) {
           const workerIndex = r % numWorkers;
           const task = async () => {
-             if (!isMounted.current) return;
-             const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
-             const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-             
-             // FIX: Reduced margin to 2px so it does not physically crop out letters
-             const safetyMargin = 2;
-             const cropParams = {
-                x: sortedV[colIndex] * imgDimensions.width + safetyMargin,
-                y: sortedH[r] * imgDimensions.height + safetyMargin,
-                width: rawW - safetyMargin * 2,
-                height: rawH - safetyMargin * 2
-             };
+            if (!isMounted.current) return;
+            const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+            const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
 
-             if (cropParams.width < 10 || cropParams.height < 10) return;
+            // FIX: Reduced margin to 2px so it does not physically crop out letters
+            const safetyMargin = 2;
+            const cropParams = {
+              x: sortedV[colIndex] * imgDimensions.width + safetyMargin,
+              y: sortedH[r] * imgDimensions.height + safetyMargin,
+              width: rawW - safetyMargin * 2,
+              height: rawH - safetyMargin * 2,
+            };
 
-             const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
-             if (debugMode && isMounted.current) {
-               setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
-             }
+            if (cropParams.width < 10 || cropParams.height < 10) return;
 
-             const { data: { text, confidence } } = await workers[workerIndex].recognize(cellUrl);
-             let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
-             if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) cleanText = '';
-             
-             if (cleanText && isMounted.current) {
-                gridResults[r][field] = cleanText;
-                addLog(`[CELL] R${r+1}C${c+1}: ${cleanText} (${confidence}%)`);
-             }
-             
-             cellsProcessed++;
-             if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
+            const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
+            if (debugMode && isMounted.current) {
+              setDebugCrops((prev) => [
+                ...prev,
+                { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl },
+              ]);
+            }
+
+            const {
+              data: { text, confidence },
+            } = await workers[workerIndex].recognize(cellUrl);
+            let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
+            if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) cleanText = '';
+
+            if (cleanText && isMounted.current) {
+              gridResults[r][field] = cleanText;
+              addLog(`[CELL] R${r + 1}C${c + 1}: ${cleanText} (${confidence}%)`);
+            }
+
+            cellsProcessed++;
+            if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
           };
           promises.push(task());
         }
@@ -465,17 +617,16 @@ export default function UniversalOCRModal({
       }
 
       // RESTORED: Trigger Arabic detection before setting candidates
-      gridResults.forEach(c => cleanCandidate(c));
+      gridResults.forEach((c) => cleanCandidate(c));
 
       if (isMounted.current) {
-        setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+        setCandidates(gridResults.filter((c) => c.national_id || c.full_name || c.job_info));
         if (!debugMode && gridResults.length > 0) {
           setActiveTab('results');
         } else if (debugMode) {
           addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
         }
       }
-
     } catch (e) {
       if (isMounted.current) {
         addLog(`[CRASH] ${e.message}`);
@@ -496,17 +647,18 @@ export default function UniversalOCRModal({
     setCandidates([]);
     setProgress(0);
     setStatusText('Paddle AI (Cellular Mode)...');
-    
+
     let ocr = null;
     try {
-      const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
+      const baseUrl =
+        window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
       const modelsUrl = baseUrl + 'models/';
       ocr = await Ocr.create({
         models: {
           detectionPath: `${modelsUrl}det.onnx`,
           recognitionPath: `${modelsUrl}rec_ara.onnx`,
-          dictionaryPath: `${modelsUrl}keys_ara.txt`
-        }
+          dictionaryPath: `${modelsUrl}keys_ara.txt`,
+        },
       });
 
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
@@ -514,7 +666,9 @@ export default function UniversalOCRModal({
       const isRTL = docLanguage === 'ara';
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
-      let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
+      let gridResults = Array(numRows)
+        .fill(null)
+        .map(() => createEmptyCandidate());
       const totalCells = numRows * numCols;
       let cellsProcessed = 0;
       let allDebugBoxes = [];
@@ -525,7 +679,7 @@ export default function UniversalOCRModal({
 
           const colIndex = isRTL ? numCols - 1 - c : c;
           const field = colMapping[colIndex];
-          
+
           if (!field || field === 'ignore') {
             cellsProcessed++;
             continue;
@@ -537,34 +691,40 @@ export default function UniversalOCRModal({
             x: sortedV[colIndex] * imgDimensions.width,
             y: sortedH[r] * imgDimensions.height,
             width: rawW,
-            height: rawH
+            height: rawH,
           };
 
           const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
-          
+
           if (debugMode && isMounted.current) {
-            setDebugCrops(prev => [...prev, { label: `R${r+1}C${c+1} (${field})`, url: cellUrl }]);
+            setDebugCrops((prev) => [
+              ...prev,
+              { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl },
+            ]);
           }
 
           const results = await ocr.detect(cellUrl);
           if (!isMounted.current) break;
 
           if (debugMode) {
-             results.forEach(box => {
-                const translatedBox = {
-                   box: box.box.map(point => [point[0] + rect.x, point[1] + rect.y]),
-                   text: box.text
-                };
-                allDebugBoxes.push(translatedBox);
-             });
+            results.forEach((box) => {
+              const translatedBox = {
+                box: box.box.map((point) => [point[0] + rect.x, point[1] + rect.y]),
+                text: box.text,
+              };
+              allDebugBoxes.push(translatedBox);
+            });
           }
 
-          let text = results.map(box => box.text).join(' ').trim();
+          let text = results
+            .map((box) => box.text)
+            .join(' ')
+            .trim();
           if (text) {
             text = text.replace(/[|]/g, '').trim();
             if (isRTL) text = smartRTLFix(text);
             gridResults[r][field] = text;
-            if (isMounted.current) addLog(`[CELL] R${r+1}C${c+1} (${field}): ${text}`);
+            if (isMounted.current) addLog(`[CELL] R${r + 1}C${c + 1} (${field}): ${text}`);
           }
 
           cellsProcessed++;
@@ -573,23 +733,22 @@ export default function UniversalOCRModal({
       }
 
       // RESTORED: Trigger Arabic detection before setting candidates
-      gridResults.forEach(c => cleanCandidate(c));
+      gridResults.forEach((c) => cleanCandidate(c));
 
       if (isMounted.current) {
-        setCandidates(gridResults.filter(c => c.national_id || c.full_name || c.job_info));
+        setCandidates(gridResults.filter((c) => c.national_id || c.full_name || c.job_info));
         if (debugMode) {
-           setDebugBoxes(allDebugBoxes);
-           addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
-           setTimeout(drawDebugGrid, 100);
+          setDebugBoxes(allDebugBoxes);
+          addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
+          setTimeout(drawDebugGrid, 100);
         }
 
         if (!debugMode && gridResults.length > 0) {
           setActiveTab('results');
         } else if (debugMode) {
-          addLog('[DEBUG] Scan terminé. Resté sur l\'onglet Scan.');
+          addLog("[DEBUG] Scan terminé. Resté sur l'onglet Scan.");
         }
       }
-
     } catch (e) {
       if (isMounted.current) addLog(`[CRASH] ${e.message}`);
     } finally {
@@ -610,112 +769,130 @@ export default function UniversalOCRModal({
     let tesseractWorkers = [];
     let paddleOcr = null;
     try {
-       if (isMounted.current) addLog('[HYBRID] Starting Engines...');
-       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
-       const worker1 = await Tesseract.createWorker(langs, 1);
-       const worker2 = await Tesseract.createWorker(langs, 1);
-       tesseractWorkers = [worker1, worker2];
+      if (isMounted.current) addLog('[HYBRID] Starting Engines...');
+      const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
+      const worker1 = await Tesseract.createWorker(langs, 1);
+      const worker2 = await Tesseract.createWorker(langs, 1);
+      tesseractWorkers = [worker1, worker2];
 
-       const baseUrl = window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
-       const modelsUrl = baseUrl + 'models/';
-       paddleOcr = await Ocr.create({
-         models: {
-             detectionPath: `${modelsUrl}det.onnx`,
-             recognitionPath: `${modelsUrl}rec_ara.onnx`,
-             dictionaryPath: `${modelsUrl}keys_ara.txt`
-         }
-       });
-       
-       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-       const isRTL = docLanguage === 'ara';
-       const numRows = sortedH.length - 1;
-       const numCols = sortedV.length - 1;
-       let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
-       const totalCells = numRows * numCols;
-       let cellsProcessed = 0;
+      const baseUrl =
+        window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
+      const modelsUrl = baseUrl + 'models/';
+      paddleOcr = await Ocr.create({
+        models: {
+          detectionPath: `${modelsUrl}det.onnx`,
+          recognitionPath: `${modelsUrl}rec_ara.onnx`,
+          dictionaryPath: `${modelsUrl}keys_ara.txt`,
+        },
+      });
 
-       for (let c = 0; c < numCols; c++) {
-          if (!isMounted.current) break;
-          const colIndex = isRTL ? numCols - 1 - c : c;
-          const field = colMapping[colIndex];
-          
-          if (!field || field === 'ignore') {
-             cellsProcessed += numRows;
-             continue;
+      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+      const isRTL = docLanguage === 'ara';
+      const numRows = sortedH.length - 1;
+      const numCols = sortedV.length - 1;
+      let gridResults = Array(numRows)
+        .fill(null)
+        .map(() => createEmptyCandidate());
+      const totalCells = numRows * numCols;
+      let cellsProcessed = 0;
+
+      for (let c = 0; c < numCols; c++) {
+        if (!isMounted.current) break;
+        const colIndex = isRTL ? numCols - 1 - c : c;
+        const field = colMapping[colIndex];
+
+        if (!field || field === 'ignore') {
+          cellsProcessed += numRows;
+          continue;
+        }
+
+        const enginePreference = colEngines[colIndex] || 'paddle';
+
+        if (enginePreference === 'tesseract') {
+          if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Tesseract (User Selected)`);
+          const params = {
+            tessedit_pageseg_mode: '7',
+            preserve_interword_spaces: '1',
+            tessedit_char_whitelist:
+              '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. ',
+          };
+          await Promise.all(tesseractWorkers.map((w) => w.setParameters(params)));
+          const promises = [];
+          for (let r = 0; r < numRows; r++) {
+            const worker = tesseractWorkers[r % 2];
+            const task = async () => {
+              if (!isMounted.current) return;
+              const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+              const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+              const cropParams = {
+                x: sortedV[colIndex] * imgDimensions.width,
+                y: sortedH[r] * imgDimensions.height,
+                width: rawW,
+                height: rawH,
+              };
+              const cellUrl = getCellImage(imageRef.current, cropParams, 5, 5);
+
+              const {
+                data: { text },
+              } = await worker.recognize(cellUrl);
+              if (text.trim() && isMounted.current) gridResults[r][field] = text.trim();
+              cellsProcessed++;
+              if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
+            };
+            promises.push(task());
           }
+          await Promise.all(promises);
+        } else {
+          if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Paddle (Text Cellular)`);
+          for (let r = 0; r < numRows; r++) {
+            if (!isMounted.current) break;
+            const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
+            const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
+            const cropParams = {
+              x: sortedV[colIndex] * imgDimensions.width,
+              y: sortedH[r] * imgDimensions.height,
+              width: rawW,
+              height: rawH,
+            };
+            const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
 
-          const enginePreference = colEngines[colIndex] || 'paddle';
-          
-          if (enginePreference === 'tesseract') {
-             if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Tesseract (User Selected)`);
-             const params = {
-               tessedit_pageseg_mode: '7',
-               preserve_interword_spaces: '1',
-               tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. '
-             };
-             await Promise.all(tesseractWorkers.map(w => w.setParameters(params)));
-             const promises = [];
-             for (let r = 0; r < numRows; r++) {
-                const worker = tesseractWorkers[r % 2];
-                const task = async () => {
-                   if (!isMounted.current) return;
-                   const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
-                   const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-                   const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
-                   const cellUrl = getCellImage(imageRef.current, cropParams, 5, 5); 
-                   
-                   const { data: { text } } = await worker.recognize(cellUrl);
-                   if (text.trim() && isMounted.current) gridResults[r][field] = text.trim();
-                   cellsProcessed++;
-                   if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
-                };
-                promises.push(task());
-             }
-             await Promise.all(promises);
-          } else {
-             if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Paddle (Text Cellular)`);
-             for (let r = 0; r < numRows; r++) {
-                if (!isMounted.current) break;
-                const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
-                const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-                const cropParams = { x: sortedV[colIndex] * imgDimensions.width, y: sortedH[r] * imgDimensions.height, width: rawW, height: rawH };
-                const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
-                
-                const results = await paddleOcr.detect(cellUrl);
-                if (!isMounted.current) break;
-                let text = results.map(b => b.text).join(' ').trim();
-                
-                if (text) {
-                   text = text.replace(/[|]/g, '').trim();
-                   if (isRTL) text = smartRTLFix(text);
-                   gridResults[r][field] = text;
-                   if (isMounted.current) addLog(`[CELL] ${field}: ${text}`);
-                }
-                cellsProcessed++;
-                if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
-             }
+            const results = await paddleOcr.detect(cellUrl);
+            if (!isMounted.current) break;
+            let text = results
+              .map((b) => b.text)
+              .join(' ')
+              .trim();
+
+            if (text) {
+              text = text.replace(/[|]/g, '').trim();
+              if (isRTL) text = smartRTLFix(text);
+              gridResults[r][field] = text;
+              if (isMounted.current) addLog(`[CELL] ${field}: ${text}`);
+            }
+            cellsProcessed++;
+            if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
           }
-       }
-       
-       // RESTORED: Trigger Arabic detection before setting candidates
-       gridResults.forEach(c => cleanCandidate(c));
+        }
+      }
 
-       if (isMounted.current) {
-         setCandidates(gridResults.filter(c => c.national_id || c.full_name));
-         if (!debugMode && gridResults.length > 0) {
-           setActiveTab('results');
-         } else if (debugMode) {
-           addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
-         }
-       }
+      // RESTORED: Trigger Arabic detection before setting candidates
+      gridResults.forEach((c) => cleanCandidate(c));
 
+      if (isMounted.current) {
+        setCandidates(gridResults.filter((c) => c.national_id || c.full_name));
+        if (!debugMode && gridResults.length > 0) {
+          setActiveTab('results');
+        } else if (debugMode) {
+          addLog('[DEBUG] Fin du scan. Résultats non affichés (Mode Debug actif).');
+        }
+      }
     } catch (e) {
-       if (isMounted.current) addLog(`[CRASH] ${e.message}`);
+      if (isMounted.current) addLog(`[CRASH] ${e.message}`);
     } finally {
-       for (const w of tesseractWorkers) await w.terminate();
-       if (paddleOcr && paddleOcr.dispose) await paddleOcr.dispose();
-       if (isMounted.current) setIsProcessing(false);
+      for (const w of tesseractWorkers) await w.terminate();
+      if (paddleOcr && paddleOcr.dispose) await paddleOcr.dispose();
+      if (isMounted.current) setIsProcessing(false);
     }
   };
   // --- MASTER SWITCH ---
@@ -730,15 +907,17 @@ export default function UniversalOCRModal({
   };
 
   // --- HELPERS (RESTORED) ---
- const createEmptyCandidate = () => ({
+  const createEmptyCandidate = () => ({
     id: Math.random(),
-    full_name: '',       // Text currently shown in the box
-    original_ar: '',     // The Arabic anchor
-    manual_fr: '',       // Your specific French correction
-    is_viewing_ar: true, 
-    national_id: '', raw_id: '',
+    full_name: '', // Text currently shown in the box
+    original_ar: '', // The Arabic anchor
+    manual_fr: '', // Your specific French correction
+    is_viewing_ar: true,
+    national_id: '',
+    raw_id: '',
     department_id: '',
-    job_info: '', raw_job: '',
+    job_info: '',
+    raw_job: '',
     isArabic: false,
   });
 
@@ -751,7 +930,7 @@ export default function UniversalOCRModal({
     // 2. Identify the base language from the raw scan
     const isAr = /[\u0600-\u06FF]/.test(c.full_name);
     c.isArabic = isAr;
-    c.is_viewing_ar = isAr; 
+    c.is_viewing_ar = isAr;
 
     // 3. Set the Arabic Anchor FIRST (The Master Source)
     if (isAr) {
@@ -763,26 +942,30 @@ export default function UniversalOCRModal({
 
     // 4. Global Auto-Correction (SPACE-IMMUNE)
     try {
-      const dict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
-      
+      const dict = JSON.parse(
+        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
+      );
+
       if (c.national_id) {
-         const key = c.national_id.replace(/\s+/g, ''); 
-         if (dict.national_id[key]) c.national_id = dict.national_id[key];
+        const key = c.national_id.replace(/\s+/g, '');
+        if (dict.national_id[key]) c.national_id = dict.national_id[key];
       }
       if (c.job_info) {
-         const key = c.job_info.replace(/\s+/g, ''); 
-         if (dict.job_info[key]) c.job_info = dict.job_info[key];
+        const key = c.job_info.replace(/\s+/g, '');
+        if (dict.job_info[key]) c.job_info = dict.job_info[key];
       }
-      
+
       // INTELLIGENCE FIX: If the dictionary knows the name, save it to the French Master Slot,
       // but do NOT overwrite the Arabic anchor.
       if (c.original_ar) {
-         const key = c.original_ar.replace(/\s+/g, '');
-         if (dict.full_name[key]) {
-             c.manual_fr = dict.full_name[key]; 
-         }
+        const key = c.original_ar.replace(/\s+/g, '');
+        if (dict.full_name[key]) {
+          c.manual_fr = dict.full_name[key];
+        }
       }
-    } catch(e) { console.warn("Dictionary error", e); }
+    } catch (e) {
+      console.warn('Dictionary error', e);
+    }
   };
 
   const updateCandidate = (id, field, val) => {
@@ -790,27 +973,29 @@ export default function UniversalOCRModal({
   };
   const removeCandidate = (id) => setCandidates((prev) => prev.filter((c) => c.id !== id));
 
-const handleBulkImport = async () => {
+  const handleBulkImport = async () => {
     if (candidates.length === 0) return;
     const valid = candidates.filter((c) => c.full_name || c.national_id);
 
     // --- MACHINE LEARNING MEMORY UPDATE (SPACE-IMMUNE) ---
     try {
-      let dict = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
-      valid.forEach(c => {
-         // Save corrections by stripping spaces from the raw OCR key
-         if (c.raw_id && c.national_id && c.raw_id !== c.national_id) {
-             dict.national_id[c.raw_id.replace(/\s+/g, '')] = c.national_id.trim();
-         }
-         if (c.raw_name && c.full_name && c.raw_name !== c.full_name) {
-             dict.full_name[c.raw_name.replace(/\s+/g, '')] = c.full_name.trim();
-         }
-         if (c.raw_job && c.job_info && c.raw_job !== c.job_info) {
-             dict.job_info[c.raw_job.replace(/\s+/g, '')] = c.job_info.trim();
-         }
+      let dict = JSON.parse(
+        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
+      );
+      valid.forEach((c) => {
+        // Save corrections by stripping spaces from the raw OCR key
+        if (c.raw_id && c.national_id && c.raw_id !== c.national_id) {
+          dict.national_id[c.raw_id.replace(/\s+/g, '')] = c.national_id.trim();
+        }
+        if (c.raw_name && c.full_name && c.raw_name !== c.full_name) {
+          dict.full_name[c.raw_name.replace(/\s+/g, '')] = c.full_name.trim();
+        }
+        if (c.raw_job && c.job_info && c.raw_job !== c.job_info) {
+          dict.job_info[c.raw_job.replace(/\s+/g, '')] = c.job_info.trim();
+        }
       });
       localStorage.setItem('ocr_smart_dict', JSON.stringify(dict));
-    } catch(e) {}
+    } catch (e) {}
     // ---------------------------------------------------
 
     for (const c of valid) {
@@ -835,7 +1020,8 @@ const handleBulkImport = async () => {
 
   // --- DICTIONARY MANAGEMENT ---
   const exportDictionary = () => {
-    const dict = localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}';
+    const dict =
+      localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}';
     const blob = new Blob([dict], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -851,13 +1037,16 @@ const handleBulkImport = async () => {
     reader.onload = (event) => {
       try {
         const imported = JSON.parse(event.target.result);
-        const existing = JSON.parse(localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}');
-        
+        const existing = JSON.parse(
+          localStorage.getItem('ocr_smart_dict') ||
+            '{"national_id":{},"full_name":{},"job_info":{}}'
+        );
+
         // Merge the uploaded dictionary with the existing one
         existing.national_id = { ...existing.national_id, ...(imported.national_id || {}) };
         existing.full_name = { ...existing.full_name, ...(imported.full_name || {}) };
         existing.job_info = { ...existing.job_info, ...(imported.job_info || {}) };
-        
+
         localStorage.setItem('ocr_smart_dict', JSON.stringify(existing));
         alert('Dictionnaire importé et fusionné avec succès !');
       } catch (err) {
@@ -997,7 +1186,7 @@ const handleBulkImport = async () => {
                       let nextPos;
                       if (sorted.length >= 2) {
                         const delta = sorted[sorted.length - 1] - sorted[sorted.length - 2];
-                        nextPos = (lastPos + delta > 0.98) ? (lastPos + 0.04) : (lastPos + delta);
+                        nextPos = lastPos + delta > 0.98 ? lastPos + 0.04 : lastPos + delta;
                       } else {
                         nextPos = lastPos + 0.1;
                       }
@@ -1010,18 +1199,18 @@ const handleBulkImport = async () => {
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => {
-                       const sorted = [...hLines].sort((a, b) => a - b);
-                       let newH = 0.5;
-                       if (sorted.length >= 2) {
-                           // SMART SPACING: Calculate distance between last two lines
-                           const delta = sorted[sorted.length - 1] - sorted[sorted.length - 2];
-                           newH = sorted[sorted.length - 1] + delta;
-                       } else if (sorted.length === 1) {
-                           newH = sorted[0] + 0.05;
-                       }
-                       // Prevent spawning completely off-screen
-                       if (newH > 0.98) newH = 0.95; 
-                       setHLines([...hLines, newH]);
+                      const sorted = [...hLines].sort((a, b) => a - b);
+                      let newH = 0.5;
+                      if (sorted.length >= 2) {
+                        // SMART SPACING: Calculate distance between last two lines
+                        const delta = sorted[sorted.length - 1] - sorted[sorted.length - 2];
+                        newH = sorted[sorted.length - 1] + delta;
+                      } else if (sorted.length === 1) {
+                        newH = sorted[0] + 0.05;
+                      }
+                      // Prevent spawning completely off-screen
+                      if (newH > 0.98) newH = 0.95;
+                      setHLines([...hLines, newH]);
                     }}
                     style={{ color: '#ef4444', borderColor: '#ef4444', fontWeight: 'bold' }}
                   >
@@ -1039,70 +1228,87 @@ const handleBulkImport = async () => {
                   </button>
 
                   {/* HELP BUTTON (moved debug toggle to bulb panel) */}
-                  <button 
-                    className="btn btn-sm" 
+                  <button
+                    className="btn btn-sm"
                     onClick={() => setShowHelp(true)}
                     title="Guide de Scan OCR"
-                    style={{ border: '1px solid #0284c7', color: '#0284c7', background: 'white', padding: '6px 8px', minWidth: 'auto' }}
+                    style={{
+                      border: '1px solid #0284c7',
+                      color: '#0284c7',
+                      background: 'white',
+                      padding: '6px 8px',
+                      minWidth: 'auto',
+                    }}
                   >
                     <FaLightbulb />
                   </button>
 
                   {/* NEW: ENGINE TOGGLE */}
                   <div style={{ marginLeft: 'auto', display: 'flex', gap: '5px' }}>
-                    <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: '6px', padding: '2px' }}>
-                        <button 
-                          onClick={() => setOcrEngine('tesseract')} 
-                          style={{ 
-                            background: ocrEngine === 'tesseract' ? 'white' : 'transparent', 
-                            color: ocrEngine === 'tesseract' ? '#0f172a' : '#64748b', 
-                            border: '1px solid transparent', 
-                            borderColor: ocrEngine === 'tesseract' ? '#cbd5e1' : 'transparent', 
-                            borderRadius: '4px', 
-                            padding: '4px 8px', 
-                            fontSize: '0.75rem', 
-                            fontWeight: 'bold', 
-                            cursor: 'pointer' 
-                          }}
-                        >
-                          Safe
-                        </button>
-                        <button 
-                          onClick={() => setOcrEngine('paddle')} 
-                          style={{ 
-                            background: ocrEngine === 'paddle' ? 'white' : 'transparent', 
-                            color: ocrEngine === 'paddle' ? '#0f172a' : '#64748b', 
-                            border: '1px solid transparent', 
-                            borderColor: ocrEngine === 'paddle' ? '#cbd5e1' : 'transparent', 
-                            borderRadius: '4px', 
-                            padding: '4px 8px', 
-                            fontSize: '0.75rem', 
-                            fontWeight: 'bold', 
-                            cursor: 'pointer' 
-                          }}
-                        >
-                          Turbo
-                        </button>
-                        <button 
-                          onClick={() => setOcrEngine('hybrid')} 
-                          style={{ 
-                            background: ocrEngine === 'hybrid' ? 'white' : 'transparent', 
-                            color: ocrEngine === 'hybrid' ? '#0f172a' : '#64748b', 
-                            border: '1px solid transparent', 
-                            borderColor: ocrEngine === 'hybrid' ? '#cbd5e1' : 'transparent', 
-                            borderRadius: '4px', 
-                            padding: '4px 8px', 
-                            fontSize: '0.75rem', 
-                            fontWeight: 'bold', 
-                            cursor: 'pointer' 
-                          }}
-                        >
-                          Hybrid
-                        </button>
+                    <div
+                      style={{
+                        display: 'flex',
+                        background: '#e2e8f0',
+                        borderRadius: '6px',
+                        padding: '2px',
+                      }}
+                    >
+                      <button
+                        onClick={() => setOcrEngine('tesseract')}
+                        style={{
+                          background: ocrEngine === 'tesseract' ? 'white' : 'transparent',
+                          color: ocrEngine === 'tesseract' ? '#0f172a' : '#64748b',
+                          border: '1px solid transparent',
+                          borderColor: ocrEngine === 'tesseract' ? '#cbd5e1' : 'transparent',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Safe
+                      </button>
+                      <button
+                        onClick={() => setOcrEngine('paddle')}
+                        style={{
+                          background: ocrEngine === 'paddle' ? 'white' : 'transparent',
+                          color: ocrEngine === 'paddle' ? '#0f172a' : '#64748b',
+                          border: '1px solid transparent',
+                          borderColor: ocrEngine === 'paddle' ? '#cbd5e1' : 'transparent',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Turbo
+                      </button>
+                      <button
+                        onClick={() => setOcrEngine('hybrid')}
+                        style={{
+                          background: ocrEngine === 'hybrid' ? 'white' : 'transparent',
+                          color: ocrEngine === 'hybrid' ? '#0f172a' : '#64748b',
+                          border: '1px solid transparent',
+                          borderColor: ocrEngine === 'hybrid' ? '#cbd5e1' : 'transparent',
+                          borderRadius: '4px',
+                          padding: '4px 8px',
+                          fontSize: '0.75rem',
+                          fontWeight: 'bold',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        Hybrid
+                      </button>
                     </div>
 
                     {!isProcessing && (
-                      <button onClick={handleGo} className="btn btn-success btn-sm" style={{ fontWeight: 'bold' }}>
+                      <button
+                        onClick={handleGo}
+                        className="btn btn-success btn-sm"
+                        style={{ fontWeight: 'bold' }}
+                      >
                         <FaMagic /> GO
                       </button>
                     )}
@@ -1110,8 +1316,6 @@ const handleBulkImport = async () => {
                 </>
               )}
             </div>
-
-
 
             {/* CANVAS EDITOR */}
             {image && (
@@ -1216,7 +1420,7 @@ const handleBulkImport = async () => {
                               </option>
                             ))}
                           </select>
-                          
+
                           {/* NEW: Explicit Engine Routing for Hybrid Mode */}
                           {ocrEngine === 'hybrid' && (
                             <select
@@ -1228,7 +1432,7 @@ const handleBulkImport = async () => {
                                 width: '90%',
                                 background: '#e2e8f0',
                                 marginTop: '2px',
-                                border: '1px solid #cbd5e1'
+                                border: '1px solid #cbd5e1',
                               }}
                               value={colEngines[i] || 'paddle'}
                               onChange={(e) => {
@@ -1248,7 +1452,6 @@ const handleBulkImport = async () => {
 
                   {/* STRICT IMAGE WRAPPER (Fixes the coordinate offset drift) */}
                   <div style={{ position: 'relative', marginTop: '30px' }}>
-                    
                     {/* MAIN IMAGE */}
                     <img
                       ref={imageRef}
@@ -1261,14 +1464,38 @@ const handleBulkImport = async () => {
                     {vLines.map((x, i) => (
                       <div
                         key={`v-${i}`}
-                        style={{ position: 'absolute', top: 0, bottom: 0, left: `${x * 100}%`, width: '2px', background: '#3b82f6', zIndex: 40 }}
+                        style={{
+                          position: 'absolute',
+                          top: 0,
+                          bottom: 0,
+                          left: `${x * 100}%`,
+                          width: '2px',
+                          background: '#3b82f6',
+                          zIndex: 40,
+                        }}
                       >
                         <div
-                          style={{ position: 'absolute', top: '50%', left: '-16px', transform: 'translateY(-50%)', width: '32px', height: '32px', background: '#3b82f6', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', touchAction: 'none' }}
+                          style={{
+                            position: 'absolute',
+                            top: '50%',
+                            left: '-16px',
+                            transform: 'translateY(-50%)',
+                            width: '32px',
+                            height: '32px',
+                            background: '#3b82f6',
+                            color: 'white',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                            touchAction: 'none',
+                          }}
                           onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
                           onPointerMove={(e) => {
                             if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-                            const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+                            const rect =
+                              e.currentTarget.parentElement.parentElement.getBoundingClientRect();
                             const nx = (e.clientX - rect.left) / rect.width;
                             const nv = [...vLines];
                             nv[i] = Math.max(0, Math.min(1, nx));
@@ -1276,7 +1503,9 @@ const handleBulkImport = async () => {
                             setVLines(nv);
                           }}
                           onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
-                        ><FaArrowsAltH size={12} /></div>
+                        >
+                          <FaArrowsAltH size={12} />
+                        </div>
                       </div>
                     ))}
 
@@ -1284,14 +1513,38 @@ const handleBulkImport = async () => {
                     {hLines.map((y, i) => (
                       <div
                         key={`h-${i}`}
-                        style={{ position: 'absolute', left: 0, right: 0, top: `${y * 100}%`, height: '2px', background: '#ef4444', zIndex: 40 }}
+                        style={{
+                          position: 'absolute',
+                          left: 0,
+                          right: 0,
+                          top: `${y * 100}%`,
+                          height: '2px',
+                          background: '#ef4444',
+                          zIndex: 40,
+                        }}
                       >
                         <div
-                          style={{ position: 'absolute', left: '50%', top: '-16px', transform: 'translateX(-50%)', width: '32px', height: '32px', background: '#ef4444', color: 'white', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', touchAction: 'none' }}
+                          style={{
+                            position: 'absolute',
+                            left: '50%',
+                            top: '-16px',
+                            transform: 'translateX(-50%)',
+                            width: '32px',
+                            height: '32px',
+                            background: '#ef4444',
+                            color: 'white',
+                            borderRadius: '50%',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
+                            touchAction: 'none',
+                          }}
                           onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
                           onPointerMove={(e) => {
                             if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-                            const rect = e.currentTarget.parentElement.parentElement.getBoundingClientRect();
+                            const rect =
+                              e.currentTarget.parentElement.parentElement.getBoundingClientRect();
                             const ny = (e.clientY - rect.top) / rect.height;
                             const nh = [...hLines];
                             nh[i] = Math.max(0, Math.min(1, ny));
@@ -1300,7 +1553,9 @@ const handleBulkImport = async () => {
                           }}
                           onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
                           onDoubleClick={() => setHLines(hLines.filter((_, idx) => idx !== i))}
-                        ><FaArrowsAltV size={12} /></div>
+                        >
+                          <FaArrowsAltV size={12} />
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -1470,19 +1725,26 @@ const handleBulkImport = async () => {
                           style={{ width: '80px', fontFamily: 'monospace' }}
                         />
                       </td>
-                      <td style={{ padding: '8px', display: 'flex', gap: '5px', alignItems: 'center' }}>
+                      <td
+                        style={{
+                          padding: '8px',
+                          display: 'flex',
+                          gap: '5px',
+                          alignItems: 'center',
+                        }}
+                      >
                         <input
                           className="input"
                           value={c.full_name}
                           onChange={(e) => {
                             const newVal = e.target.value;
                             updateCandidate(c.id, 'full_name', newVal);
-                            
+
                             if (c.is_viewing_ar) {
-                              // You are editing the SOURCE. 
+                              // You are editing the SOURCE.
                               // This is the Master Reset: Discard manual French edit.
                               updateCandidate(c.id, 'original_ar', newVal);
-                              updateCandidate(c.id, 'manual_fr', ''); 
+                              updateCandidate(c.id, 'manual_fr', '');
                             } else {
                               // You are editing the TRANSLATION.
                               // Save this as the "Master" version for the French slot.
@@ -1495,7 +1757,7 @@ const handleBulkImport = async () => {
                         <button
                           onClick={() => {
                             if (c.is_viewing_ar) {
-                              // GOING TO FRENCH: 
+                              // GOING TO FRENCH:
                               // If you already have a manual edit, show it. Otherwise, ask the AI.
                               const targetFr = c.manual_fr || transliterateArToFr(c.full_name);
                               updateCandidate(c.id, 'original_ar', c.full_name); // Lock the Ar before switching
@@ -1509,11 +1771,11 @@ const handleBulkImport = async () => {
                             }
                           }}
                           className="btn btn-outline btn-sm"
-                          title={c.is_viewing_ar ? "Traduire en Français" : "Traduire en Arabe"}
-                          style={{ 
-                              padding: '4px 8px', 
-                              borderColor: c.manual_fr ? '#10b981' : '#3b82f6', 
-                              color: c.manual_fr ? '#10b981' : '#3b82f6' 
+                          title={c.is_viewing_ar ? 'Traduire en Français' : 'Traduire en Arabe'}
+                          style={{
+                            padding: '4px 8px',
+                            borderColor: c.manual_fr ? '#10b981' : '#3b82f6',
+                            color: c.manual_fr ? '#10b981' : '#3b82f6',
                           }}
                         >
                           <FaGlobeAfrica />
@@ -1577,75 +1839,226 @@ const handleBulkImport = async () => {
         )}
         {/* HELP OVERLAY WITH DICTIONARY & PRESETS */}
         {showHelp && (
-          <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-            <div style={{ background: 'white', borderRadius: '8px', padding: '20px', maxWidth: '500px', width: '100%', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
-               
-               <h3 style={{ color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaLightbulb /> Guide de Scan OCR</h3>
-               
-               {/* DEBUG TOGGLE BUTTON - Moved here from toolbar */}
-               <div style={{ marginBottom: '15px', padding: '10px', background: debugMode ? '#fef3c7' : '#f8fafc', borderRadius: '6px', border: '1px solid #e2e8f0' }}>
-                 <label style={{ display: 'flex', alignItems: 'center', gap: '10px', cursor: 'pointer', fontWeight: 'bold', color: debugMode ? '#f59e0b' : '#64748b' }}>
-                   <input
-                     type="checkbox"
-                     checked={debugMode}
-                     onChange={(e) => setDebugMode(e.target.checked)}
-                     style={{ width: '18px', height: '18px', accentColor: '#f59e0b' }}
-                   />
-                   <FaBug /> Mode Debug
-                 </label>
-                 <p style={{ fontSize: '0.75rem', color: '#64748b', margin: '5px 0 0 28px', marginTop: '5px' }}>
-                   Affiche les logs de la console OCR et les traces des cellules découpées.
-                 </p>
-               </div>
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0,0,0,0.6)',
+              zIndex: 9999,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '1rem',
+            }}
+          >
+            <div
+              style={{
+                background: 'white',
+                borderRadius: '8px',
+                padding: '20px',
+                maxWidth: '500px',
+                width: '100%',
+                boxShadow: '0 10px 25px rgba(0,0,0,0.2)',
+              }}
+            >
+              <h3
+                style={{
+                  color: '#f59e0b',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  marginTop: 0,
+                }}
+              >
+                <FaLightbulb /> Guide de Scan OCR
+              </h3>
 
-               <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '15px 0' }} />
-               <ul style={{ paddingLeft: '20px', fontSize: '0.9rem', lineHeight: '1.6', color: '#334155' }}>
-                 <li style={{ marginBottom: '10px' }}><b>Les Lignes :</b> Placez les lignes <u>à l'intérieur</u> des cases.</li>
-                 <li style={{ marginBottom: '10px' }}><b>Papier :</b> La feuille doit être parfaitement plate.</li>
-               </ul>
+              {/* DEBUG TOGGLE BUTTON - Moved here from toolbar */}
+              <div
+                style={{
+                  marginBottom: '15px',
+                  padding: '10px',
+                  background: debugMode ? '#fef3c7' : '#f8fafc',
+                  borderRadius: '6px',
+                  border: '1px solid #e2e8f0',
+                }}
+              >
+                <label
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    cursor: 'pointer',
+                    fontWeight: 'bold',
+                    color: debugMode ? '#f59e0b' : '#64748b',
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={debugMode}
+                    onChange={(e) => setDebugMode(e.target.checked)}
+                    style={{ width: '18px', height: '18px', accentColor: '#f59e0b' }}
+                  />
+                  <FaBug /> Mode Debug
+                </label>
+                <p
+                  style={{
+                    fontSize: '0.75rem',
+                    color: '#64748b',
+                    margin: '5px 0 0 28px',
+                    marginTop: '5px',
+                  }}
+                >
+                  Affiche les logs de la console OCR et les traces des cellules découpées.
+                </p>
+              </div>
 
-               <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '20px 0' }} />
+              <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '15px 0' }} />
+              <ul
+                style={{
+                  paddingLeft: '20px',
+                  fontSize: '0.9rem',
+                  lineHeight: '1.6',
+                  color: '#334155',
+                }}
+              >
+                <li style={{ marginBottom: '10px' }}>
+                  <b>Les Lignes :</b> Placez les lignes <u>à l'intérieur</u> des cases.
+                </li>
+                <li style={{ marginBottom: '10px' }}>
+                  <b>Papier :</b> La feuille doit être parfaitement plate.
+                </li>
+              </ul>
 
-               <h3 style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaSave /> Mémoire IA (Dictionaire)</h3>
-               <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
-                 <button onClick={exportDictionary} className="btn btn-outline" style={{ flex: 1, borderColor: '#10b981', color: '#10b981' }}>Exporter</button>
-                 <label className="btn btn-outline" style={{ flex: 1, borderColor: '#3b82f6', color: '#3b82f6', textAlign: 'center', cursor: 'pointer' }}>
-                   Importer
-                   <input type="file" accept=".json" onChange={importDictionary} style={{ display: 'none' }} />
-                 </label>
-               </div>
+              <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '20px 0' }} />
 
-               <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '20px 0' }} />
+              <h3
+                style={{
+                  color: '#10b981',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  marginTop: 0,
+                }}
+              >
+                <FaSave /> Mémoire IA (Dictionaire)
+              </h3>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
+                <button
+                  onClick={exportDictionary}
+                  className="btn btn-outline"
+                  style={{ flex: 1, borderColor: '#10b981', color: '#10b981' }}
+                >
+                  Exporter
+                </button>
+                <label
+                  className="btn btn-outline"
+                  style={{
+                    flex: 1,
+                    borderColor: '#3b82f6',
+                    color: '#3b82f6',
+                    textAlign: 'center',
+                    cursor: 'pointer',
+                  }}
+                >
+                  Importer
+                  <input
+                    type="file"
+                    accept=".json"
+                    onChange={importDictionary}
+                    style={{ display: 'none' }}
+                  />
+                </label>
+              </div>
 
-               <h3 style={{ color: '#8b5cf6', display: 'flex', alignItems: 'center', gap: '10px', marginTop: 0 }}><FaSave /> Grilles Prédéfinies</h3>
-               <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '15px' }}>
-                 Sauvegardez vos configurations de grille.
-               </p>
-               <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                <button onClick={saveGridPreset} className="btn btn-outline" style={{ flex: 1, borderColor: '#8b5cf6', color: '#8b5cf6' }}>💾 Sauvegarder</button>
-                <select className="input" style={{ flex: 1 }} onChange={(e) => { if (e.target.value) { loadGridPreset(e.target.value); e.target.value = ''; } }} defaultValue="">
-                  <option value="" disabled>Charger...</option>
-                  {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).map(name => (<option key={name} value={name}>{name}</option>))}
+              <hr style={{ border: 'none', borderTop: '1px solid #eee', margin: '20px 0' }} />
+
+              <h3
+                style={{
+                  color: '#8b5cf6',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px',
+                  marginTop: 0,
+                }}
+              >
+                <FaSave /> Grilles Prédéfinies
+              </h3>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '15px' }}>
+                Sauvegardez vos configurations de grille.
+              </p>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                <button
+                  onClick={saveGridPreset}
+                  className="btn btn-outline"
+                  style={{ flex: 1, borderColor: '#8b5cf6', color: '#8b5cf6' }}
+                >
+                  💾 Sauvegarder
+                </button>
+                <select
+                  className="input"
+                  style={{ flex: 1 }}
+                  onChange={(e) => {
+                    if (e.target.value) {
+                      loadGridPreset(e.target.value);
+                      e.target.value = '';
+                    }
+                  }}
+                  defaultValue=""
+                >
+                  <option value="" disabled>
+                    Charger...
+                  </option>
+                  {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).map(
+                    (name) => (
+                      <option key={name} value={name}>
+                        {name}
+                      </option>
+                    )
+                  )}
                 </select>
               </div>
-              {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).length > 0 && (
+              {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).length >
+                0 && (
                 <div style={{ marginBottom: '20px' }}>
-                  <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '5px' }}>Supprimer un preset:</p>
+                  <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '5px' }}>
+                    Supprimer un preset:
+                  </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
-                    {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).map(name => (
-                      <button key={name} onClick={() => deleteGridPreset(name)} className="btn btn-sm" style={{ border: '1px solid #ef4444', color: '#ef4444', padding: '2px 6px', fontSize: '0.7rem' }}>
-                        <FaTrash /> {name}
-                      </button>
-                    ))}
+                    {Object.keys(JSON.parse(localStorage.getItem('ocr_grid_presets') || '{}')).map(
+                      (name) => (
+                        <button
+                          key={name}
+                          onClick={() => deleteGridPreset(name)}
+                          className="btn btn-sm"
+                          style={{
+                            border: '1px solid #ef4444',
+                            color: '#ef4444',
+                            padding: '2px 6px',
+                            fontSize: '0.7rem',
+                          }}
+                        >
+                          <FaTrash /> {name}
+                        </button>
+                      )
+                    )}
                   </div>
                 </div>
               )}
 
-               <button onClick={() => setShowHelp(false)} className="btn btn-primary" style={{ width: '100%', fontWeight: 'bold' }}>Fermer</button>
+              <button
+                onClick={() => setShowHelp(false)}
+                className="btn btn-primary"
+                style={{ width: '100%', fontWeight: 'bold' }}
+              >
+                Fermer
+              </button>
             </div>
           </div>
         )}
-
       </div>
     </div>
   );

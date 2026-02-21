@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense, lazy } from 'react';
+import { useToast } from './components/Toast';
 import { db } from './services/db';
 import { hashString } from './services/crypto'; // [NEW]
 import DiagnosticPanel from './components/DiagnosticPanel';
@@ -17,12 +18,16 @@ import WeaponDetail from './components/Weapons/WeaponDetail';
 
 import { FaUsers, FaChartLine, FaCog, FaFlask, FaShieldAlt, FaUserShield } from 'react-icons/fa';
 
+// [STRATEGY] Lazy load OCR Modal - NOT included in main bundle
+const UniversalOCRModal = lazy(() => import('./components/UniversalOCRModal'));
+
 // [FIX] Move these variables OUTSIDE the function to act as a global singleton
 let isAppListenerInitialized = false;
 let globalBackupLock = false;
 
 function App() {
   // --- STATE (Original) ---
+  const { showToast, ToastContainer } = useToast();
   const [view, setView] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [selectedWorkerId, setSelectedWorkerId] = useState(null);
@@ -31,6 +36,10 @@ function App() {
   const [isSidebarOpen, setSidebarOpen] = useState(true);
   const [waterResetKey, setWaterResetKey] = useState(0);
   const [compactMode, setCompactMode] = useState(true);
+  // [OCR] State for lazy-loaded OCR Modal
+  const [showOCRModal, setShowOCRModal] = useState(false);
+  const [ocrTargetMode, setOcrTargetMode] = useState('worker'); // 'worker' or 'weapon'
+  const [departments, setDepartments] = useState([]); // For OCR Modal
   // [FIX] Initialize from Memory (so it stays ON after reload)
   const [forceMobile, setForceMobile] = useState(
     () => localStorage.getItem('copro_force_mobile') === 'true'
@@ -49,16 +58,16 @@ function App() {
 
   const [pin, setPin] = useState('0000');
 
-// [CRITICAL FIX] Emergency Backup on App Close/Pause
+  // [CRITICAL FIX] Emergency Backup on App Close/Pause
   // This ensures that even 1 single unsaved edit is captured when the app is swiped away.
   useEffect(() => {
     const setupLifecycle = async () => {
       // [FIX] If a listener already exists, do not create another one
       if (isAppListenerInitialized) return;
-      
+
       try {
         const { App: CapApp } = await import('@capacitor/app');
-        
+
         // Ensure a clean slate
         await CapApp.removeAllListeners();
 
@@ -70,14 +79,16 @@ function App() {
 
             console.log('[App] App moving to background. Forcing emergency backup check...');
             const status = await backupService.getBackupStatus();
-            
+
             if (status.counter > 0) {
               console.log(`[App] ${status.counter} unsaved changes detected. Forcing export...`);
               await backupService.performAutoExport(async () => await db.exportData(), 'COUNTER');
             }
 
             // Release lock after delay
-            setTimeout(() => { globalBackupLock = false; }, 2000);
+            setTimeout(() => {
+              globalBackupLock = false;
+            }, 2000);
           }
         });
 
@@ -89,8 +100,8 @@ function App() {
     };
 
     setupLifecycle();
-    
-    // Note: We don't remove the listener on unmount anymore because we want 
+
+    // Note: We don't remove the listener on unmount anymore because we want
     // it to persist as a singleton across React's development remounts.
   }, []);
   // --- ENGINE STARTUP (The Only Change) ---
@@ -122,6 +133,10 @@ function App() {
         // Migration: If no PIN in DB, use default "0011" hashed
         setPin('0000');
       }
+
+      // 4. Load Departments for OCR Modal
+      const depts = await db.getDepartments();
+      setDepartments(depts);
       console.log('[App] Initialization complete');
     } catch (error) {
       console.error('App Initialization Failed:', error);
@@ -227,7 +242,8 @@ function App() {
   // --- MAIN UI (Original Layout Restored) ---
   return (
     <div className={`app-shell ${isSidebarOpen ? '' : 'sidebar-closed'}`}>
-      <DiagnosticPanel /> 
+      <ToastContainer />
+      <DiagnosticPanel />
       {/* SIDEBAR */}
       <aside className="sidebar no-print">
         <div className="brand">
@@ -379,6 +395,20 @@ function App() {
           )}
         </div>
       </main>
+
+      {/* [OCR] Lazy-loaded Modal with Suspense */}
+      {showOCRModal && (
+        <Suspense fallback={<div className="loading-overlay">Initialisation du moteur OCR...</div>}>
+          <UniversalOCRModal
+            mode={ocrTargetMode}
+            departments={departments}
+            onClose={() => setShowOCRModal(false)}
+            onImportSuccess={(count) => {
+              showToast(`${count} importés !`, 'success');
+            }}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }

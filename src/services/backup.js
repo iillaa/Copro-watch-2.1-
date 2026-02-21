@@ -476,7 +476,7 @@ async function runRetentionPolicy() {
 
     // 2. Filter & Sort by Time (Newest First)
     const backups = result.files
-      .filter(f => f.name.startsWith('backup-counter_') || f.name.startsWith('backup-time_'))
+      .filter((f) => f.name.startsWith('backup-counter_') || f.name.startsWith('backup-time_'))
       .sort((a, b) => b.mtime - a.mtime); // Sort Descending
 
     // 3. Keep top 20, Delete the rest
@@ -488,7 +488,7 @@ async function runRetentionPolicy() {
       for (const file of toDelete) {
         await Filesystem.deleteFile({
           path: `copro-watch/${file.name}`,
-          directory: Directory.Documents
+          directory: Directory.Documents,
         });
       }
     }
@@ -557,7 +557,9 @@ export async function checkAndAutoImport(dbInstance) {
     // NEVER overwrite an existing local database with an auto-import.
     const workerCount = await dbInstance.workers.count();
     if (workerCount > 0) {
-      console.log('[Backup] Local data exists. Skipping auto-import to prevent the Reversion Trap.');
+      console.log(
+        '[Backup] Local data exists. Skipping auto-import to prevent the Reversion Trap.'
+      );
       return { imported: false, reason: 'local_data_exists' };
     }
 

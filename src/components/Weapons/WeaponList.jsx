@@ -195,10 +195,14 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   const highlightMatch = (text) => {
     if (!searchTerm || !text) return text;
     const parts = String(text).split(new RegExp(`(${searchTerm})`, 'gi'));
-    return parts.map((part, i) => 
-      part.toLowerCase() === searchTerm.toLowerCase() 
-        ? <span key={i} style={{ backgroundColor: '#fef08a', padding: '0 2px', borderRadius: '2px' }}>{part}</span> 
-        : part
+    return parts.map((part, i) =>
+      part.toLowerCase() === searchTerm.toLowerCase() ? (
+        <span key={i} style={{ backgroundColor: '#fef08a', padding: '0 2px', borderRadius: '2px' }}>
+          {part}
+        </span>
+      ) : (
+        part
+      )
     );
   };
 
@@ -535,162 +539,172 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
 
       {/* [SURGICAL FIX] Disable internal scroll when not in compact mode */}
       <div className="scroll-wrapper" style={{ maxHeight: compactMode ? '75vh' : 'none' }}>
-        
         {/* [RESTORED PARITY] Empty State UI */}
         {filteredHolders.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
             <FaUserPlus style={{ fontSize: '3rem', color: '#cbd5e1', marginBottom: '1rem' }} />
             <h3>Aucun agent trouvé</h3>
             <p>Commencez par ajouter un détenteur d'arme ou modifiez vos filtres de recherche.</p>
-            <button className="btn btn-primary" style={{ marginTop: '1rem' }} onClick={() => setShowForm(true)}>
+            <button
+              className="btn btn-primary"
+              style={{ marginTop: '1rem' }}
+              onClick={() => setShowForm(true)}
+            >
               <FaPlus /> Ajouter un agent
             </button>
           </div>
         ) : (
           <div className="hybrid-container">
             <div className="hybrid-header" style={{ gridTemplateColumns: gridTemplate }}>
-            <div style={{ textAlign: 'center' }}>
-              {isSelectionMode && (
-                <input
-                  type="checkbox"
-                  onChange={toggleSelectAll}
-                  checked={
-                    filteredHolders.length > 0 && selectedIds.size === filteredHolders.length
-                  }
-                />
-              )}
-            </div>
-            <div onClick={() => handleSort('full_name')} style={{ cursor: 'pointer' }}>
-              Nom et prénom {getSortIcon('full_name')}
-            </div>
-            <div onClick={() => handleSort('national_id')} style={{ cursor: 'pointer' }}>
-              Matricule {getSortIcon('national_id')}
-            </div>
-            <div onClick={() => handleSort('department_id')} style={{ cursor: 'pointer' }}>
-              Service {getSortIcon('department_id')}
-            </div>
-            <div onClick={() => handleSort('job_function')} style={{ cursor: 'pointer' }}>
-              Poste / Grade {getSortIcon('job_function')}
-            </div>
-            <div onClick={() => handleSort('next_review_date')} style={{ cursor: 'pointer' }}>
-              Prochain Dû {getSortIcon('next_review_date')}
-            </div>
-            <div style={{ textAlign: 'right' }}>Actions</div>
-          </div>
-
-          {filteredHolders.map((h) => {
-            const isSelected = selectedIds.has(h.id);
-            const deptName = departments.find((d) => d.id === h.department_id)?.name || '-';
-            const isDue = logic.isWeaponDueSoon(h.next_review_date);
-
-            // [SURGICAL FIX] Strict Status Check
-            // Only 'inapte_temporaire' can be overdue. Apte/Definitif are ignored.
-            const isOverdue =
-              h.status === 'inapte_temporaire' &&
-              h.next_review_date &&
-              logic.isOverdue(h.next_review_date);
-
-            return (
-              <div
-                key={h.id}
-                // [NEW] Add 'overdue-worker-row' class for red border effect
-                className={`hybrid-row ${isSelected ? 'selected' : ''} ${
-                  !h.archived && isOverdue ? 'overdue-worker-row' : ''
-                }`}
-                style={{ gridTemplateColumns: gridTemplate }}
-                onClick={() =>
-                  isSelectionMode ? toggleSelectOne(h.id) : onNavigateWeaponHolder(h.id)
-                }
-              >
-                <div style={{ textAlign: 'center' }}>
-                  {isSelectionMode && (
-                    <input
-                      type="checkbox"
-                      checked={isSelected}
-                      onChange={() => toggleSelectOne(h.id)}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  )}
-                </div>
-                <div className="hybrid-cell" style={{ fontWeight: 600 }}>
-                  {highlightMatch(h.full_name)} {/* <--- HIGHLIGHT APPLIED */}
-                </div>
-                <div className="hybrid-cell">
-                  <span className="badge-id">{highlightMatch(h.national_id)}</span> {/* <--- HIGHLIGHT APPLIED */}
-                </div>
-                <div className="hybrid-cell">{deptName}</div>
-                <div className="hybrid-cell">{highlightMatch(h.job_function)}</div> {/* <--- HIGHLIGHT APPLIED */}
-                <div className="hybrid-cell">
-                  <span
-                    style={{
-                      fontWeight: 600,
-                      color: isOverdue ? 'var(--danger)' : isDue ? '#d97706' : 'inherit',
-                    }}
-                  >
-                    {logic.formatDateDisplay(h.next_review_date)}
-                  </span>
-
-                  {/* [NEW] RETARD BADGE */}
-                  {!h.archived && isOverdue && (
-                    <span
-                      className="badge badge-red"
-                      style={{ marginLeft: '5px', fontSize: '0.65rem' }}
-                    >
-                      RETARD
-                    </span>
-                  )}
-
-                  {/* [FIX] Status Badge: Removed '!isOverdue' so it COEXISTS with Retard */}
-                  {h.status && h.status !== 'pending' && (
-                    <span
-                      className={`badge ${
-                        h.status === 'apte'
-                          ? 'badge-green'
-                          : h.status === 'inapte_definitif'
-                          ? 'badge-black'
-                          : 'badge-red'
-                      }`}
-                      style={{ marginLeft: '5px', fontSize: '0.7rem' }}
-                    >
-                      {h.status === 'apte' ? 'Apte' : 'Inapte'}
-                    </span>
-                  )}
-                </div>
-                <div className="hybrid-actions">
-                  <button
-                    className="btn btn-sm btn-outline"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setEditingHolder(h);
-                      setShowForm(true);
-                    }}
-                  >
-                    <FaEdit />
-                  </button>
-                  <button
-                    className="btn btn-sm btn-outline"
-                    onClick={(e) => handleDelete(e, h)}
-                    disabled={deletingId === h.id}
-                    style={{
-                      color: 'var(--danger)',
-                      borderColor: 'var(--danger)',
-                      backgroundColor: '#fff1f2',
-                    }}
-                    title="Supprimer"
-                  >
-                    {deletingId === h.id ? (
-                      <div
-                        className="loading-spinner"
-                        style={{ width: '12px', height: '12px', borderWidth: '2px', borderTopColor: 'var(--danger)' }}
-                      ></div>
-                    ) : (
-                      <FaTrash />
-                    )}
-                  </button>
-                </div>
+              <div style={{ textAlign: 'center' }}>
+                {isSelectionMode && (
+                  <input
+                    type="checkbox"
+                    onChange={toggleSelectAll}
+                    checked={
+                      filteredHolders.length > 0 && selectedIds.size === filteredHolders.length
+                    }
+                  />
+                )}
               </div>
-            );
-          })}
+              <div onClick={() => handleSort('full_name')} style={{ cursor: 'pointer' }}>
+                Nom et prénom {getSortIcon('full_name')}
+              </div>
+              <div onClick={() => handleSort('national_id')} style={{ cursor: 'pointer' }}>
+                Matricule {getSortIcon('national_id')}
+              </div>
+              <div onClick={() => handleSort('department_id')} style={{ cursor: 'pointer' }}>
+                Service {getSortIcon('department_id')}
+              </div>
+              <div onClick={() => handleSort('job_function')} style={{ cursor: 'pointer' }}>
+                Poste / Grade {getSortIcon('job_function')}
+              </div>
+              <div onClick={() => handleSort('next_review_date')} style={{ cursor: 'pointer' }}>
+                Prochain Dû {getSortIcon('next_review_date')}
+              </div>
+              <div style={{ textAlign: 'right' }}>Actions</div>
+            </div>
+
+            {filteredHolders.map((h) => {
+              const isSelected = selectedIds.has(h.id);
+              const deptName = departments.find((d) => d.id === h.department_id)?.name || '-';
+              const isDue = logic.isWeaponDueSoon(h.next_review_date);
+
+              // [SURGICAL FIX] Strict Status Check
+              // Only 'inapte_temporaire' can be overdue. Apte/Definitif are ignored.
+              const isOverdue =
+                h.status === 'inapte_temporaire' &&
+                h.next_review_date &&
+                logic.isOverdue(h.next_review_date);
+
+              return (
+                <div
+                  key={h.id}
+                  // [NEW] Add 'overdue-worker-row' class for red border effect
+                  className={`hybrid-row ${isSelected ? 'selected' : ''} ${
+                    !h.archived && isOverdue ? 'overdue-worker-row' : ''
+                  }`}
+                  style={{ gridTemplateColumns: gridTemplate }}
+                  onClick={() =>
+                    isSelectionMode ? toggleSelectOne(h.id) : onNavigateWeaponHolder(h.id)
+                  }
+                >
+                  <div style={{ textAlign: 'center' }}>
+                    {isSelectionMode && (
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelectOne(h.id)}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    )}
+                  </div>
+                  <div className="hybrid-cell" style={{ fontWeight: 600 }}>
+                    {highlightMatch(h.full_name)} {/* <--- HIGHLIGHT APPLIED */}
+                  </div>
+                  <div className="hybrid-cell">
+                    <span className="badge-id">{highlightMatch(h.national_id)}</span>{' '}
+                    {/* <--- HIGHLIGHT APPLIED */}
+                  </div>
+                  <div className="hybrid-cell">{deptName}</div>
+                  <div className="hybrid-cell">{highlightMatch(h.job_function)}</div>{' '}
+                  {/* <--- HIGHLIGHT APPLIED */}
+                  <div className="hybrid-cell">
+                    <span
+                      style={{
+                        fontWeight: 600,
+                        color: isOverdue ? 'var(--danger)' : isDue ? '#d97706' : 'inherit',
+                      }}
+                    >
+                      {logic.formatDateDisplay(h.next_review_date)}
+                    </span>
+
+                    {/* [NEW] RETARD BADGE */}
+                    {!h.archived && isOverdue && (
+                      <span
+                        className="badge badge-red"
+                        style={{ marginLeft: '5px', fontSize: '0.65rem' }}
+                      >
+                        RETARD
+                      </span>
+                    )}
+
+                    {/* [FIX] Status Badge: Removed '!isOverdue' so it COEXISTS with Retard */}
+                    {h.status && h.status !== 'pending' && (
+                      <span
+                        className={`badge ${
+                          h.status === 'apte'
+                            ? 'badge-green'
+                            : h.status === 'inapte_definitif'
+                            ? 'badge-black'
+                            : 'badge-red'
+                        }`}
+                        style={{ marginLeft: '5px', fontSize: '0.7rem' }}
+                      >
+                        {h.status === 'apte' ? 'Apte' : 'Inapte'}
+                      </span>
+                    )}
+                  </div>
+                  <div className="hybrid-actions">
+                    <button
+                      className="btn btn-sm btn-outline"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setEditingHolder(h);
+                        setShowForm(true);
+                      }}
+                    >
+                      <FaEdit />
+                    </button>
+                    <button
+                      className="btn btn-sm btn-outline"
+                      onClick={(e) => handleDelete(e, h)}
+                      disabled={deletingId === h.id}
+                      style={{
+                        color: 'var(--danger)',
+                        borderColor: 'var(--danger)',
+                        backgroundColor: '#fff1f2',
+                      }}
+                      title="Supprimer"
+                    >
+                      {deletingId === h.id ? (
+                        <div
+                          className="loading-spinner"
+                          style={{
+                            width: '12px',
+                            height: '12px',
+                            borderWidth: '2px',
+                            borderTopColor: 'var(--danger)',
+                          }}
+                        ></div>
+                      ) : (
+                        <FaTrash />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
       </div>

@@ -4,18 +4,15 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 
 export default defineConfig({
   plugins: [react(), viteSingleFile()],
-  base: './', // Important pour que les liens soient relatifs (file://)
   build: {
     target: 'esnext',
-    assetsInlineLimit: 100000000, // Force tout (images, CSS) dans le JS
-    cssCodeSplit: false, // Empêche de créer un fichier .css séparé
+    assetsInlineLimit: 100000000, // Necessary to inline the WASM
+    chunkSizeWarningLimit: 100000000,
+    cssCodeSplit: false,
     rollupOptions: {
-      // CORRECTION ICI : on déplace inlineDynamicImports dans 'output'
       output: {
-        inlineDynamicImports: true,
+        inlineDynamicImports: true, // Required for single-file
       },
     },
-    outDir: 'dist-standalone', // Dossier de sortie séparé
-    emptyOutDir: true, // Nettoie le dossier avant de construire
   },
 });

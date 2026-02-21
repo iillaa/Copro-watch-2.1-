@@ -680,7 +680,6 @@ export default function Settings({
               </button>
             </div>
 
-
             {/* Force Mobile Toggle */}
             <div
               style={{
@@ -713,7 +712,7 @@ export default function Settings({
                 justifyContent: 'space-between',
                 borderTop: '1px solid #eee',
                 paddingTop: '1rem',
-                marginTop: '1rem'
+                marginTop: '1rem',
               }}
             >
               <div>

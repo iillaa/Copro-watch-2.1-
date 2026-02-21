@@ -1,41 +1,18 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-// ocr
-import wasm from "vite-plugin-wasm";
-import topLevelAwait from "vite-plugin-top-level-await";
-// import { VitePWA } from 'vite-plugin-pwa';
-// REMOVE: import { viteSingleFile } from 'vite-plugin-singlefile';
+import wasm from 'vite-plugin-wasm';
+import topLevelAwait from 'vite-plugin-top-level-await';
 
 export default defineConfig({
-  assetsInclude: ['**/*.onnx', '**/*.wasm'], // Explicitly include model files
-  plugins: [
-    react(),
-    wasm(), // Add WASM support
-    topLevelAwait(), // Add Top Level Await support
-    // REMOVE: viteSingleFile(),
-    // VitePWA({
-    //   registerType: 'autoUpdate',
-    //   includeAssets: ['app-icon.svg'],
-    //   manifest: {
-    //     name: 'Gestionnaire de Visites Médicales',
-    //     short_name: 'MedVisit',
-    //     description: 'Offline SPA to manage medical visits',
-    //     icons: [{ src: 'app-icon.svg', sizes: '192x192', type: 'image/svg+xml' }],
-    //     theme_color: '#ffffff',
-    //     background_color: '#ffffff',
-    //     display: 'standalone',
-    //   },
-    // }),
-  ],
+  assetsInclude: ['**/*.onnx', '**/*.wasm'],
+  plugins: [react(), wasm(), topLevelAwait()],
   base: './',
   server: {
-    host: '0.0.0.0', // Expose to network
+    host: '0.0.0.0',
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp',
     },
-    // Force MIME types if needed, though Vite is usually good.
-    // The main fix for "Magic Word" is ensuring the file exists at the path.
   },
   preview: {
     host: '0.0.0.0',
@@ -46,12 +23,24 @@ export default defineConfig({
   },
   build: {
     target: 'esnext',
-    // REMOVE: assetsInlineLimit: 100000000,
-    // REMOVE: cssCodeSplit: false,
+    chunkSizeWarningLimit: 3000, // Prevents terminal spam
     rollupOptions: {
-      // REMOVE: inlineDynamicImports: true,
       output: {
-        manualChunks: undefined,
+        // [STRATEGY] Surgical code splitting for OCR/AI heavy libraries
+        manualChunks(id) {
+          // If the code belongs to OpenCV, put it in 'opencv-lib'
+          if (id.includes('@techstark/opencv-js')) {
+            return 'opencv-lib';
+          }
+          // If the code belongs to the OCR Modal, put it in 'ocr-feature'
+          if (id.includes('UniversalOCRModal')) {
+            return 'ocr-feature';
+          }
+          // Put all other heavy node_modules in 'vendor.js'
+          if (id.includes('node_modules')) {
+            return 'vendor';
+          }
+        },
       },
     },
   },

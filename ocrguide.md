@@ -3,9 +3,11 @@
 ## 🔴 CRITICAL ISSUE: PaddleOCR Model Loading Failure
 
 ### Error Breakdown
+
 ```
 expected magic word 00 61 73 6d, found 3c 21 44 4f
 ```
+
 - `00 61 73 6d` = WASM binary signature
 - `3c 21 44 4f` = `<!DO` (start of `<!DOCTYPE html>`)
 
@@ -18,10 +20,11 @@ expected magic word 00 61 73 6d, found 3c 21 44 4f
 ### 1. **Fix Model Paths** (Most Likely Issue)
 
 The models are being loaded from:
+
 ```javascript
 models: {
   det: '/models/det.onnx',
-  rec: '/models/rec_ara.onnx', 
+  rec: '/models/rec_ara.onnx',
   dic: '/models/keys_ara.txt',
 }
 ```
@@ -29,6 +32,7 @@ models: {
 **Problem**: These files don't exist in your `/public/models/` directory.
 
 **Solution A - Download PaddleOCR Models**:
+
 ```bash
 # Create the models directory
 mkdir -p public/models
@@ -40,11 +44,13 @@ mkdir -p public/models
 ```
 
 **Where to get models**:
+
 - Official PaddleOCR ONNX models: https://github.com/PaddlePaddle/PaddleOCR
 - Pre-converted ONNX models: https://github.com/muchaste/PaddleOCR-ONNX
 - client-side-ocr examples: https://github.com/image-js/client-side-ocr
 
 **Solution B - Use CDN/External Hosting** (if models are large):
+
 ```javascript
 const ocr = await createOCREngine({
   models: {
@@ -60,6 +66,7 @@ const ocr = await createOCREngine({
 ### 2. **Verify Public Folder Structure**
 
 Your project should have:
+
 ```
 public/
   models/
@@ -69,6 +76,7 @@ public/
 ```
 
 **Test if files are accessible**:
+
 1. Start your dev server
 2. Navigate to: `http://localhost:YOUR_PORT/models/det.onnx`
 3. Should download a binary file, NOT show HTML
@@ -99,6 +107,7 @@ const handleGo = () => {
 ## 🐛 CODE IMPROVEMENTS FOUND
 
 ### Issue 1: Missing Error Handling in Image Load
+
 ```javascript
 // Current code doesn't handle image load failures
 img.onload = () => { ... }
@@ -111,19 +120,20 @@ img.onerror = () => {
 ```
 
 ### Issue 2: Paddle Engine Never Cleaned Up
+
 ```javascript
 // In runPaddleOCR, add cleanup:
 let ocr = null;
 try {
   // AJOUTEZ CETTE LIGNE ICI :
-  ort.env.wasm.numThreads = 1; 
+  ort.env.wasm.numThreads = 1;
 
   const ocr = await Ocr.create({
     models: {
       detectionPath: 'models/det.onnx',
       recognitionPath: 'models/rec_ara.onnx',
-      dictionaryPath: 'models/keys_ara.txt'
-    }
+      dictionaryPath: 'models/keys_ara.txt',
+    },
   });
   // ... processing ...
 } finally {
@@ -134,6 +144,7 @@ try {
 ```
 
 ### Issue 3: Grid Filter Logic Assumes Words Array
+
 The `filterWordsByGrid` function works well, but add validation:
 
 ```javascript
@@ -151,11 +162,13 @@ const filterWordsByGrid = (words, imgW, imgH, vLines, hLines, colMapping, isRTL)
 ## 🚀 RECOMMENDED IMPLEMENTATION STRATEGY
 
 ### Option 1: Tesseract Only (Safest)
+
 - Remove Paddle UI completely
 - Focus on optimizing Tesseract parameters
 - Already working well based on your code
 
 ### Option 2: Hybrid with Fallback
+
 ```javascript
 const handleGo = async () => {
   if (ocrEngine === 'paddle') {
@@ -173,6 +186,7 @@ const handleGo = async () => {
 ```
 
 ### Option 3: Full Paddle Setup (Most Work)
+
 1. Download ONNX models (~50MB total)
 2. Host on CDN or in public folder
 3. Test thoroughly with both languages
@@ -182,11 +196,13 @@ const handleGo = async () => {
 ## 📋 IMMEDIATE ACTION ITEMS
 
 1. **Check if models exist**:
+
    ```bash
    ls -lh public/models/
    ```
 
 2. **If missing, either**:
+
    - Download from PaddleOCR repo
    - OR remove Paddle option from UI
 
@@ -194,13 +210,13 @@ const handleGo = async () => {
    ```javascript
    } catch (e) {
      addLog(`[ERREUR PADDLE] ${e.message}`);
-     alert(`Impossible de charger PaddleOCR. 
-     
+     alert(`Impossible de charger PaddleOCR.
+
      Raisons possibles:
      - Modèles manquants dans /public/models/
      - Fichiers corrompus
      - Problème de connexion
-     
+
      Suggestion: Utilisez Tesseract (Safe) à la place.`);
    }
    ```
@@ -217,22 +233,18 @@ const runPaddleOCR = async () => {
   setIsProcessing(true);
   setLogs([]);
   addLog('[PADDLE] Vérification des modèles...');
-  
+
   try {
     // Test if models are accessible
-    const modelPaths = [
-      '/models/det.onnx',
-      '/models/rec_ara.onnx', 
-      '/models/keys_ara.txt'
-    ];
-    
+    const modelPaths = ['/models/det.onnx', '/models/rec_ara.onnx', '/models/keys_ara.txt'];
+
     for (const path of modelPaths) {
       const response = await fetch(path, { method: 'HEAD' });
       if (!response.ok) {
         throw new Error(`Modèle introuvable: ${path} (${response.status})`);
       }
     }
-    
+
     addLog('[PADDLE] Modèles détectés. Initialisation...');
     setProgress(10);
 
@@ -276,12 +288,13 @@ const runPaddleOCR = async () => {
     setCandidates(candidates);
     setActiveTab('results');
     addLog(`[SUCCESS] ${candidates.length} lignes extraites.`);
-    
+
     if (ocr.dispose) await ocr.dispose();
-    
   } catch (e) {
     addLog(`[ERREUR] ${e.message}`);
-    alert(`❌ PaddleOCR indisponible\n\n${e.message}\n\nℹ️ Solution: Utilisez "Tesseract (Safe)" à la place.`);
+    alert(
+      `❌ PaddleOCR indisponible\n\n${e.message}\n\nℹ️ Solution: Utilisez "Tesseract (Safe)" à la place.`
+    );
     setOcrEngine('tesseract'); // Auto-switch
   } finally {
     setIsProcessing(false);
@@ -299,4 +312,4 @@ const runPaddleOCR = async () => {
 - Arabic transliteration logic is correct
 - Debug mode is very useful
 
-**Recommendation**: fix paddle ocr  , keep the dual ocr engine with the switch button 
+**Recommendation**: fix paddle ocr , keep the dual ocr engine with the switch button

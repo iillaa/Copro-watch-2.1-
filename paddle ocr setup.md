@@ -11,6 +11,7 @@ Your error means the ONNX model files don't exist at `/public/models/`. When the
 ### Option 1: Quick Setup (Recommended for Testing)
 
 1. **Create the models folder**:
+
    ```bash
    mkdir -p public/models
    ```
@@ -18,16 +19,19 @@ Your error means the ONNX model files don't exist at `/public/models/`. When the
 2. **Download pre-converted ONNX models**:
 
    Visit these repositories to get ONNX models:
+
    - https://github.com/muchaste/PaddleOCR-ONNX
    - https://paddleocr.bj.bcebos.com/PP-OCRv3/chinese/ (official)
    - https://github.com/PaddlePaddle/PaddleOCR/blob/release/2.7/doc/doc_en/models_list_en.md
 
    You need 3 files:
+
    - **det.onnx** (Detection model) - finds text regions
    - **rec_ara.onnx** (Arabic recognition) - reads Arabic text
    - **keys_ara.txt** (Character dictionary) - Arabic character mappings
 
 3. **Place files in public/models/**:
+
    ```
    your-project/
      public/
@@ -49,14 +53,16 @@ Your error means the ONNX model files don't exist at `/public/models/`. When the
 If you can't find pre-converted ONNX models:
 
 1. **Download PaddleOCR Python models**:
+
    ```bash
    pip install paddleocr paddle2onnx onnx
    ```
 
 2. **Convert to ONNX**:
+
    ```python
    import paddle2onnx
-   
+
    # Convert detection model
    paddle2onnx.convert(
        model_path='./det_model.pdmodel',
@@ -64,7 +70,7 @@ If you can't find pre-converted ONNX models:
        save_file='./det.onnx',
        opset_version=13
    )
-   
+
    # Convert recognition model (Arabic)
    paddle2onnx.convert(
        model_path='./rec_ara_model.pdmodel',
@@ -134,12 +140,14 @@ const handleGo = () => {
 ```
 
 **Benefits**:
+
 - ✅ No external dependencies
 - ✅ Works out of the box
 - ✅ Smaller bundle size
 - ✅ Already proven to work in your code
 
 **Drawbacks**:
+
 - ⚠️ Slower than PaddleOCR (but still fast enough)
 - ⚠️ May need more preprocessing for Arabic
 
@@ -159,12 +167,12 @@ After setup, verify:
 
 ## 📊 Model Size Comparison
 
-| Model         | Size    | Purpose                    |
-|---------------|---------|----------------------------|
-| det.onnx      | ~8MB    | Text region detection      |
-| rec_fra.onnx  | ~10MB   | French text recognition    |
-| rec_ara.onnx  | ~12MB   | Arabic text recognition    |
-| keys_*.txt    | ~5KB    | Character dictionaries     |
+| Model        | Size  | Purpose                 |
+| ------------ | ----- | ----------------------- |
+| det.onnx     | ~8MB  | Text region detection   |
+| rec_fra.onnx | ~10MB | French text recognition |
+| rec_ara.onnx | ~12MB | Arabic text recognition |
+| keys\_\*.txt | ~5KB  | Character dictionaries  |
 
 **Total**: ~30MB for dual-language support
 
@@ -175,6 +183,7 @@ After setup, verify:
 Based on your code review:
 
 **Use Tesseract Only**:
+
 1. Your Tesseract implementation is solid
 2. It already handles Arabic + French well
 3. The grid system works perfectly
@@ -182,6 +191,7 @@ Based on your code review:
 5. Simpler deployment
 
 **Only add Paddle if**:
+
 - You need 2x-3x faster processing
 - Processing hundreds of images daily
 - Users complain about speed
@@ -230,4 +240,5 @@ curl -H "Origin: http://localhost:5173" http://localhost:5173/models/det.onnx -v
 ---
 
 ## ✨ Final Recommendation
-fix paddle ocr  , keep the dual ocr engine with the switch button 
+
+fix paddle ocr , keep the dual ocr engine with the switch button
