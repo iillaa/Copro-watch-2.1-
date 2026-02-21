@@ -258,9 +258,8 @@ export default function UniversalOCRModal({
 
     // 2. Path Rules
     if (isProd) {
-      // [FIX] Use absolute-ish path for Capacitor 'https://localhost/'
-      // If we use './assets/', it might double up if the base is already assets/
-      ort.env.wasm.wasmPaths = 'https://localhost/'; 
+      // [FIX] Point to the directory containing .mjs and .wasm files
+      ort.env.wasm.wasmPaths = 'https://localhost/assets/'; 
     } else {
       // npm run dev
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
@@ -554,7 +553,14 @@ export default function UniversalOCRModal({
       // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
       for (let i = 0; i < numWorkers; i++) {
         try {
-          const w = await Tesseract.createWorker(langs, 1);
+          // [FIX] Force local worker and core files to prevent CDN download crash
+          const w = await Tesseract.createWorker(langs, 1, {
+            workerPath: 'https://localhost/tesseract/worker.min.js',
+            corePath: 'https://localhost/tesseract/tesseract-core.wasm.js',
+            logger: (m) => {
+              if (m.status === 'initializing api') setProgress(10);
+            },
+          });
           workers.push(w);
         } catch (e) {
           console.error('[TESSERACT] Worker init failed:', e);
@@ -814,10 +820,14 @@ export default function UniversalOCRModal({
       if (isMounted.current) addLog('[HYBRID] Starting Engines...');
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
       
-      // [FIX] Safe init for Hybrid mode
+      // [FIX] Safe init for Hybrid mode with local assets
       try {
-        const worker1 = await Tesseract.createWorker(langs, 1);
-        const worker2 = await Tesseract.createWorker(langs, 1);
+        const tessOptions = {
+          workerPath: 'https://localhost/tesseract/worker.min.js',
+          corePath: 'https://localhost/tesseract/tesseract-core.wasm.js',
+        };
+        const worker1 = await Tesseract.createWorker(langs, 1, tessOptions);
+        const worker2 = await Tesseract.createWorker(langs, 1, tessOptions);
         tesseractWorkers = [worker1, worker2];
       } catch (e) {
         throw new Error('Moteur Tesseract indisponible (Requis pour Hybrid).');
