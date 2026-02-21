@@ -20,10 +20,16 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('onnxruntime-web')) return 'onnx-lib';
-          if (id.includes('tesseract')) return 'tesseract-lib';
-          if (id.includes('@gutenye/ocr-browser')) return 'paddle-lib';
-          if (id.includes('@techstark/opencv-js')) return 'opencv-lib';
+          // GROUPING: Combine all OCR-related dependencies into one stable chunk
+          // This prevents circular dependencies between tesseract.js and its worker/core parts
+          if (
+            id.includes('tesseract') ||
+            id.includes('onnxruntime-web') ||
+            id.includes('@gutenye/ocr-browser') ||
+            id.includes('@techstark/opencv-js')
+          ) {
+            return 'ocr-engine';
+          }
           if (id.includes('UniversalOCRModal')) return 'ocr-feature';
         },
       },
