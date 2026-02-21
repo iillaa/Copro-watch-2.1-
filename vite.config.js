@@ -22,7 +22,7 @@ export default defineConfig({
     },
   },
   build: {
-    target: 'esnext',
+    target: 'es2022',
     chunkSizeWarningLimit: 3000, // Prevents terminal spam
     rollupOptions: {
       output: {
