@@ -38,10 +38,29 @@ export default class ErrorBoundary extends React.Component {
             textAlign: 'center',
             background: '#f8d7da',
             color: '#721c24',
+            fontFamily: 'monospace',
           }}
         >
-          <h2>Oups ! Une erreur est survenue.</h2>
+          <h2>⚠️ App Crashed</h2>
           <p>L'application a rencontré un problème inattendu.</p>
+          <div
+            style={{
+              marginTop: '1rem',
+              padding: '1rem',
+              background: 'white',
+              borderRadius: '8px',
+              maxWidth: '800px',
+              width: '100%',
+              textAlign: 'left',
+              overflow: 'auto',
+            }}
+          >
+            <strong>Error:</strong>
+            <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12, color: 'red' }}>
+              {this.state.error?.toString()}
+              {'\n'}\n{this.state.error?.stack}
+            </pre>
+          </div>
           <div style={{ marginTop: '1rem', display: 'flex', gap: '1rem' }}>
             <button
               onClick={this.handleReload}
@@ -50,9 +69,6 @@ export default class ErrorBoundary extends React.Component {
               Recharger l'application
             </button>
           </div>
-          <p style={{ marginTop: '2rem', fontSize: '0.8rem', opacity: 0.7 }}>
-            Code d'erreur : {this.state.error?.toString()}
-          </p>
         </div>
       );
     }

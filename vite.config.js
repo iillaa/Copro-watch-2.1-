@@ -12,9 +12,9 @@ export default defineConfig({
     wasm()
   ],
   
-  // [CRITICAL FIX] Capacitor requires an absolute base path ('/') to resolve 
-  // dynamic chunks correctly. './' causes 404 errors for JS files in APKs.
-  base: '/', 
+  // [CRITICAL FIX] Capacitor APK uses file:// protocol - use relative base
+  // './' ensures assets load correctly from APK's file:// path
+  base: './', 
 
   build: {
     // [FIX] target es2020 is the most stable for modern Android WebViews.

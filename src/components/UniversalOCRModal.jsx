@@ -257,10 +257,8 @@ export default function UniversalOCRModal({
 
     // 2. Path Rules
     if (isProd) {
-      if (!isStandaloneFile) {
-        // APK (Capacitor) or PC Local Server
-        ort.env.wasm.wasmPaths = '/assets/';
-      }
+      // FIX: Use relative path so it works on both APK (file://) and web server
+      ort.env.wasm.wasmPaths = './assets/'; // was '/assets/' (absolute = broken on APK)
     } else {
       // npm run dev
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
@@ -661,6 +659,19 @@ export default function UniversalOCRModal({
   };
 
   // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE RESTORED + IMPROVED) ==========
+  // Helper function to get the correct models URL for Capacitor APK
+  const getModelsUrl = () => {
+    // Capacitor APK uses file:// — models must be relative to index.html
+    if (window.location.protocol === 'file:' || window.location.origin === 'null') {
+      // Capacitor serves from the www/ folder root
+      return './models/';
+    }
+    // Dev server or production web server
+    const base = window.location.origin + 
+      window.location.pathname.split('/').slice(0, -1).join('/') + '/';
+    return base + 'models/';
+  };
+
   const runPaddleOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
@@ -672,9 +683,7 @@ export default function UniversalOCRModal({
 
     let ocr = null;
     try {
-      const baseUrl =
-        window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
-      const modelsUrl = baseUrl + 'models/';
+      const modelsUrl = getModelsUrl();
       ocr = await Ocr.create({
         models: {
           detectionPath: `${modelsUrl}det.onnx`,
@@ -797,9 +806,7 @@ export default function UniversalOCRModal({
       const worker2 = await Tesseract.createWorker(langs, 1);
       tesseractWorkers = [worker1, worker2];
 
-      const baseUrl =
-        window.location.origin + window.location.pathname.split('/').slice(0, -1).join('/') + '/';
-      const modelsUrl = baseUrl + 'models/';
+      const modelsUrl = getModelsUrl();
       paddleOcr = await Ocr.create({
         models: {
           detectionPath: `${modelsUrl}det.onnx`,
