@@ -3,11 +3,10 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
 
-// [TEMPORARY DEBUG] This will pop up a window on your phone if the JS fails
-window.onerror = (msg, src, lin, col, err) => {
-  alert(`FATAL: ${msg}\nAt: ${src}:${lin}`);
-  return false;
-};
+// [DEBUG MODE] This will pop up a console on your phone if you toggle dev mode in settings
+if (localStorage.getItem('copro_dev_mode') === 'true') {
+  import('eruda').then(eruda => eruda.default.init());
+}
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

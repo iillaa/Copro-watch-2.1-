@@ -110,7 +110,7 @@ export async function encryptString(password, plaintext) {
   const iv = cryptoAPI.getRandomValues(new Uint8Array(12));
   const key = await deriveKey(password, salt);
   const cipherBytes = new Uint8Array(
-    await subtle.encrypt({ name: 'AES-GCM', iv }, key, toUint8Array(plaintext))
+    await subtleAPI.encrypt({ name: 'AES-GCM', iv }, key, toUint8Array(plaintext))
   );
   return JSON.stringify({
     method: 'aes-gcm',

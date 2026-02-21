@@ -3,6 +3,7 @@ import { useToast } from './components/Toast';
 import { db } from './services/db';
 import { hashString } from './services/crypto'; // [NEW]
 import DiagnosticPanel from './components/DiagnosticPanel';
+import ErrorBoundary from './components/ErrorBoundary';
 import backupService from './services/backup';
 
 import Dashboard from './components/Dashboard';
@@ -30,6 +31,7 @@ function App() {
   const { showToast, ToastContainer } = useToast();
   const [view, setView] = useState('dashboard');
   const [loading, setLoading] = useState(true);
+  const [initError, setInitError] = useState(null); // [NEW] Catch startup errors
   const [selectedWorkerId, setSelectedWorkerId] = useState(null);
   const [selectedWeaponHolderId, setSelectedWeaponHolderId] = useState(null);
   const [isLocked, setIsLocked] = useState(true);
@@ -140,6 +142,7 @@ function App() {
       console.log('[App] Initialization complete');
     } catch (error) {
       console.error('App Initialization Failed:', error);
+      setInitError(error.message || 'Erreur inconnue lors du démarrage.');
     } finally {
       setLoading(false);
     }
@@ -229,6 +232,37 @@ function App() {
     );
   }
 
+  // --- ERROR SCREEN ---
+  if (initError) {
+    return (
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          height: '100%',
+          width: '100%',
+          flexDirection: 'column',
+          backgroundColor: '#fee2e2',
+          color: '#b91c1c',
+          padding: '20px',
+          textAlign: 'center',
+        }}
+      >
+        <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>⚠️</div>
+        <h3>Erreur au démarrage</h3>
+        <p>{initError}</p>
+        <button
+          className="btn btn-primary"
+          style={{ marginTop: '20px' }}
+          onClick={() => window.location.reload()}
+        >
+          Réessayer
+        </button>
+      </div>
+    );
+  }
+
   // --- PIN LOCK ---
   if (isLocked) {
     return (
@@ -241,8 +275,9 @@ function App() {
 
   // --- MAIN UI (Original Layout Restored) ---
   return (
-    <div className={`app-shell ${isSidebarOpen ? '' : 'sidebar-closed'}`}>
-      <ToastContainer />
+    <ErrorBoundary>
+      <div className={`app-shell ${isSidebarOpen ? '' : 'sidebar-closed'}`}>
+        <ToastContainer />
       <DiagnosticPanel />
       {/* SIDEBAR */}
       <aside className="sidebar no-print">
@@ -407,10 +442,10 @@ function App() {
               showToast(`${count} importés !`, 'success');
             }}
           />
-        </Suspense>
-      )}
-    </div>
-  );
-}
-
+                </Suspense>
+              )}
+              </div>
+            </ErrorBoundary>
+          );
+        }
 export default App;
