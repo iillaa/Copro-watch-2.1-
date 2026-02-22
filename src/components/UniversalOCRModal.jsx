@@ -227,6 +227,7 @@ export default function UniversalOCRModal({
   const [isProcessing, setIsProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('');
+  const [errorMessage, setErrorMessage] = useState(null);
   const [docLanguage, setDocLanguage] = useState('fra');
   const [debugMode, setDebugMode] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -242,6 +243,21 @@ export default function UniversalOCRModal({
     };
   }, []);
 
+  // [NEW] Asset URL Helper for Capacitor/Web consistency
+  const getAssetUrl = (path) => {
+    // path should start with / e.g. /tesseract/worker.min.js
+    const isProd = import.meta.env.PROD;
+    const origin = window.location.origin;
+    const isStandalone = origin === 'null' || window.location.protocol === 'file:';
+
+    if (isStandalone) {
+      return '.' + path;
+    }
+    
+    // In Capacitor Android, origin is usually https://localhost
+    return origin + path;
+  };
+
   // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
   useEffect(() => {
     console.log("Initializing OCR Engine in Sandbox...");
@@ -251,15 +267,14 @@ export default function UniversalOCRModal({
     const isStandaloneFile = window.location.protocol === 'file:' || window.location.origin === 'null';
 
     // 1. Thread & Worker Rules
-    // [FIX] Disable Proxy completely for Android WebView compatibility
-    // This prevents the "Failed to fetch dynamically imported module" error
+    // [CRITICAL FIX] Unconditionally force 1 thread to prevent the .mjs Web Worker crash in Android
     ort.env.wasm.proxy = false; 
-    ort.env.wasm.numThreads = isStandaloneFile ? 1 : 2;
+    ort.env.wasm.numThreads = 1;
 
     // 2. Path Rules
     if (isProd) {
       // [FIX] Point to the directory containing .mjs and .wasm files
-      ort.env.wasm.wasmPaths = 'https://localhost/assets/'; 
+      ort.env.wasm.wasmPaths = getAssetUrl('/assets/'); 
     } else {
       // npm run dev
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
@@ -351,6 +366,10 @@ export default function UniversalOCRModal({
   const imageRef = useRef(null);
   const canvasRef = useRef(null);
 
+  // [NEW] Refs for direct DOM manipulation during drag for performance
+  const vLineRefs = useRef([]);
+  const hLineRefs = useRef([]);
+
   const colOptions = [
     { val: 'national_id', label: 'Matricule' },
     { val: 'full_name', label: 'Nom & Prénom' },
@@ -396,6 +415,7 @@ export default function UniversalOCRModal({
           setImgDimensions({ width, height });
           setCandidates([]);
           setHLines([]);
+          setErrorMessage(null);
 
           // MEMORY MANAGEMENT: Aggressively dump old base64 images
           setDebugCrops([]);
@@ -450,17 +470,15 @@ export default function UniversalOCRModal({
     const data = imageData.data;
 
     if (binarize) {
-      // TESSERACT: Hard Threshold (Pure Black & White)
-      const threshold = 175;
-      for (let i = 0; i < data.length; i += 4) {
-        const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
-        let v = gray < threshold ? 0 : 255;
-        data[i] = data[i + 1] = data[i + 2] = v;
-      }
+      // [FIX] Hardware Acceleration: Use Canvas filters for binarization
+      ctx.filter = 'contrast(200%) grayscale(100%)'; // Apply filter directly to context
+      ctx.drawImage(canvas, 0, 0); // Redraw image onto itself with filter
+      ctx.filter = 'none'; // Reset filter to avoid affecting subsequent draws
     }
     // For Paddle (!binarize), do absolutely nothing. Return the raw, natural image.
+    // Removed the manual pixel loop as it's replaced by canvas filter.
 
-    ctx.putImageData(imageData, 0, 0);
+    // ctx.putImageData(imageData, 0, 0); // No longer needed after using ctx.drawImage with filter
 
     return canvas.toDataURL('image/png');
   };
@@ -538,6 +556,7 @@ export default function UniversalOCRModal({
   const runTesseractOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
+    setErrorMessage(null);
     setLogs([]);
     setDebugCrops([]);
     setCandidates([]);
@@ -547,7 +566,10 @@ export default function UniversalOCRModal({
     let workers = [];
     try {
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
-      const numWorkers = 2;
+      // [FIX] Dynamic worker allocation based on hardware for stability
+      const hardwareCores = window.navigator.hardwareConcurrency || 1;
+      const numWorkers = Math.min(2, Math.max(1, hardwareCores - 1));
+
       if (isMounted.current) addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
 
       // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
@@ -555,8 +577,9 @@ export default function UniversalOCRModal({
         try {
           // [FIX] Force local worker and core files to prevent CDN download crash
           const w = await Tesseract.createWorker(langs, 1, {
-            workerPath: 'https://localhost/tesseract/worker.min.js',
-            corePath: 'https://localhost/tesseract/tesseract-core.wasm.js',
+            workerPath: getAssetUrl('/tesseract/worker.min.js'),
+            corePath: getAssetUrl('/tesseract/tesseract-core.wasm.js'),
+            langPath: getAssetUrl('/tesseract/'), // Point to where traineddata should be
             logger: (m) => {
               if (m.status === 'initializing api') setProgress(10);
             },
@@ -564,8 +587,10 @@ export default function UniversalOCRModal({
           workers.push(w);
         } catch (e) {
           console.error('[TESSERACT] Worker init failed:', e);
-          addLog(`[TESSERACT ERROR] Impossible de charger le moteur (Vérifiez votre connexion au premier démarrage).`);
-          throw new Error('Moteur OCR indisponible. Connexion internet requise au premier lancement.');
+          const errorMsg = `[TESSERACT ERROR] Impossible de charger le moteur (Vérifiez que les fichiers .traineddata sont dans /public/tesseract/). Detail: ${e.message}`;
+          addLog(errorMsg);
+          setErrorMessage(errorMsg);
+          throw new Error('Moteur OCR indisponible. Erreur de chargement des ressources locales.');
         }
       }
 
@@ -676,22 +701,13 @@ export default function UniversalOCRModal({
   // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE RESTORED + IMPROVED) ==========
   // Helper function to get the correct models URL for Capacitor APK
   const getModelsUrl = () => {
-    // [FIX] In Capacitor Android, the app is served from https://localhost/
-    if (window.location.protocol === 'https:' && window.location.hostname === 'localhost') {
-      return 'https://localhost/models/';
-    }
-    // Fallback for standalone file or dev
-    if (window.location.protocol === 'file:' || window.location.origin === 'null') {
-      return './models/';
-    }
-    const base = window.location.origin + 
-      window.location.pathname.split('/').slice(0, -1).join('/') + '/';
-    return base + 'models/';
+    return getAssetUrl('/models/');
   };
 
   const runPaddleOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
+    setErrorMessage(null);
     setLogs([]);
     setDebugCrops([]);
     setCandidates([]);
@@ -809,6 +825,7 @@ export default function UniversalOCRModal({
   const runHybridOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
+    setErrorMessage(null);
     setLogs([]);
     setCandidates([]);
     setProgress(0);
@@ -820,17 +837,25 @@ export default function UniversalOCRModal({
       if (isMounted.current) addLog('[HYBRID] Starting Engines...');
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
       
+      // [FIX] Dynamic worker allocation based on hardware for stability
+      const hardwareCores = window.navigator.hardwareConcurrency || 1;
+      const numTesseractWorkers = Math.min(2, Math.max(1, hardwareCores - 1));
+
       // [FIX] Safe init for Hybrid mode with local assets
       try {
         const tessOptions = {
-          workerPath: 'https://localhost/tesseract/worker.min.js',
-          corePath: 'https://localhost/tesseract/tesseract-core.wasm.js',
+          workerPath: getAssetUrl('/tesseract/worker.min.js'),
+          corePath: getAssetUrl('/tesseract/tesseract-core.wasm.js'),
+          langPath: getAssetUrl('/tesseract/'),
         };
         const worker1 = await Tesseract.createWorker(langs, 1, tessOptions);
-        const worker2 = await Tesseract.createWorker(langs, 1, tessOptions);
-        tesseractWorkers = [worker1, worker2];
+        // Only create a second worker if numTesseractWorkers is 2
+        const worker2 = numTesseractWorkers === 2 ? await Tesseract.createWorker(langs, 1, tessOptions) : null;
+        tesseractWorkers = worker2 ? [worker1, worker2] : [worker1];
       } catch (e) {
-        throw new Error('Moteur Tesseract indisponible (Requis pour Hybrid).');
+        const errorMsg = 'Moteur Tesseract indisponible (Requis pour Hybrid).';
+        setErrorMessage(errorMsg);
+        throw new Error(errorMsg);
       }
 
       const modelsUrl = getModelsUrl();
@@ -876,7 +901,7 @@ export default function UniversalOCRModal({
           await Promise.all(tesseractWorkers.map((w) => w.setParameters(params)));
           const promises = [];
           for (let r = 0; r < numRows; r++) {
-            const worker = tesseractWorkers[r % 2];
+            const worker = tesseractWorkers[r % numTesseractWorkers];
             const task = async () => {
               if (!isMounted.current) return;
               const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
@@ -988,12 +1013,13 @@ export default function UniversalOCRModal({
     c.isArabic = isAr;
     c.is_viewing_ar = isAr;
 
-    // 3. Set the Arabic Anchor FIRST (The Master Source)
+    // 3. Set the Symmetric Master Anchor
     if (isAr) {
       c.original_ar = c.full_name;
+      c.manual_fr = ''; // Empty until translated
     } else {
-      // If the document was scanned in French, generate an Arabic anchor
-      c.original_ar = transliterateFrToAr(c.full_name);
+      c.manual_fr = c.full_name;
+      c.original_ar = ''; // Empty until translated
     }
 
     // 4. Global Auto-Correction (SPACE-IMMUNE)
@@ -1001,7 +1027,6 @@ export default function UniversalOCRModal({
       const dict = JSON.parse(
         localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
       );
-
       if (c.national_id) {
         const key = c.national_id.replace(/\s+/g, '');
         if (dict.national_id[key]) c.national_id = dict.national_id[key];
@@ -1011,13 +1036,13 @@ export default function UniversalOCRModal({
         if (dict.job_info[key]) c.job_info = dict.job_info[key];
       }
 
-      // INTELLIGENCE FIX: If the dictionary knows the name, save it to the French Master Slot,
-      // but do NOT overwrite the Arabic anchor.
-      if (c.original_ar) {
+      // Populate translation from dictionary if it exists
+      if (isAr && c.original_ar) {
         const key = c.original_ar.replace(/\s+/g, '');
-        if (dict.full_name[key]) {
-          c.manual_fr = dict.full_name[key];
-        }
+        if (dict.full_name[key]) c.manual_fr = dict.full_name[key];
+      } else if (!isAr && c.manual_fr) {
+        const key = c.manual_fr.replace(/\s+/g, '');
+        if (dict.full_name[key]) c.original_ar = dict.full_name[key];
       }
     } catch (e) {
       console.warn('Dictionary error', e);
@@ -1520,6 +1545,7 @@ export default function UniversalOCRModal({
                     {vLines.map((x, i) => (
                       <div
                         key={`v-${i}`}
+                        ref={(el) => (vLineRefs.current[i] = el)} // Attach ref
                         style={{
                           position: 'absolute',
                           top: 0,
@@ -1547,18 +1573,30 @@ export default function UniversalOCRModal({
                             boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
                             touchAction: 'none',
                           }}
-                          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+                          onPointerDown={(e) => {
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            // Store initial position
+                            e.currentTarget.dataset.startX = e.clientX;
+                            e.currentTarget.dataset.startLeft = vLineRefs.current[i].offsetLeft;
+                          }}
                           onPointerMove={(e) => {
                             if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-                            const rect =
-                              e.currentTarget.parentElement.parentElement.getBoundingClientRect();
-                            const nx = (e.clientX - rect.left) / rect.width;
-                            const nv = [...vLines];
-                            nv[i] = Math.max(0, Math.min(1, nx));
-                            // FIX: Removed the real-time .sort() to stop lines from jumping out of your finger
-                            setVLines(nv);
+                            const currentRef = vLineRefs.current[i];
+                            const deltaX = e.clientX - parseFloat(e.currentTarget.dataset.startX);
+                            const newLeft = parseFloat(e.currentTarget.dataset.startLeft) + deltaX;
+                            const parentWidth = currentRef.parentElement.offsetWidth;
+                            const newX = Math.max(0, Math.min(1, newLeft / parentWidth));
+                            currentRef.style.left = `${newX * 100}%`; // Direct DOM manipulation
                           }}
-                          onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+                          onPointerUp={(e) => {
+                            e.currentTarget.releasePointerCapture(e.pointerId);
+                            const currentRef = vLineRefs.current[i];
+                            const parentWidth = currentRef.parentElement.offsetWidth;
+                            const newX = currentRef.offsetLeft / parentWidth;
+                            const nv = [...vLines];
+                            nv[i] = Math.max(0, Math.min(1, newX));
+                            setVLines(nv); // Update state only on drag end
+                          }}
                         >
                           <FaArrowsAltH size={12} />
                         </div>
@@ -1569,6 +1607,7 @@ export default function UniversalOCRModal({
                     {hLines.map((y, i) => (
                       <div
                         key={`h-${i}`}
+                        ref={(el) => (hLineRefs.current[i] = el)} // Attach ref
                         style={{
                           position: 'absolute',
                           left: 0,
@@ -1596,18 +1635,30 @@ export default function UniversalOCRModal({
                             boxShadow: '0 2px 5px rgba(0,0,0,0.3)',
                             touchAction: 'none',
                           }}
-                          onPointerDown={(e) => e.currentTarget.setPointerCapture(e.pointerId)}
+                          onPointerDown={(e) => {
+                            e.currentTarget.setPointerCapture(e.pointerId);
+                            // Store initial position
+                            e.currentTarget.dataset.startY = e.clientY;
+                            e.currentTarget.dataset.startTop = hLineRefs.current[i].offsetTop;
+                          }}
                           onPointerMove={(e) => {
                             if (!e.currentTarget.hasPointerCapture(e.pointerId)) return;
-                            const rect =
-                              e.currentTarget.parentElement.parentElement.getBoundingClientRect();
-                            const ny = (e.clientY - rect.top) / rect.height;
-                            const nh = [...hLines];
-                            nh[i] = Math.max(0, Math.min(1, ny));
-                            // FIX: Removed the real-time .sort() to stop lines from jumping out of your finger
-                            setHLines(nh);
+                            const currentRef = hLineRefs.current[i];
+                            const deltaY = e.clientY - parseFloat(e.currentTarget.dataset.startY);
+                            const newTop = parseFloat(e.currentTarget.dataset.startTop) + deltaY;
+                            const parentHeight = currentRef.parentElement.offsetHeight;
+                            const newY = Math.max(0, Math.min(1, newTop / parentHeight));
+                            currentRef.style.top = `${newY * 100}%`; // Direct DOM manipulation
                           }}
-                          onPointerUp={(e) => e.currentTarget.releasePointerCapture(e.pointerId)}
+                          onPointerUp={(e) => {
+                            e.currentTarget.releasePointerCapture(e.pointerId);
+                            const currentRef = hLineRefs.current[i];
+                            const parentHeight = currentRef.parentElement.offsetHeight;
+                            const newY = currentRef.offsetTop / parentHeight;
+                            const nh = [...hLines];
+                            nh[i] = Math.max(0, Math.min(1, newY));
+                            setHLines(nh); // Update state only on drag end
+                          }}
                           onDoubleClick={() => setHLines(hLines.filter((_, idx) => idx !== i))}
                         >
                           <FaArrowsAltV size={12} />
@@ -1649,6 +1700,36 @@ export default function UniversalOCRModal({
                     }}
                   ></div>
                 </div>
+              </div>
+            )}
+
+            {/* Error Message */}
+            {errorMessage && (
+              <div
+                style={{
+                  marginTop: '1rem',
+                  background: '#fee2e2',
+                  padding: '12px',
+                  borderRadius: '6px',
+                  color: '#b91c1c',
+                  border: '1px solid #fecaca',
+                  fontSize: '0.85rem',
+                  display: 'flex',
+                  alignItems: 'start',
+                  gap: '10px'
+                }}
+              >
+                <div style={{ fontSize: '1.2rem' }}>⚠️</div>
+                <div style={{ flex: 1 }}>
+                  <b>Erreur Fatale OCR</b>
+                  <p style={{ margin: '5px 0 0 0' }}>{errorMessage}</p>
+                </div>
+                <button 
+                  onClick={() => setErrorMessage(null)}
+                  style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', fontSize: '1.2rem' }}
+                >
+                  ×
+                </button>
               </div>
             )}
 
@@ -1797,14 +1878,19 @@ export default function UniversalOCRModal({
                             updateCandidate(c.id, 'full_name', newVal);
 
                             if (c.is_viewing_ar) {
-                              // You are editing the SOURCE.
-                              // This is the Master Reset: Discard manual French edit.
+                              // Editing Arabic text
                               updateCandidate(c.id, 'original_ar', newVal);
-                              updateCandidate(c.id, 'manual_fr', '');
+                              if (c.isArabic) {
+                                // Arabic is the SOURCE: Wipe French to force regeneration
+                                updateCandidate(c.id, 'manual_fr', '');
+                              }
                             } else {
-                              // You are editing the TRANSLATION.
-                              // Save this as the "Master" version for the French slot.
+                              // Editing French text
                               updateCandidate(c.id, 'manual_fr', newVal);
+                              if (!c.isArabic) {
+                                // French is the SOURCE: Wipe Arabic to force regeneration
+                                updateCandidate(c.id, 'original_ar', '');
+                              }
                             }
                           }}
                           style={{ fontWeight: 'bold', flex: 1 }}
@@ -1813,16 +1899,14 @@ export default function UniversalOCRModal({
                         <button
                           onClick={() => {
                             if (c.is_viewing_ar) {
-                              // GOING TO FRENCH:
-                              // If you already have a manual edit, show it. Otherwise, ask the AI.
+                              // GOING TO FRENCH
                               const targetFr = c.manual_fr || transliterateArToFr(c.full_name);
-                              updateCandidate(c.id, 'original_ar', c.full_name); // Lock the Ar before switching
                               updateCandidate(c.id, 'full_name', targetFr);
                               updateCandidate(c.id, 'is_viewing_ar', false);
                             } else {
-                              // GOING TO ARABIC:
-                              // Always return to the locked original_ar anchor.
-                              updateCandidate(c.id, 'full_name', c.original_ar);
+                              // GOING TO ARABIC
+                              const targetAr = c.original_ar || transliterateFrToAr(c.full_name);
+                              updateCandidate(c.id, 'full_name', targetAr);
                               updateCandidate(c.id, 'is_viewing_ar', true);
                             }
                           }}
@@ -1830,8 +1914,8 @@ export default function UniversalOCRModal({
                           title={c.is_viewing_ar ? 'Traduire en Français' : 'Traduire en Arabe'}
                           style={{
                             padding: '4px 8px',
-                            borderColor: c.manual_fr ? '#10b981' : '#3b82f6',
-                            color: c.manual_fr ? '#10b981' : '#3b82f6',
+                            borderColor: (c.isArabic ? c.manual_fr : c.original_ar) ? '#10b981' : '#3b82f6',
+                            color: (c.isArabic ? c.manual_fr : c.original_ar) ? '#10b981' : '#3b82f6',
                           }}
                         >
                           <FaGlobeAfrica />
