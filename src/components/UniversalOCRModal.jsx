@@ -249,15 +249,15 @@ export default function UniversalOCRModal({
     const origin = window.location.origin;
     const isStandalone = origin === 'null' || window.location.protocol === 'file:';
 
-    // Remove leading slash if present to avoid double slashes when joining with origin
-    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+    // Remove leading/trailing slashes to ensure we control the joining
+    const cleanPath = path.replace(/^\/+|\/+$/g, '');
 
     if (isStandalone) {
       return './' + cleanPath;
     }
     
     // In Capacitor Android, origin is usually https://localhost
-    // Ensure we return a clean absolute URL
+    // Ensure we return a clean absolute URL without double slashes
     return origin + '/' + cleanPath;
   };
 
@@ -273,7 +273,7 @@ export default function UniversalOCRModal({
     // 2. Path Rules
     if (isProd) {
       // [FIX] Point to the directory containing .mjs and .wasm files (non-hashed)
-      ort.env.wasm.wasmPaths = getAssetUrl('/assets/'); 
+      ort.env.wasm.wasmPaths = getAssetUrl('/assets') + '/'; 
     } else {
       // npm run dev
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
@@ -578,7 +578,7 @@ export default function UniversalOCRModal({
           const w = await Tesseract.createWorker(langs, 1, {
             workerPath: getAssetUrl('/tesseract/worker.min.js'),
             corePath: getAssetUrl('/tesseract/tesseract-core.wasm.js'),
-            langPath: getAssetUrl('/tesseract/'), // Point to where traineddata should be
+            langPath: getAssetUrl('/tesseract'), // Tesseract adds the trailing slash
             logger: (m) => {
               if (m.status === 'initializing api') setProgress(10);
             },
@@ -700,7 +700,7 @@ export default function UniversalOCRModal({
   // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE RESTORED + IMPROVED) ==========
   // Helper function to get the correct models URL for Capacitor APK
   const getModelsUrl = () => {
-    return getAssetUrl('/models/');
+    return getAssetUrl('/models') + '/';
   };
 
   const runPaddleOCR = async () => {
@@ -845,7 +845,7 @@ export default function UniversalOCRModal({
         const tessOptions = {
           workerPath: getAssetUrl('/tesseract/worker.min.js'),
           corePath: getAssetUrl('/tesseract/tesseract-core.wasm.js'),
-          langPath: getAssetUrl('/tesseract/'),
+          langPath: getAssetUrl('/tesseract'),
         };
         const worker1 = await Tesseract.createWorker(langs, 1, tessOptions);
         // Only create a second worker if numTesseractWorkers is 2

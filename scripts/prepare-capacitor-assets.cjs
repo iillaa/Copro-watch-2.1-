@@ -5,10 +5,20 @@ const publicDir = path.resolve(__dirname, '../public');
 const capacitorAssetsDir = path.resolve(__dirname, '../capacitor-assets');
 
 const filesToCopy = [
-  // Tesseract OCR assets (minimal set)
+  // Tesseract OCR assets (Comprehensive set for offline stability)
   'tesseract/worker.min.js',
   'tesseract/tesseract-core.wasm.js',
   'tesseract/tesseract-core.wasm',
+  'tesseract/tesseract-core-simd.wasm.js',
+  'tesseract/tesseract-core-simd.wasm',
+  'tesseract/tesseract-core-lstm.wasm.js',
+  'tesseract/tesseract-core-lstm.wasm',
+  'tesseract/tesseract-core-simd-lstm.wasm.js',
+  'tesseract/tesseract-core-simd-lstm.wasm',
+  'tesseract/tesseract-core-relaxedsimd.wasm.js',
+  'tesseract/tesseract-core-relaxedsimd.wasm',
+  'tesseract/tesseract-core-relaxedsimd-lstm.wasm.js',
+  'tesseract/tesseract-core-relaxedsimd-lstm.wasm',
   'tesseract/fra.traineddata.gz',
   'tesseract/ara.traineddata.gz',
   'tesseract/eng.traineddata.gz',

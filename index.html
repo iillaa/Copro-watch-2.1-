@@ -11,25 +11,10 @@
 
     <title>Copro Watch</title>
     <script>
-      // ERROR HANDLER: Catch early crashes & display them on-screen for debugging
+      // ERROR HANDLER: Log crashes but don't freeze the UI
       window.onerror = function(msg, url, line, col, error) {
-        var div = document.createElement('div');
-        div.style.position = 'fixed';
-        div.style.top = '0';
-        div.style.left = '0';
-        div.style.width = '100%';
-        div.style.height = '100%';
-        div.style.backgroundColor = '#fff';
-        div.style.color = '#000';
-        div.style.padding = '20px';
-        div.style.zIndex = '999999';
-        div.style.overflow = 'auto';
-        div.style.fontFamily = 'monospace';
-        div.innerHTML = '<h1>FATAL CRASH</h1><p><b>Message:</b> ' + msg + '</p>' +
-                        '<p><b>File:</b> ' + url + '</p>' +
-                        '<p><b>Line:</b> ' + line + ':' + col + '</p>' +
-                        '<p><b>Trace:</b> <pre>' + (error ? error.stack : 'No stack trace') + '</pre></p>';
-        document.body.appendChild(div);
+        console.error('FATAL ERROR CAUGHT:', msg, 'at', url, ':', line);
+        // We no longer append the crash div to allow the app to attempt recovery or show local errors.
         return false;
       };
     </script>
