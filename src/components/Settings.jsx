@@ -1284,7 +1284,7 @@ export default function Settings({
                   Android Native
                 </h4>
                 <button className="btn btn-outline" onClick={handleChooseBackupDir}>
-                  📁 Choisir Dossier
+                  📁 Choisir Dossier (Auto-Sauvegarde PC/Android)
                 </button>
                 <button className="btn btn-outline" onClick={handleGetBackupNow}>
                   💾 Sauvegarder Maintenant

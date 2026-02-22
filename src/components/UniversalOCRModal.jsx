@@ -243,25 +243,29 @@ export default function UniversalOCRModal({
     };
   }, []);
 
-  // [NEW] Asset URL Helper for Capacitor/Web consistency
-  const getAssetUrl = (path) => {
-    // path should start with / e.g. /tesseract/worker.min.js
-    const origin = window.location.origin;
-    const isStandalone = origin === 'null' || window.location.protocol === 'file:';
-
-    // Remove leading/trailing slashes to ensure we control the joining
-    const cleanPath = path.replace(/^\/+|\/+$/g, '');
-
-    if (isStandalone) {
-      return './' + cleanPath;
-    }
+    // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
+    const getAssetUrl = (path) => {
+      // Check if running in a Capacitor app
+      const isCapacitor = window.Capacitor && window.Capacitor.isNative;
+      // Check if running directly from file system (standalone HTML)
+      const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
+  
+      // Remove leading/trailing slashes for clean path segment
+      const cleanPath = path.replace(/^\/+|\/+$/g, '');
+  
+      if (isCapacitor) {
+        // For Capacitor, use the origin (https://localhost)
+        return window.location.origin + '/' + cleanPath;
+      } else if (isFileProtocol) {
+        // For standalone HTML opened directly (file://), use relative path
+        return './' + cleanPath;
+      } else {
+        // For standard web server (like miniserve or dev server), use root-relative path
+        return '/' + cleanPath;
+      }
+    };
     
-    // In Capacitor Android, origin is usually https://localhost
-    // Ensure we return a clean absolute URL without double slashes
-    return origin + '/' + cleanPath;
-  };
-
-  // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
+    // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
   useEffect(() => {
     console.log("Initializing OCR Engine in Sandbox...");
     const isProd = import.meta.env.PROD;
@@ -272,8 +276,20 @@ export default function UniversalOCRModal({
 
     // 2. Path Rules
     if (isProd) {
-      // [FIX] Point to the directory containing .mjs and .wasm files (non-hashed)
-      ort.env.wasm.wasmPaths = getAssetUrl('/assets') + '/'; 
+      const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
+      const isCapacitor = window.Capacitor && window.Capacitor.isNative; 
+
+      if (isCapacitor) {
+        // For Capacitor, use the path provided by getAssetUrl which includes origin
+        ort.env.wasm.wasmPaths = getAssetUrl('/assets') + '/';
+      } else if (isFileProtocol) {
+        // For standalone HTML opened directly (file://)
+        ort.env.wasm.wasmPaths = './';
+      } else {
+        // For standard web server (like miniserve or dev server)
+        // Assets are in the /assets subdirectory relative to the server root
+        ort.env.wasm.wasmPaths = '/assets/';
+      }
     } else {
       // npm run dev
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
@@ -578,9 +594,15 @@ export default function UniversalOCRModal({
           const w = await Tesseract.createWorker(langs, 1, {
             workerPath: getAssetUrl('/tesseract/worker.min.js'),
             corePath: getAssetUrl('/tesseract/tesseract-core.wasm.js'),
-            langPath: getAssetUrl('/tesseract'), // Tesseract adds the trailing slash
+            langPath: getAssetUrl('/tesseract'),
             logger: (m) => {
+              // Log all messages for debugging, not just progress
+              addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
               if (m.status === 'initializing api') setProgress(10);
+              // Update progress for other stages like loading language, loading traineddata, etc.
+              if (m.status === 'loading language' || m.status === 'loading traineddata') {
+                setProgress(Math.round(m.progress * 100));
+              }
             },
           });
           workers.push(w);
