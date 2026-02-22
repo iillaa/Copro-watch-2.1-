@@ -3,7 +3,7 @@
   "appName": "Copro Watch",
   "webDir": "dist-capacitor",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "http"
   },
   "plugins": {
     "Keyboard": {

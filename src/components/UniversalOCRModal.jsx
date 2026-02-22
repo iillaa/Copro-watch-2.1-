@@ -245,39 +245,23 @@ export default function UniversalOCRModal({
 
     // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
     const getAssetUrl = (path) => {
-      // Check if running in a Capacitor app
-      // [FIX] More robust detection: origin check as fallback for early initialization
       const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
                           (window.location.origin.includes('localhost') && !window.location.port);
-      // Check if running directly from file system (standalone HTML)
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
-  
-      // Remove leading/trailing slashes for clean path segment
       const cleanPath = path.replace(/^\/+|\/+$/g, '');
-  
-      // DEBUG: Log the detection results
-      console.log('[OCR_ASSET_URL] path:', path);
-      console.log('[OCR_ASSET_URL] isCapacitor:', isCapacitor);
-      console.log('[OCR_ASSET_URL] isFileProtocol:', isFileProtocol);
-      console.log('[OCR_ASSET_URL] location.origin:', window.location.origin);
-      console.log('[OCR_ASSET_URL] location.protocol:', window.location.protocol);
+      
+      // [FORCE CACHE BUSTER] Add a timestamp to ensure the WebView doesn't cache old 404s
+      const cacheBuster = `?v=${Date.now()}`;
   
       if (isCapacitor) {
-        // [FIX] For Capacitor, use ABSOLUTE URL with origin
-        // This ensures workers fetching relative paths resolve correctly
-        const url = window.location.origin + '/' + cleanPath;
-        console.log('[OCR_ASSET_URL] Capacitor URL (absolute):', url);
+        // [FORCE HTTP] Your logs showed HTTPS was 404ing. We MUST use HTTP for local assets.
+        const url = 'http://localhost/' + cleanPath + cacheBuster;
+        console.log('[OCR_ASSET_URL] FORCED HTTP URL:', url);
         return url;
       } else if (isFileProtocol) {
-        // For standalone HTML opened directly (file://), use relative path
-        const url = './' + cleanPath;
-        console.log('[OCR_ASSET_URL] File Protocol URL:', url);
-        return url;
+        return './' + cleanPath + cacheBuster;
       } else {
-        // For standard web server (like miniserve or dev server), use root-relative path
-        const url = '/' + cleanPath;
-        console.log('[OCR_ASSET_URL] Web Server URL:', url);
-        return url;
+        return '/' + cleanPath + cacheBuster;
       }
     };
     
