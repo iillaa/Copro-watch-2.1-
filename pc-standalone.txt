@@ -1,0 +1,89 @@
+Phase 1: The Final Code Updates
+Before copying anything, ensure your pathing logic dynamically adapts to whether it is running on a server or as a raw file.
+
+1. Open src/components/UniversalOCRModal.jsx
+
+2. Update getAssetUrl (Near the top):
+Replace your current getAssetUrl function with this logic. It detects if a server is missing and adjusts the path accordingly.
+
+JavaScript
+const getAssetUrl = (assetPath) => {
+  const isFile = window.location.protocol === 'file:' || window.location.origin === 'null';
+  return isFile ? `./${assetPath}` : `/${assetPath}`; 
+};
+3. Update wasmPaths (Inside the useEffect block):
+Find the path rules around line 160 and replace them with this to guarantee PaddleOCR finds its binary files in any environment:
+
+JavaScript
+    // 2. Path Rules
+    if (isProd) {
+      const isStandaloneFile = window.location.protocol === 'file:' || window.location.origin === 'null';
+      // Use relative path for direct file clicks, absolute root for servers
+      ort.env.wasm.wasmPaths = isStandaloneFile ? './' : '/';
+    } else {
+      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
+    }
+4. Compile the App:
+Save the file, commit your changes, and run your build command (npm run build or let GitHub Actions build it). You need the fresh output from the dist folder.
+
+Phase 2: The Physical Work (USB Setup)
+You are bypassing the lack of Node.js on clinic PCs by using a pre-compiled, standalone web server written in Rust.
+
+Step 1: Download the Portable Server
+
+Go to: https://github.com/svenstaro/miniserve/releases
+
+Download the Windows binary: miniserve-vX.X.X-x86_64-pc-windows-msvc.exe
+
+Rename the downloaded file to exactly: server.exe
+
+Step 2: Create the USB Structure
+Plug in your USB drive. Create a folder named CoproWatch-PC. Open your project's dist folder and copy its entire contents into this new USB folder. Then, paste server.exe into the same folder.
+
+Your USB drive must look exactly like this:
+
+Plaintext
+📁 CoproWatch-PC/
+ ├── 📁 assets/          
+ ├── 📁 tesseract/       
+ ├── 📁 models/          
+ ├── 📄 index.html       
+ ├── 📄 ort-wasm.wasm    (and other .wasm files)
+ ├── ⚙️ server.exe       <-- The portable server you downloaded
+ ├── ⚙️ 1-Start-Portable.bat
+ └── ⚙️ 2-Start-Node.bat
+Phase 3: The Batch Scripts
+Inside the CoproWatch-PC folder on your USB drive, create two text files. Paste the respective code into each, save them, and rename them (ensure you remove the .txt extension).
+
+Script 1: 1-Start-Portable.bat (Primary choice for PCs without Node.js)
+
+Extrait de code
+@echo off
+echo ===================================================
+echo Starting Copro-Watch (Portable Offline Mode)...
+echo ===================================================
+echo Do not close this black window.
+
+:: Starts the standalone server on port 8080, serving the current directory
+start /B server.exe --index index.html -p 8080 .
+
+:: Waits 2 seconds for the server to spin up, then opens the default browser
+timeout /t 2 >nul
+start http://localhost:8080
+Script 2: 2-Start-Node.bat (Fallback choice if the PC has Node.js)
+
+Extrait de code
+@echo off
+echo ===================================================
+echo Starting Copro-Watch (Node.js Mode)...
+echo ===================================================
+npx http-server . -p 8080 -c-1
+pause
+Execution Protocol
+When you plug this USB into a PC at the clinic:
+
+Double-click 1-Start-Portable.bat.
+
+A command window will open, the server will silently mount your files with the correct application/wasm MIME types, and Chrome will open the app.
+
+Because it runs on http://localhost:8080, Web Workers are unlocked, and PaddleOCR/Tesseract will operate at maximum desktop CPU speed.
