@@ -18,6 +18,18 @@ const filesToCopy = [
   'models/rec_ara.onnx',
   'models/keys_ara.txt',
 
+  // ONNX Runtime Web (ORT) assets - REQUIRED FOR PADDLE OCR
+  'assets/ort-wasm-simd-threaded.asyncify.mjs',
+  'assets/ort-wasm-simd-threaded.asyncify.wasm',
+  'assets/ort-wasm-simd-threaded.jsep.mjs',
+  'assets/ort-wasm-simd-threaded.jsep.wasm',
+  'assets/ort-wasm-simd-threaded.jspi.mjs',
+  'assets/ort-wasm-simd-threaded.jspi.wasm',
+  'assets/ort-wasm-simd-threaded.mjs',
+  'assets/ort-wasm-simd-threaded.wasm',
+  'assets/ort-wasm-simd.wasm',
+  'assets/ort-wasm.wasm',
+
   // General static assets
   'app-icon.svg',
   'manifest.json',

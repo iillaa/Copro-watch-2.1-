@@ -246,16 +246,19 @@ export default function UniversalOCRModal({
   // [NEW] Asset URL Helper for Capacitor/Web consistency
   const getAssetUrl = (path) => {
     // path should start with / e.g. /tesseract/worker.min.js
-    const isProd = import.meta.env.PROD;
     const origin = window.location.origin;
     const isStandalone = origin === 'null' || window.location.protocol === 'file:';
 
+    // Remove leading slash if present to avoid double slashes when joining with origin
+    const cleanPath = path.startsWith('/') ? path.slice(1) : path;
+
     if (isStandalone) {
-      return '.' + path;
+      return './' + cleanPath;
     }
     
     // In Capacitor Android, origin is usually https://localhost
-    return origin + path;
+    // Ensure we return a clean absolute URL
+    return origin + '/' + cleanPath;
   };
 
   // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
@@ -263,17 +266,13 @@ export default function UniversalOCRModal({
     console.log("Initializing OCR Engine in Sandbox...");
     const isProd = import.meta.env.PROD;
     
-    // Detect if running as an isolated local file (No Server)
-    const isStandaloneFile = window.location.protocol === 'file:' || window.location.origin === 'null';
-
     // 1. Thread & Worker Rules
-    // [CRITICAL FIX] Unconditionally force 1 thread to prevent the .mjs Web Worker crash in Android
     ort.env.wasm.proxy = false; 
     ort.env.wasm.numThreads = 1;
 
     // 2. Path Rules
     if (isProd) {
-      // [FIX] Point to the directory containing .mjs and .wasm files
+      // [FIX] Point to the directory containing .mjs and .wasm files (non-hashed)
       ort.env.wasm.wasmPaths = getAssetUrl('/assets/'); 
     } else {
       // npm run dev

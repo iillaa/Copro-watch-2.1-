@@ -7,7 +7,9 @@ export default defineConfig({
   // Use the optimized assets directory for Capacitor builds
   publicDir: 'capacitor-assets',
 
-  assetsInclude: ['**/*.onnx', '**/*.wasm', '**/*.traineddata.gz'],
+  // [CRITICAL] Prevent Vite from hashing or processing these files.
+  // They must be served from the root as static files for OCR engines to find them.
+  assetsInclude: ['**/*.onnx'], 
 
   plugins: [
     react(),
@@ -15,16 +17,15 @@ export default defineConfig({
     topLevelAwait(),
   ],
 
-  base: './', // Ensures relative paths work correctly in Capacitor
+  base: './', 
 
   build: {
-    outDir: 'dist-capacitor', // Output to a separate directory for Capacitor
+    outDir: 'dist-capacitor',
     target: 'es2020',
     chunkSizeWarningLimit: 5000,
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // GROUPING: Combine all OCR-related dependencies into one stable chunk
           if (
             id.includes('tesseract') ||
             id.includes('onnxruntime-web') ||
