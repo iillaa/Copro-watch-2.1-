@@ -11,7 +11,8 @@
     "lint:fix": "eslint . --ext .js,.jsx --fix",
     "format": "prettier --write .",
     "test": "vitest",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:capacitor": "node scripts/prepare-capacitor-assets.js && vite build --config vite.capacitor.config.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",
