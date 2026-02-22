@@ -253,15 +253,30 @@ export default function UniversalOCRModal({
       // Remove leading/trailing slashes for clean path segment
       const cleanPath = path.replace(/^\/+|\/+$/g, '');
   
+      // DEBUG: Log the detection results
+      console.log('[OCR_ASSET_URL] path:', path);
+      console.log('[OCR_ASSET_URL] isCapacitor:', isCapacitor);
+      console.log('[OCR_ASSET_URL] isFileProtocol:', isFileProtocol);
+      console.log('[OCR_ASSET_URL] location.origin:', window.location.origin);
+      console.log('[OCR_ASSET_URL] location.protocol:', window.location.protocol);
+  
       if (isCapacitor) {
-        // For Capacitor, use the origin (https://localhost)
-        return window.location.origin + '/' + cleanPath;
+        // [FIX] For Capacitor, use RELATIVE path from server root
+        // The assets are served from the public folder at build time
+        // Using relative path avoids port/protocol issues
+        const url = '/' + cleanPath;
+        console.log('[OCR_ASSET_URL] Capacitor URL (relative):', url);
+        return url;
       } else if (isFileProtocol) {
         // For standalone HTML opened directly (file://), use relative path
-        return './' + cleanPath;
+        const url = './' + cleanPath;
+        console.log('[OCR_ASSET_URL] File Protocol URL:', url);
+        return url;
       } else {
         // For standard web server (like miniserve or dev server), use root-relative path
-        return '/' + cleanPath;
+        const url = '/' + cleanPath;
+        console.log('[OCR_ASSET_URL] Web Server URL:', url);
+        return url;
       }
     };
     
@@ -273,6 +288,9 @@ export default function UniversalOCRModal({
     // 1. Thread & Worker Rules
     ort.env.wasm.proxy = false; 
     ort.env.wasm.numThreads = 1;
+    
+    // 2. Suppress ONNX Runtime CPU vendor warning (harmless but noisy)
+    ort.env.wasm.logging = { warning: () => {} };
 
     // 2. Path Rules
     if (isProd) {
@@ -591,10 +609,19 @@ export default function UniversalOCRModal({
       for (let i = 0; i < numWorkers; i++) {
         try {
           // [FIX] Force local worker and core files to prevent CDN download crash
+          const workerPath = getAssetUrl('/tesseract/worker.min.js');
+          const corePath = getAssetUrl('/tesseract/tesseract-core.wasm.js');
+          const langPath = getAssetUrl('/tesseract');
+          
+          console.log('[TESSERACT_INIT] Worker #' + i + ' paths:');
+          console.log('[TESSERACT_INIT]   workerPath:', workerPath);
+          console.log('[TESSERACT_INIT]   corePath:', corePath);
+          console.log('[TESSERACT_INIT]   langPath:', langPath);
+          
           const w = await Tesseract.createWorker(langs, 1, {
-            workerPath: getAssetUrl('/tesseract/worker.min.js'),
-            corePath: getAssetUrl('/tesseract/tesseract-core.wasm.js'),
-            langPath: getAssetUrl('/tesseract'),
+            workerPath: workerPath,
+            corePath: corePath,
+            langPath: langPath,
             logger: (m) => {
               // Log all messages for debugging, not just progress
               addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
@@ -864,10 +891,19 @@ export default function UniversalOCRModal({
 
       // [FIX] Safe init for Hybrid mode with local assets
       try {
+        const workerPath = getAssetUrl('/tesseract/worker.min.js');
+        const corePath = getAssetUrl('/tesseract/tesseract-core.wasm.js');
+        const langPath = getAssetUrl('/tesseract');
+        
+        console.log('[HYBRID_TESSERACT_INIT] paths:');
+        console.log('[HYBRID_TESSERACT_INIT]   workerPath:', workerPath);
+        console.log('[HYBRID_TESSERACT_INIT]   corePath:', corePath);
+        console.log('[HYBRID_TESSERACT_INIT]   langPath:', langPath);
+        
         const tessOptions = {
-          workerPath: getAssetUrl('/tesseract/worker.min.js'),
-          corePath: getAssetUrl('/tesseract/tesseract-core.wasm.js'),
-          langPath: getAssetUrl('/tesseract'),
+          workerPath: workerPath,
+          corePath: corePath,
+          langPath: langPath,
         };
         const worker1 = await Tesseract.createWorker(langs, 1, tessOptions);
         // Only create a second worker if numTesseractWorkers is 2
