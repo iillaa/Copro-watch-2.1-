@@ -1,11 +1,11 @@
 const fs = require('node:fs');
 const path = require('node:path');
+const zlib = require('node:zlib');
 
 const publicDir = path.resolve(__dirname, '../public');
 const capacitorAssetsDir = path.resolve(__dirname, '../capacitor-assets');
 
 const filesToCopy = [
-  // Tesseract OCR assets (Comprehensive set for offline stability)
   'tesseract/worker.min.js',
   'tesseract/tesseract-core.wasm.js',
   'tesseract/tesseract-core.wasm',
@@ -19,16 +19,15 @@ const filesToCopy = [
   'tesseract/tesseract-core-relaxedsimd.wasm',
   'tesseract/tesseract-core-relaxedsimd-lstm.wasm.js',
   'tesseract/tesseract-core-relaxedsimd-lstm.wasm',
+  // Note: These will be decompressed below
   'tesseract/fra.traineddata.gz',
   'tesseract/ara.traineddata.gz',
   'tesseract/eng.traineddata.gz',
 
-  // PaddleOCR models
   'models/det.onnx',
   'models/rec_ara.onnx',
   'models/keys_ara.txt',
 
-  // ONNX Runtime Web (ORT) assets - REQUIRED FOR PADDLE OCR
   'assets/ort-wasm-simd-threaded.asyncify.mjs',
   'assets/ort-wasm-simd-threaded.asyncify.wasm',
   'assets/ort-wasm-simd-threaded.jsep.mjs',
@@ -40,40 +39,47 @@ const filesToCopy = [
   'ort-wasm-simd.wasm',
   'ort-wasm.wasm',
 
-  // General static assets
   'app-icon.svg',
   'manifest.json',
   'vite.svg',
 ];
 
 async function prepareCapacitorAssets() {
-  // 1. Clean the capacitor-assets directory
   console.log(`Cleaning ${capacitorAssetsDir}...`);
   if (fs.existsSync(capacitorAssetsDir)) {
     await fs.promises.rm(capacitorAssetsDir, { recursive: true, force: true });
   }
   await fs.promises.mkdir(capacitorAssetsDir, { recursive: true });
 
-  // 2. Copy selected files
-  console.log('Copying essential assets for Capacitor build...');
+  console.log('Processing assets for Capacitor build...');
   for (const file of filesToCopy) {
     const sourcePath = path.join(publicDir, file);
     const destinationPath = path.join(capacitorAssetsDir, file);
-
     const destinationDir = path.dirname(destinationPath);
+
     if (!fs.existsSync(destinationDir)) {
       await fs.promises.mkdir(destinationDir, { recursive: true });
     }
 
-    if (fs.existsSync(sourcePath)) {
+    if (!fs.existsSync(sourcePath)) {
+      console.warn(`  Warning: Source file not found: ${file}`);
+      continue;
+    }
+
+    if (file.endsWith('.traineddata.gz')) {
+      // DECOMPRESSION STEP: Convert .gz to raw .traineddata for better offline compatibility
+      const decompressedPath = destinationPath.replace('.gz', '');
+      console.log(`  Decompressing: ${file} -> ${path.basename(decompressedPath)}`);
+      const compressedData = fs.readFileSync(sourcePath);
+      const decompressedData = zlib.gunzipSync(compressedData);
+      fs.writeFileSync(decompressedPath, decompressedData);
+    } else {
       await fs.promises.copyFile(sourcePath, destinationPath);
       console.log(`  Copied: ${file}`);
-    } else {
-      console.warn(`  Warning: Source file not found, skipping: ${file}`);
     }
   }
 
-  console.log('Capacitor assets prepared successfully.');
+  console.log('Capacitor assets prepared with decompressed Tesseract data.');
 }
 
 prepareCapacitorAssets().catch((error) => {

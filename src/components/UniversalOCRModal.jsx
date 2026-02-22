@@ -613,27 +613,33 @@ export default function UniversalOCRModal({
           // [FIX] Force local worker and core files to prevent CDN download crash
           const workerPath = getAssetUrl('/tesseract/worker.min.js');
           const corePath = getAssetUrl('/tesseract/tesseract-core.wasm.js');
-          const langPath = getAssetUrl('/tesseract');
+          const langPath = getAssetUrl('/tesseract') + '/'; // [FIX] Added trailing slash
           
           console.log('[TESSERACT_INIT] Worker #' + i + ' paths:');
           console.log('[TESSERACT_INIT]   workerPath:', workerPath);
           console.log('[TESSERACT_INIT]   corePath:', corePath);
           console.log('[TESSERACT_INIT]   langPath:', langPath);
           
-          const w = await Tesseract.createWorker(langs, 1, {
+          // [FIX] Modern Tesseract.js API (v5+) uses object-only arguments for createWorker
+          const w = await Tesseract.createWorker({
             workerPath: workerPath,
             corePath: corePath,
             langPath: langPath,
+            gzip: false, // [FIX] Look for .traineddata instead of .gz
+            cacheMethod: 'none', // [FIX] Disable IndexedDB cache to prevent hangs in WebView
             logger: (m) => {
-              // Log all messages for debugging, not just progress
               addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
               if (m.status === 'initializing api') setProgress(10);
-              // Update progress for other stages like loading language, loading traineddata, etc.
               if (m.status === 'loading language' || m.status === 'loading traineddata') {
                 setProgress(Math.round(m.progress * 100));
               }
             },
           });
+          
+          // [FIX] Explicitly load and initialize
+          await w.loadLanguage(langs);
+          await w.initialize(langs);
+          
           workers.push(w);
         } catch (e) {
           console.error('[TESSERACT] Worker init failed:', e);
@@ -895,7 +901,7 @@ export default function UniversalOCRModal({
       try {
         const workerPath = getAssetUrl('/tesseract/worker.min.js');
         const corePath = getAssetUrl('/tesseract/tesseract-core.wasm.js');
-        const langPath = getAssetUrl('/tesseract');
+        const langPath = getAssetUrl('/tesseract') + '/'; // [FIX] Added trailing slash
         
         console.log('[HYBRID_TESSERACT_INIT] paths:');
         console.log('[HYBRID_TESSERACT_INIT]   workerPath:', workerPath);
@@ -906,10 +912,22 @@ export default function UniversalOCRModal({
           workerPath: workerPath,
           corePath: corePath,
           langPath: langPath,
+          gzip: false, // [FIX] Look for .traineddata instead of .gz
+          cacheMethod: 'none', // [FIX] Disable cache
         };
-        const worker1 = await Tesseract.createWorker(langs, 1, tessOptions);
-        // Only create a second worker if numTesseractWorkers is 2
-        const worker2 = numTesseractWorkers === 2 ? await Tesseract.createWorker(langs, 1, tessOptions) : null;
+        
+        // [FIX] Modern API Init
+        const worker1 = await Tesseract.createWorker(tessOptions);
+        await worker1.loadLanguage(langs);
+        await worker1.initialize(langs);
+        
+        let worker2 = null;
+        if (numTesseractWorkers === 2) {
+          worker2 = await Tesseract.createWorker(tessOptions);
+          await worker2.loadLanguage(langs);
+          await worker2.initialize(langs);
+        }
+        
         tesseractWorkers = worker2 ? [worker1, worker2] : [worker1];
       } catch (e) {
         const errorMsg = 'Moteur Tesseract indisponible (Requis pour Hybrid).';
