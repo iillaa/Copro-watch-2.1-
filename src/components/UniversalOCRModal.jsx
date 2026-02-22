@@ -246,7 +246,9 @@ export default function UniversalOCRModal({
     // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
     const getAssetUrl = (path) => {
       // Check if running in a Capacitor app
-      const isCapacitor = window.Capacitor && window.Capacitor.isNative;
+      // [FIX] More robust detection: origin check as fallback for early initialization
+      const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
+                          (window.location.origin.includes('localhost') && !window.location.port);
       // Check if running directly from file system (standalone HTML)
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
   
@@ -261,11 +263,10 @@ export default function UniversalOCRModal({
       console.log('[OCR_ASSET_URL] location.protocol:', window.location.protocol);
   
       if (isCapacitor) {
-        // [FIX] For Capacitor, use RELATIVE path from server root
-        // The assets are served from the public folder at build time
-        // Using relative path avoids port/protocol issues
-        const url = '/' + cleanPath;
-        console.log('[OCR_ASSET_URL] Capacitor URL (relative):', url);
+        // [FIX] For Capacitor, use ABSOLUTE URL with origin
+        // This ensures workers fetching relative paths resolve correctly
+        const url = window.location.origin + '/' + cleanPath;
+        console.log('[OCR_ASSET_URL] Capacitor URL (absolute):', url);
         return url;
       } else if (isFileProtocol) {
         // For standalone HTML opened directly (file://), use relative path
@@ -295,7 +296,8 @@ export default function UniversalOCRModal({
     // 2. Path Rules
     if (isProd) {
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
-      const isCapacitor = window.Capacitor && window.Capacitor.isNative; 
+      const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
+                          (window.location.origin.includes('localhost') && !window.location.port); 
 
       if (isCapacitor) {
         // For Capacitor, use the path provided by getAssetUrl which includes origin

@@ -37,8 +37,8 @@ const filesToCopy = [
   'assets/ort-wasm-simd-threaded.jspi.wasm',
   'assets/ort-wasm-simd-threaded.mjs',
   'assets/ort-wasm-simd-threaded.wasm',
-  'assets/ort-wasm-simd.wasm',
-  'assets/ort-wasm.wasm',
+  'ort-wasm-simd.wasm',
+  'ort-wasm.wasm',
 
   // General static assets
   'app-icon.svg',

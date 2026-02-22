@@ -3703,7 +3703,7 @@ var init_gpu_data_manager = __esm({
     downloadGpuData = async (backend, gpuBuffer, originalSize, getTargetBuffer) => {
       const bufferSize = calcNormalizedBufferSize(originalSize);
       const gpuReadBuffer = backend.device.createBuffer(
-        // eslint-disable-next-line no-bitwise
+         
         { size: bufferSize, usage: GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ }
       );
       try {
@@ -3758,7 +3758,7 @@ var init_gpu_data_manager = __esm({
           throw new Error(`inconsistent data size. gpu data size=${gpuDataCache.originalSize}, data size=${srcLength}`);
         }
         const gpuBufferForUploading = this.backend.device.createBuffer(
-          // eslint-disable-next-line no-bitwise
+           
           { mappedAtCreation: true, size, usage: GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC }
         );
         const arrayBuffer = gpuBufferForUploading.getMappedRange();
@@ -3823,7 +3823,7 @@ var init_gpu_data_manager = __esm({
           LOG_DEBUG("verbose", () => `[WebGPU] GpuDataManager.unregisterExternalBuffer() => id=${id}`);
         }
       }
-      // eslint-disable-next-line no-bitwise
+       
       create(size, usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC | GPUBufferUsage.COPY_DST) {
         const bufferSize = calcBucketBufferSize(size);
         let gpuBuffer;
@@ -15692,7 +15692,7 @@ var init_backend_webgpu = __esm({
             0
           );
           queryReadBuffer = this.device.createBuffer(
-            // eslint-disable-next-line no-bitwise
+             
             { size: this.pendingDispatchNumber * 2 * 8, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST }
           );
           this.pendingQueries.set(queryReadBuffer, this.pendingKernels);
@@ -15886,7 +15886,7 @@ var init_backend_webgpu = __esm({
             }
           });
           const uniformBufferData = (
-            // eslint-disable-next-line no-bitwise
+             
             this.gpuDataManager.create(currentOffset, GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM)
           );
           this.device.queue.writeBuffer(uniformBufferData.buffer, 0, arrayBuffer, 0, currentOffset);
@@ -16077,7 +16077,7 @@ var init_backend_webgpu = __esm({
               count: this.maxDispatchNumber * 2
             });
             this.queryResolveBuffer = this.device.createBuffer(
-              // eslint-disable-next-line no-bitwise
+               
               { size: this.maxDispatchNumber * 2 * 8, usage: GPUBufferUsage.COPY_SRC | GPUBufferUsage.QUERY_RESOLVE }
             );
           }
