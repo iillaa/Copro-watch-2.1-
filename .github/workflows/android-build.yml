@@ -25,12 +25,12 @@ jobs:
         run: |
           npm install --legacy-peer-deps
           export NODE_OPTIONS="--max-old-space-size=4096"
-          npm run build
+          npm run build:capacitor
 
       - name: Verify dist output
         run: |
-          echo "=== dist/index.html ==="
-          cat dist/index.html
+          echo "=== dist-capacitor/index.html ==="
+          cat dist-capacitor/index.html
 
       - name: Sync Capacitor
         run: npx cap sync android
