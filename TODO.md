@@ -23,6 +23,12 @@
   - _Idée :_ Une page dédiée avec des graphiques sectoriels (Camemberts/Barres).
   - _But :_ Analyser le % de couverture vaccinale ou le taux de positivité par département.
 
+### 🏗️ Améliorations Architecturales
+
+- [ ] **Concept : Généraliser les Modules Travailleurs/Armes**
+  - _Idée :_ Refactoriser la logique commune et les composants UI partagés entre les modules de gestion des travailleurs et des armes (qui a été forké).
+  - _But :_ Réduire la duplication de code, améliorer la maintenabilité, faciliter l'ajout de nouveaux modules similaires et rendre l'architecture plus modulaire.
+
 ### 📱 Expérience Utilisateur (UX) & Mobile
 
 - [ ] **Concept : Notifications Locales (Android)**
@@ -43,6 +49,15 @@
 - [x] **Concept : Transfert de Département**
   - _État :_ ✅ Terminé (v2.1)
   - _Détail :_ Modal pour déplacer plusieurs travailleurs entre services.
+
+### 🔍 OCR Modal Improvements
+
+- [x] **Concept : Tesseract Asset Availability & Error Handling**
+  - _État :_ ✅ Terminé (v2.1)
+  - _Détail :_ Resolved 404 error for `fra.traineddata.gz` by ensuring local availability. Implemented robust `try-catch` in `handleGo` to prevent app crashes from OCR errors.
+- [x] **Concept : Capacitor Asset Optimization for OCR**
+  - _État :_ ✅ Terminé (v2.1)
+  - _Détail :_ Implemented conditional asset packaging using `scripts/prepare-capacitor-assets.js` and `vite.capacitor.config.js` to reduce APK size.
 
 ### 🔒 Sécurité & Technique
 
@@ -65,4 +80,4 @@
 
 - [x] **v1.0** : Core (Gestion Travailleurs, Examens, Eau), Sauvegarde Smart Backup.
 - [x] **v1.2** : Batch Workflows (Résultats, Planning), PDF Engine, Excel Engine, Global Sync.
-- [x] **v2.1** : Bulk Actions (Suppression massive, Impression groupée), Transfert inter-départements, Interface optimisée, Standalone HTML Build.
+- [x] **v2.1** : Bulk Actions (Suppression massive, Impression groupée), Transfert inter-départements, Interface optimisée, Standalone HTML Build, **OCR Modal Improvements (Tesseract asset fix, robust error handling, Capacitor asset optimization).**

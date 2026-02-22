@@ -101,6 +101,21 @@ _Utile pour : Humains et IA._
 
 ---
 
+## 🛡️ GESTION DES ARMES (Module Weapon)
+
+_Note : Ce module a été initialement forké du module de gestion des travailleurs (`src/components/WorkerList.jsx`, etc.), partageant des structures et des logiques similaires. Cela peut être une opportunité pour une future refactorisation afin de maximiser la réutilisation du code et maintenir la cohérence._
+
+- 📂 **Fichiers :** `src/components/Weapons/` (Dossier complet)
+
+---
+
+## 📸 MODULE OCR (UniversalOCRModal)
+
+- 📂 **Fichier :** [`src/components/UniversalOCRModal.jsx`](src/components/UniversalOCRModal.jsx)
+- **Rôle :** Permet la numérisation intelligente de documents (fiches travailleurs, permis d'armes, etc.) via la caméra ou le chargement d'images. Utilise `Tesseract.js` (pour une reconnaissance "sûre" et fiable) et `@gutenye/ocr-browser` (PaddleOCR pour une reconnaissance "turbo" et hybride). Il intègre une gestion robuste des erreurs et une optimisation des assets pour les builds Capacitor, garantissant une meilleure performance et une taille d'application réduite.
+
+---
+
 ## 🖨️ MOTEUR D'IMPRESSION (Smart PDF)
 
 **Je veux modifier :**
@@ -175,5 +190,6 @@ _Utile pour : Humains et IA._
 | `npm run dev`              | Serveur de dev avec hot reload              |
 | `npm run build`            | Build web standard (dossier `dist/`)        |
 | `npm run build:standalone` | Build portable (dossier `dist-standalone/`) |
-| `npx cap sync`             | Sync avec le projet Android                 |
+| `npm run build:capacitor`    | Build optimisé pour Capacitor (dossier `dist-capacitor/`) - Réduit la taille de l'APK en incluant uniquement les assets nécessaires. |
+| `npx cap sync`             | Synchronise le build web (depuis `dist/` ou `dist-capacitor/`) avec le projet natif Android/iOS. |
 | `npm run lint`             | Vérification ESLint                         |

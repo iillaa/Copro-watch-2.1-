@@ -54,10 +54,10 @@ C'est la méthode la plus flexible. Elle compile toute l'application (code, base
 
 ### Option B : Application Android (APK) 📱
 
-Pour une utilisation sur tablette ou téléphone.
+Pour une utilisation sur tablette ou téléphone, avec une taille d'application optimisée.
 
-1.  **Compiler** : Suivez les instructions du fichier `ANDROID_BUILD_INSTRUCTIONS.md` (commande `./gradlew assembleRelease`).
-2.  **Installer** : Transférez le fichier `.apk` sur votre appareil et installez-le.
+1.  **Compiler** : Utilisez la commande `npm run build:capacitor` et suivez les instructions détaillées du fichier `ANDROID_BUILD_INSTRUCTIONS.md`.
+2.  **Installer** : Transférez le fichier `.apk` généré sur votre appareil et installez-le.
 3.  **Permissions** : Au premier lancement, autorisez l'accès au stockage pour permettre les sauvegardes automatiques.
 
 ### Option C : Serveur Web Classique 🌐
@@ -109,7 +109,8 @@ Pour les développeurs souhaitant modifier le code source.
 | `npm run dev`              | Lance le serveur de développement local (avec rechargement à chaud).                                        |
 | `npm run build`            | Compile l'application pour le web (dossier `dist/`).                                                        |
 | `npm run build:standalone` | **Crée la version portable** (`dist-standalone/index.html`). Combine le build web + l'injection des assets. |
-| `npx cap sync`             | Synchronise le code web avec le projet Android natif.                                                       |
+| `npm run build:capacitor`    | Crée un build web optimisé pour Capacitor (`dist-capacitor/`), réduisant la taille de l'APK. |
+| `npx cap sync`             | Synchronise le code web (depuis `dist/` ou `dist-capacitor/`) avec les projets natifs Android/iOS. |
 | `npm run lint`             | Vérifie la qualité du code (ESLint).                                                                        |
 
 ### Structure du Projet

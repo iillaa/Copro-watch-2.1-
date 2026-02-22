@@ -1,7 +1,7 @@
 {
   "appId": "com.coprowatch.app",
   "appName": "Copro Watch",
-  "webDir": "dist",
+  "webDir": "dist-capacitor",
   "server": {
     "androidScheme": "https"
   },

@@ -32,12 +32,32 @@ Here is the detailed `CODEMAP.md` file. Save this in your project root. It cover
 
 | File                            | Responsibility                                                              |
 | :------------------------------ | :-------------------------------------------------------------------------- |
-| `package.json`                  | Dependencies (React, Capacitor, Date-fns, Dexie, React-Icons).              |
-| `vite.config.js`                | Standard web build configuration.                                           |
+| `package.json`                  | Dependencies (React, Capacitor, Date-fns, Dexie, React-Icons). Also defines build scripts. |
+| `vite.config.js`                | Standard web build configuration for development and `npm run build`.       |
 | `vite.standalone.config.js`     | **Special Build:** Compiles app into a single `.html` file (portable mode). |
+| `vite.capacitor.config.js`      | **New Build:** Optimized build configuration specifically for Capacitor (Android/iOS) to reduce APK size. |
 | `capacitor.config.json`         | Android native settings (App ID: `com.coprowatch.app`).                     |
+| `scripts/prepare-capacitor-assets.js` | **Automation Script:** Prepares the `capacitor-assets/` directory with only the essential files for Capacitor builds. |
 | `TECHNICAL_ARCHITECTURE.md`     | Security protocols and backup logic documentation.                          |
 | `ANDROID_BUILD_INSTRUCTIONS.md` | Guide for generating the APK.                                               |
+
+### 📂 Directory Structure & Responsibilities (Continued)
+
+#### 📦 Build Outputs & Assets
+
+| Directory/File                  | Responsibility                                                              |
+| :------------------------------ | :-------------------------------------------------------------------------- |
+| `public/`                       | Contains all static assets (images, OCR engine files, traineddata, models) for development and standard web builds. |
+| `capacitor-assets/`             | **New:** Contains only the minimal set of static assets (Tesseract essentials, traineddata, PaddleOCR models, core static files) required for an optimized Capacitor build. This directory is populated by `scripts/prepare-capacitor-assets.js`. |
+| `dist/`                         | Output directory for standard web builds (`npm run build`).                 |
+| `dist-standalone/`              | Output directory for the single-file HTML build (`npm run build:standalone`). |
+| `dist-capacitor/`               | **New:** Output directory for Capacitor-optimized web builds (`npm run build:capacitor`). This output is intended for packaging into Android/iOS applications. |
+
+#### ⚙️ Scripts
+
+| Directory/File                  | Responsibility                                                              |
+| :------------------------------ | :-------------------------------------------------------------------------- |
+| `scripts/prepare-capacitor-assets.js` | Automatically prepares the `capacitor-assets/` directory with the minimal set of files for Capacitor builds. |
 
 ### 🧠 Logic Layer (`src/services/`)
 
@@ -122,11 +142,17 @@ This is the brain of the application.
 
 #### 🛡️ Weapon Management Module (`src/components/Weapons/`)
 
+_Note : Ce module a été initialement forké du module de gestion des travailleurs (`src/components/WorkerList.jsx`, etc.), partageant des structures et des logiques similaires. Cela peut être une opportunité pour une future refactorisation afin de maximiser la réutilisation du code et maintenir la cohérence._
+
 - **`WeaponDashboard.jsx`**: Stats for weapon aptitude (Apte, Inapte, Revoir).
 - **`WeaponList.jsx`**: Table of weapon holders with permit details.
 - **`WeaponDetail.jsx`**: Folder for a weapon holder with commission history.
 - **`AddWeaponHolderForm.jsx`**: Form for creating/editing weapon holders (includes Photo).
 - **`WeaponExamForm.jsx`**: Medical commission form (Visual acuity, Psych check).
+
+#### 📸 OCR Module (`src/components/UniversalOCRModal.jsx`)
+
+- **`UniversalOCRModal.jsx`**: Main component for OCR functionality. Utilizes `Tesseract.js` and `@gutenye/ocr-browser` (PaddleOCR) for intelligent document scanning. Features robust error handling and optimized asset management for Capacitor builds.
 
 ### 💅 Styles (`src/`)
 

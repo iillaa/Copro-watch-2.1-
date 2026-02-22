@@ -12,7 +12,7 @@
     "format": "prettier --write .",
     "test": "vitest",
     "preview": "vite preview",
-    "build:capacitor": "node scripts/prepare-capacitor-assets.js && vite build --config vite.capacitor.config.js"
+    "build:capacitor": "node scripts/prepare-capacitor-assets.cjs && vite build --config vite.capacitor.config.js"
   },
   "dependencies": {
     "@capacitor/android": "^8.0.0",

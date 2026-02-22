@@ -1,315 +1,66 @@
-# OCR Modal Analysis & Fixes
+# OCR Modal Analysis & Configuration Guide
 
-## 🔴 CRITICAL ISSUE: PaddleOCR Model Loading Failure
-
-### Error Breakdown
-
-```
-expected magic word 00 61 73 6d, found 3c 21 44 4f
-```
-
-- `00 61 73 6d` = WASM binary signature
-- `3c 21 44 4f` = `<!DO` (start of `<!DOCTYPE html>`)
-
-**Root Cause**: The model files are returning HTML 404 pages instead of actual binary files.
+This document outlines the current state, fixes, and configuration for the application's OCR (Optical Character Recognition) functionality, which uses both Tesseract.js and PaddleOCR.
 
 ---
 
-## ✅ FIXES REQUIRED
+## ✅ Current Status & Recent Improvements
 
-### 1. **Fix Model Paths** (Most Likely Issue)
+1.  **Tesseract.js Asset Availability:** The issue of missing `fra.traineddata.gz` (and other language data) causing network errors has been resolved. Essential `.traineddata.gz` files (`fra`, `ara`, `eng`) are now present in the `public/tesseract/` directory.
+2.  **Robust Error Handling:** The main OCR `handleGo` function in `src/components/UniversalOCRModal.jsx` now includes comprehensive `try-catch` blocks. This ensures that any errors during OCR processing (Tesseract, Paddle, or Hybrid) are gracefully caught, logged within the modal, and displayed to the user without crashing the entire application.
+3.  **PaddleOCR Model Availability:** The PaddleOCR ONNX models (`det.onnx`, `rec_ara.onnx`, `keys_ara.txt`) are confirmed to be present in `public/models/`.
+4.  **Capacitor Build Asset Optimization:** A new build process has been implemented to significantly reduce the APK size for Android Capacitor builds.
 
-The models are being loaded from:
+---
 
-```javascript
-models: {
-  det: '/models/det.onnx',
-  rec: '/models/rec_ara.onnx',
-  dic: '/models/keys_ara.txt',
-}
-```
+## 🚀 Capacitor Build Asset Optimization
 
-**Problem**: These files don't exist in your `/public/models/` directory.
+To prevent redundant asset inclusion and minimize the final APK size, a dedicated asset preparation and build configuration is now in place for Capacitor.
 
-**Solution A - Download PaddleOCR Models**:
+### How it Works:
+
+1.  **`scripts/prepare-capacitor-assets.js`**: This script acts as the single source of truth for all assets required for the Capacitor build. It includes:
+    *   The minimal set of Tesseract.js core files (`worker.min.js`, `tesseract-core.wasm.js`, `tesseract-core.wasm`).
+    *   All necessary Tesseract language data (`fra.traineddata.gz`, `ara.traineddata.gz`, `eng.traineddata.gz`).
+    *   All PaddleOCR models (`det.onnx`, `rec_ara.onnx`, `keys_ara.txt`).
+    *   Essential general static assets (e.g., `app-icon.svg`, `manifest.json`, `vite.svg`).
+    This script cleans the `capacitor-assets/` directory and copies only these specified files into it.
+2.  **`vite.capacitor.config.js`**: This specialized Vite configuration file is used for Capacitor builds. It sets its `publicDir` to `capacitor-assets/` and outputs the build to `dist-capacitor/`.
+3.  **`package.json` Script**: The `build:capacitor` script in `package.json` now orchestrates this process:
+    ```bash
+    "build:capacitor": "node scripts/prepare-capacitor-assets.js && vite build --config vite.capacitor.config.js"
+    ```
+
+### Using the Optimized Build:
+
+When building for Capacitor (e.g., for Android APK), you should now use:
 
 ```bash
-# Create the models directory
-mkdir -p public/models
-
-# You need to obtain these files from PaddleOCR:
-# 1. Detection model (det.onnx) - ~2-8MB
-# 2. Recognition model (rec_ara.onnx) - for Arabic - ~10MB
-# 3. Dictionary file (keys_ara.txt) - character mappings
+npm run build:capacitor
 ```
 
-**Where to get models**:
-
-- Official PaddleOCR ONNX models: https://github.com/PaddlePaddle/PaddleOCR
-- Pre-converted ONNX models: https://github.com/muchaste/PaddleOCR-ONNX
-- client-side-ocr examples: https://github.com/image-js/client-side-ocr
-
-**Solution B - Use CDN/External Hosting** (if models are large):
-
-```javascript
-const ocr = await createOCREngine({
-  models: {
-    det: 'https://your-cdn.com/models/det.onnx',
-    rec: 'https://your-cdn.com/models/rec_ara.onnx',
-    dic: 'https://your-cdn.com/models/keys_ara.txt',
-  },
-});
-```
+Capacitor should then be configured to synchronize its assets from the `dist-capacitor/` directory.
 
 ---
 
-### 2. **Verify Public Folder Structure**
+## 🛠️ General OCR Configuration Notes
 
-Your project should have:
-
-```
-public/
-  models/
-    det.onnx          ← Detection model
-    rec_ara.onnx      ← Arabic recognition model
-    keys_ara.txt      ← Character dictionary
-```
-
-**Test if files are accessible**:
-
-1. Start your dev server
-2. Navigate to: `http://localhost:YOUR_PORT/models/det.onnx`
-3. Should download a binary file, NOT show HTML
+*   **Asset Paths**: The `getAssetUrl()` helper in `src/components/UniversalOCRModal.jsx` automatically resolves asset paths relative to the root (`/tesseract/`, `/models/`). The Vite build configurations ensure that these paths correctly point to the appropriate files based on the build target (development, web, standalone, or Capacitor).
+*   **Tesseract.js Languages**: The application is configured to load 'fra' (French) and 'ara' (Arabic) language data for Tesseract.js. The `UniversalOCRModal.jsx` intelligently switches between these or loads both as 'ara+fra' depending on the `docLanguage` state.
+*   **PaddleOCR Models**: The PaddleOCR engine uses `det.onnx`, `rec_ara.onnx`, and `keys_ara.txt` for Arabic recognition.
 
 ---
 
-### 3. **Alternative: Use Tesseract-Only Mode**
+## 📝 CODE IMPROVEMENTS & REMINDERS
 
-If you can't get PaddleOCR models, remove the Paddle option:
-
-```javascript
-// Remove this from your UI
-<button
-  onClick={() => setOcrEngine('paddle')}
-  style={{...}}
->
-  Paddle AI (Turbo)
-</button>
-
-// Keep only Tesseract
-const handleGo = () => {
-  runTesseractOCR();
-};
-```
+*   **`UniversalOCRModal.jsx`**:
+    *   The `handleImageChange` function should include robust `onerror` handling for image loading.
+    *   PaddleOCR engine (`ocr` instance) should always be disposed of in a `finally` block to prevent memory leaks (`if (ocr && ocr.dispose) await ocr.dispose();`). This is implemented in `runPaddleOCR` and `runHybridOCR`.
+    *   Ensure `filterWordsByGrid` includes validation for empty or null `words` arrays.
 
 ---
 
-## 🐛 CODE IMPROVEMENTS FOUND
+## ❓ FAQ & Troubleshooting
 
-### Issue 1: Missing Error Handling in Image Load
-
-```javascript
-// Current code doesn't handle image load failures
-img.onload = () => { ... }
-
-// Add this:
-img.onerror = () => {
-  alert('Erreur: Impossible de charger l\'image.');
-  setImage(null);
-};
-```
-
-### Issue 2: Paddle Engine Never Cleaned Up
-
-```javascript
-// In runPaddleOCR, add cleanup:
-let ocr = null;
-try {
-  // AJOUTEZ CETTE LIGNE ICI :
-  ort.env.wasm.numThreads = 1;
-
-  const ocr = await Ocr.create({
-    models: {
-      detectionPath: 'models/det.onnx',
-      recognitionPath: 'models/rec_ara.onnx',
-      dictionaryPath: 'models/keys_ara.txt',
-    },
-  });
-  // ... processing ...
-} finally {
-  if (ocr && ocr.dispose) {
-    await ocr.dispose(); // Prevent memory leaks
-  }
-}
-```
-
-### Issue 3: Grid Filter Logic Assumes Words Array
-
-The `filterWordsByGrid` function works well, but add validation:
-
-```javascript
-const filterWordsByGrid = (words, imgW, imgH, vLines, hLines, colMapping, isRTL) => {
-  if (!words || words.length === 0) {
-    console.warn('[GRID] No words to filter');
-    return [];
-  }
-  // ... rest of function
-};
-```
-
----
-
-## 🚀 RECOMMENDED IMPLEMENTATION STRATEGY
-
-### Option 1: Tesseract Only (Safest)
-
-- Remove Paddle UI completely
-- Focus on optimizing Tesseract parameters
-- Already working well based on your code
-
-### Option 2: Hybrid with Fallback
-
-```javascript
-const handleGo = async () => {
-  if (ocrEngine === 'paddle') {
-    try {
-      await runPaddleOCR();
-    } catch (err) {
-      addLog('[FALLBACK] Paddle failed, switching to Tesseract...');
-      setOcrEngine('tesseract');
-      await runTesseractOCR();
-    }
-  } else {
-    await runTesseractOCR();
-  }
-};
-```
-
-### Option 3: Full Paddle Setup (Most Work)
-
-1. Download ONNX models (~50MB total)
-2. Host on CDN or in public folder
-3. Test thoroughly with both languages
-
----
-
-## 📋 IMMEDIATE ACTION ITEMS
-
-1. **Check if models exist**:
-
-   ```bash
-   ls -lh public/models/
-   ```
-
-2. **If missing, either**:
-
-   - Download from PaddleOCR repo
-   - OR remove Paddle option from UI
-
-3. **Add better error messages**:
-   ```javascript
-   } catch (e) {
-     addLog(`[ERREUR PADDLE] ${e.message}`);
-     alert(`Impossible de charger PaddleOCR.
-
-     Raisons possibles:
-     - Modèles manquants dans /public/models/
-     - Fichiers corrompus
-     - Problème de connexion
-
-     Suggestion: Utilisez Tesseract (Safe) à la place.`);
-   }
-   ```
-
----
-
-## 🎯 QUICK FIX (Copy-Paste)
-
-Replace your `runPaddleOCR` function with this safer version:
-
-```javascript
-const runPaddleOCR = async () => {
-  if (!image || !imageRef.current) return;
-  setIsProcessing(true);
-  setLogs([]);
-  addLog('[PADDLE] Vérification des modèles...');
-
-  try {
-    // Test if models are accessible
-    const modelPaths = ['/models/det.onnx', '/models/rec_ara.onnx', '/models/keys_ara.txt'];
-
-    for (const path of modelPaths) {
-      const response = await fetch(path, { method: 'HEAD' });
-      if (!response.ok) {
-        throw new Error(`Modèle introuvable: ${path} (${response.status})`);
-      }
-    }
-
-    addLog('[PADDLE] Modèles détectés. Initialisation...');
-    setProgress(10);
-
-    const ocr = await createOCREngine({
-      models: {
-        det: '/models/det.onnx',
-        rec: '/models/rec_ara.onnx',
-        dic: '/models/keys_ara.txt',
-      },
-    });
-
-    addLog('[PADDLE] Moteur chargé. Analyse...');
-    setProgress(30);
-
-    const result = await ocr.detect(imageRef.current);
-    setProgress(80);
-
-    const adaptedWords = result.map((item) => ({
-      text: item.text,
-      confidence: item.score * 100,
-      bbox: {
-        x0: item.box[0],
-        y0: item.box[1],
-        x1: item.box[0] + item.box[2],
-        y1: item.box[1] + item.box[3],
-      },
-    }));
-
-    addLog(`[PADDLE] ${adaptedWords.length} éléments détectés.`);
-
-    const candidates = filterWordsByGrid(
-      adaptedWords,
-      imgDimensions.width,
-      imgDimensions.height,
-      vLines,
-      hLines,
-      colMapping,
-      docLanguage === 'ara'
-    );
-
-    setCandidates(candidates);
-    setActiveTab('results');
-    addLog(`[SUCCESS] ${candidates.length} lignes extraites.`);
-
-    if (ocr.dispose) await ocr.dispose();
-  } catch (e) {
-    addLog(`[ERREUR] ${e.message}`);
-    alert(
-      `❌ PaddleOCR indisponible\n\n${e.message}\n\nℹ️ Solution: Utilisez "Tesseract (Safe)" à la place.`
-    );
-    setOcrEngine('tesseract'); // Auto-switch
-  } finally {
-    setIsProcessing(false);
-    setProgress(100);
-  }
-};
-```
-
----
-
-## 📝 NOTES
-
-- Your Tesseract implementation looks solid
-- The grid system is well-designed
-- Arabic transliteration logic is correct
-- Debug mode is very useful
-
-**Recommendation**: fix paddle ocr , keep the dual ocr engine with the switch button
+*   **Large APK Size**: If your APK size is unexpectedly large, ensure you are using `npm run build:capacitor` for your Android builds and that Capacitor is configured to use the `dist-capacitor/` output.
+*   **OCR Engine Initialization Errors**: If Tesseract or PaddleOCR fails to initialize, check the browser console/modal logs for specific error messages. For Tesseract, ensure `traineddata.gz` files are correctly present in `public/tesseract/`. For PaddleOCR, verify `.onnx` and `.txt` models in `public/models/`. If you suspect the `capacitor-assets/` folder is not correctly populated, check `scripts/prepare-capacitor-assets.js`.

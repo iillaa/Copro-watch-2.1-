@@ -7,6 +7,8 @@
 - **Stack:** React 19, Vite, Capacitor 8.
 - **Persistence:** Dexie.js (IndexedDB wrapper).
 - **Runtime:** Web Browser (Standalone HTML) or Android Webview.
+- **Core Module Reusability**: Several modules, notably the 'Weapon Management' module, were initially forked from the 'Worker Management' module, sharing significant UI and business logic patterns. This highlights a strategy of code reuse that could lead to further abstraction and refactoring opportunities.
+- **OCR Subsystem**: Integrates Tesseract.js and PaddleOCR for document scanning. Recent improvements include resolution of Tesseract asset loading issues and robust error handling to prevent application crashes.
 
 ## 2. Security Architecture
 
@@ -88,20 +90,31 @@ The project utilizes automated pipelines for consistent build delivery via GitHu
 - **Workflow:** `.github/workflows/android-build.yml`.
 - **Automation:**
   1.  Sets up Node 22 & Java 21 environment.
-  2.  Compiles React assets (`npm run build`).
-  3.  Syncs Capacitor native bridge.
-  4.  Builds Android Release APK (`assembleRelease`).
-  5.  **Signs APK:** Automated `apksigner` injection using GitHub Secrets.
+  2.  **Prepares Capacitor assets** using `scripts/prepare-capacitor-assets.js`.
+  3.  **Compiles React assets** using the Capacitor-optimized build (`npm run build:capacitor`).
+  4.  Syncs Capacitor native bridge.
+  5.  Builds Android Release APK (`assembleRelease`).
+  6.  **Signs APK:** Automated `apksigner` injection using GitHub Secrets.
 
-## 6. Android Specifics & Permissions
+## 6. Asset Management & Optimization
+
+To minimize the final APK size for Android Capacitor builds, a selective asset packaging strategy is employed:
+
+- **`capacitor-assets/` Directory:** This dedicated folder contains only the absolutely essential Tesseract.js runtime files, trained language data, PaddleOCR models, and core static assets required for the Capacitor environment.
+- **`scripts/prepare-capacitor-assets.js`:** An automated script is responsible for populating `capacitor-assets/` from the main `public/` directory, ensuring consistency and preventing manual errors.
+- **`vite.capacitor.config.js`:** A custom Vite configuration file leverages `capacitor-assets/` as its `publicDir`, directing the build output (`dist-capacitor/`) to contain only the optimized subset of assets.
+
+This ensures that the Android APK includes only the necessary OCR components and general assets, leading to a significantly smaller application footprint.
+
+## 7. Android Specifics & Permissions
 
 - **Target:** Enterprise Sideloading (Non-Play Store Distribution).
 - **FileSystem Strategy:** Direct access to `Documents/copro-watch` for user-accessible backups.
 - **Manifest:** Uses `MANAGE_EXTERNAL_STORAGE` to ensure data persistence survives app uninstalls—critical for medical records on shared devices.
 
-## 7. Database Schema
+## 8. Database Schema
 
-### 7.1 Core Tables (Updated v3 Schema)
+### 8.1 Core Tables (Updated v3 Schema)
 
 | Table                | Fields                                                      | Indexes                     |
 | :------------------- | :---------------------------------------------------------- | :-------------------------- |
@@ -115,12 +128,12 @@ The project utilizes automated pipelines for consistent build delivery via GitHu
 | `weapon_exams`       | id, holder_id, exam_date, visit_reason, final_decision      | holder_id, exam_date        |
 | `weapon_departments` | id, name                                                    | name                        |
 
-### 7.2 Settings Table
+### 8.2 Settings Table
 
 - **Key:** `app_settings`
 - **Fields:** pin, backupThreshold, encryptionEnabled
 
-## 8. Project Structure Verification
+## 9. Project Structure Verification
 
 For automated analysis tools:
 
@@ -133,10 +146,11 @@ For automated analysis tools:
 | PDF Generator | `src/services/pdfGenerator.js` | EXISTS |
 | CI/CD         | `.github/workflows`            | EXISTS |
 
-## 9. Build Variants
+## 10. Build Variants
 
-| Variant    | Command                     | Output                                   | Purpose                   |
-| :--------- | :-------------------------- | :--------------------------------------- | :------------------------ |
-| Web        | `npm run build`             | `dist/`                                  | Standard web deployment   |
-| Standalone | `npm run build:standalone`  | `dist-standalone/index.html`             | Single portable HTML file |
-| Android    | `./gradlew assembleRelease` | `android/app/build/outputs/apk/release/` | APK for Android devices   |
+| Variant    | Command                                      | Output                                   | Purpose                                               |
+| :--------- | :------------------------------------------- | :--------------------------------------- | :---------------------------------------------------- |
+| Web        | `npm run build`                              | `dist/`                                  | Standard web deployment                               |
+| Standalone | `npm run build:standalone`                   | `dist-standalone/index.html`             | Single portable HTML file                             |
+| Capacitor  | `npm run build:capacitor` (orchestrates script + vite build) | `dist-capacitor/`                        | Optimized web assets for Android/iOS APKs (reduced size) |
+| Android    | `./gradlew assembleRelease` (from `android/`) | `android/app/build/outputs/apk/release/` | Final signed APK for Android devices                  |

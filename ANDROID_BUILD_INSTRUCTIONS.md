@@ -60,15 +60,15 @@ L'application est configurée pour être construite automatiquement par les serv
 
 ### Instructions étape par étape
 
-1.  **Compiler le Web** :
-    Générez les fichiers HTML/JS/CSS optimisés dans le dossier `dist/`.
+1.  **Compiler le Web (pour Capacitor)** :
+    Générez les fichiers HTML/JS/CSS optimisés dans le dossier `dist-capacitor/`. Cette commande utilise une configuration spécifique pour réduire la taille finale de l'APK en incluant uniquement les assets nécessaires.
 
     ```bash
-    npm run build
+    npm run build:capacitor
     ```
 
 2.  **Synchroniser avec Android** :
-    Copie le contenu de `dist/` vers le projet natif Android.
+    Copie le contenu de `dist-capacitor/` vers le projet natif Android.
 
     ```bash
     npx cap sync android
