@@ -977,13 +977,26 @@ export default function UniversalOCRModal({
     }
   };
   // --- MASTER SWITCH ---
-  const handleGo = () => {
-    if (ocrEngine === 'paddle') {
-      runPaddleOCR(); // Now Cellular (Slice-then-Read)
-    } else if (ocrEngine === 'hybrid') {
-      runHybridOCR();
-    } else {
-      runTesseractOCR(); // Now Parallel
+  const handleGo = async () => {
+    setErrorMessage(null); // Clear previous errors
+    setIsProcessing(true); // Indicate processing has started
+    try {
+      if (ocrEngine === 'paddle') {
+        await runPaddleOCR(); // Now Cellular (Slice-then-Read)
+      } else if (ocrEngine === 'hybrid') {
+        await runHybridOCR();
+      } else {
+        await runTesseractOCR(); // Now Parallel
+      }
+    } catch (e) {
+      console.error('OCR Process Fatal Error:', e);
+      addLog(`[GLOBAL_ERROR] ${e.message}`);
+      setErrorMessage(
+        `Une erreur est survenue pendant le scan OCR: ${e.message}. Veuillez réessayer.`
+      );
+    } finally {
+      // Ensure processing state is reset, even if an error occurs
+      setIsProcessing(false);
     }
   };
 
