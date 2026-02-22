@@ -244,24 +244,25 @@ export default function UniversalOCRModal({
   }, []);
 
     // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
-    const getAssetUrl = (path) => {
+    const getAssetUrl = (path, isDirectory = false) => {
       const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
-                          (window.location.origin.includes('localhost') && !window.location.port);
+                          window.location.origin.includes('localhost');
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
-      const cleanPath = path.replace(/^\/+|\/+$/g, '');
       
-      // [FORCE CACHE BUSTER] Add a timestamp to ensure the WebView doesn't cache old 404s
-      const cacheBuster = `?v=${Date.now()}`;
+      // Clean leading/trailing slashes
+      let cleanPath = path.replace(/^\/+|\/+$/g, '');
+      
+      // [FIX] Directories need a trailing slash
+      if (isDirectory) cleanPath += '/';
   
       if (isCapacitor) {
-        // [FORCE HTTP] Your logs showed HTTPS was 404ing. We MUST use HTTP for local assets.
-        const url = 'http://localhost/' + cleanPath + cacheBuster;
-        console.log('[OCR_ASSET_URL] FORCED HTTP URL:', url);
-        return url;
+        // [FIX] Use window.location.origin to match protocol (http or https)
+        // This prevents Mixed Content errors and works for Workers
+        return window.location.origin + '/' + cleanPath;
       } else if (isFileProtocol) {
-        return './' + cleanPath + cacheBuster;
+        return './' + cleanPath;
       } else {
-        return '/' + cleanPath + cacheBuster;
+        return '/' + cleanPath;
       }
     };
     
@@ -285,7 +286,7 @@ export default function UniversalOCRModal({
 
       if (isCapacitor) {
         // For Capacitor, use the path provided by getAssetUrl which includes origin
-        ort.env.wasm.wasmPaths = getAssetUrl('/assets') + '/';
+        ort.env.wasm.wasmPaths = getAssetUrl('/assets', true);
       } else if (isFileProtocol) {
         // For standalone HTML opened directly (file://)
         ort.env.wasm.wasmPaths = './';
@@ -595,20 +596,23 @@ export default function UniversalOCRModal({
       for (let i = 0; i < numWorkers; i++) {
         try {
           // [FIX] Force local worker and core files to prevent CDN download crash
-          const workerPath = getAssetUrl('/tesseract/worker.min.js');
-          const corePath = getAssetUrl('/tesseract/tesseract-core.wasm.js');
-          const langPath = getAssetUrl('/tesseract') + '/'; // [FIX] Added trailing slash
+          const workerPath = getAssetUrl('/tesseract'); // Will append worker.min.js inside Tesseract.js if needed, or we specify full path
+          // Actually, Tesseract.js v5+ expects paths to the files if provided
+          const workerFullUrl = getAssetUrl('/tesseract/worker.min.js');
+          const coreFullUrl = getAssetUrl('/tesseract/tesseract-core.wasm.js');
+          const langFolderUrl = getAssetUrl('/tesseract', true); // Correctly handles slash and query params
           
           console.log('[TESSERACT_INIT] Worker #' + i + ' paths:');
-          console.log('[TESSERACT_INIT]   workerPath:', workerPath);
-          console.log('[TESSERACT_INIT]   corePath:', corePath);
-          console.log('[TESSERACT_INIT]   langPath:', langPath);
+          console.log('[TESSERACT_INIT]   workerPath:', workerFullUrl);
+          console.log('[TESSERACT_INIT]   corePath:', coreFullUrl);
+          console.log('[TESSERACT_INIT]   langPath:', langFolderUrl);
           
           // [FIX] Modern Tesseract.js API (v5+) uses object-only arguments for createWorker
           const w = await Tesseract.createWorker({
-            workerPath: workerPath,
-            corePath: corePath,
-            langPath: langPath,
+            workerPath: workerFullUrl,
+            corePath: coreFullUrl,
+            langPath: langFolderUrl,
+            workerBlob: false, // [FIX] Prevents Blob conversion which causes issues in some WebViews
             gzip: false, // [FIX] Look for .traineddata instead of .gz
             cacheMethod: 'none', // [FIX] Disable IndexedDB cache to prevent hangs in WebView
             logger: (m) => {
@@ -741,7 +745,7 @@ export default function UniversalOCRModal({
   // ========== MODE 2: PADDLE FULL PAGE (CELLULAR MODE RESTORED + IMPROVED) ==========
   // Helper function to get the correct models URL for Capacitor APK
   const getModelsUrl = () => {
-    return getAssetUrl('/models') + '/';
+    return getAssetUrl('/models', true);
   };
 
   const runPaddleOCR = async () => {
@@ -883,19 +887,20 @@ export default function UniversalOCRModal({
 
       // [FIX] Safe init for Hybrid mode with local assets
       try {
-        const workerPath = getAssetUrl('/tesseract/worker.min.js');
-        const corePath = getAssetUrl('/tesseract/tesseract-core.wasm.js');
-        const langPath = getAssetUrl('/tesseract') + '/'; // [FIX] Added trailing slash
+        const workerFullUrl = getAssetUrl('/tesseract/worker.min.js');
+        const coreFullUrl = getAssetUrl('/tesseract/tesseract-core.wasm.js');
+        const langFolderUrl = getAssetUrl('/tesseract', true);
         
         console.log('[HYBRID_TESSERACT_INIT] paths:');
-        console.log('[HYBRID_TESSERACT_INIT]   workerPath:', workerPath);
-        console.log('[HYBRID_TESSERACT_INIT]   corePath:', corePath);
-        console.log('[HYBRID_TESSERACT_INIT]   langPath:', langPath);
+        console.log('[HYBRID_TESSERACT_INIT]   workerPath:', workerFullUrl);
+        console.log('[HYBRID_TESSERACT_INIT]   corePath:', coreFullUrl);
+        console.log('[HYBRID_TESSERACT_INIT]   langPath:', langFolderUrl);
         
         const tessOptions = {
-          workerPath: workerPath,
-          corePath: corePath,
-          langPath: langPath,
+          workerPath: workerFullUrl,
+          corePath: coreFullUrl,
+          langPath: langFolderUrl,
+          workerBlob: false, // [FIX]
           gzip: false, // [FIX] Look for .traineddata instead of .gz
           cacheMethod: 'none', // [FIX] Disable cache
         };
