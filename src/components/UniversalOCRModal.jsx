@@ -599,21 +599,73 @@ export default function UniversalOCRModal({
           
           if (isMounted.current) addLog(`[TESSERACT] Fetching local engine components...`);
 
-          // [DIAGNOSTIC] Pre-flight fetch
-          const fetchScript = async (name) => {
-            const url = `${origin}/tesseract/${name}`;
+          // [DIAGNOSTIC] Pre-flight fetch with better path resolution for Capacitor
+          // Use explicit path approach per chat recommendations
+          const isCapacitorNative = window.Capacitor && window.Capacitor.isNative;
+          const isLocalhost = window.location.origin.includes('localhost');
+          
+          // For Capacitor Android, assets are served from http://localhost or similar
+          // We need to use absolute paths that WebView can resolve
+          const getTessPath = (name) => {
+            // Remove any trailing slash from origin and append tesseract path
+            const base = window.location.origin.replace(/\/$/, '');
+            return `${base}/tesseract/${name}`;
+          };
+          
+          // Try multiple core options for compatibility
+          const coreOptions = ['tesseract-core-simd.wasm.js', 'tesseract-core.wasm.js'];
+          
+          const fetchScript = async (name, allowFallback = true) => {
+            // For core, try multiple options
+            if (allowFallback && coreOptions.includes(name)) {
+              for (const coreName of coreOptions) {
+                try {
+                  const url = getTessPath(coreName);
+                  addLog(`[TESSERACT] Trying core: ${url}`);
+                  const res = await fetch(url);
+                  if (res.ok) {
+                    const blob = await res.blob();
+                    addLog(`[OK] Loaded ${coreName} (${Math.round(blob.size/1024)}KB)`);
+                    return { url: URL.createObjectURL(blob), name: coreName };
+                  }
+                } catch (e) {
+                  addLog(`[TESSERACT] ${coreName} failed: ${e.message}`);
+                }
+              }
+              throw new Error('All core options failed');
+            }
+            
+            const url = getTessPath(name);
+            addLog(`[TESSERACT] Fetching: ${url}`);
             const res = await fetch(url);
-            if (!res.ok) throw new Error(`Fetch failed for ${name}: ${res.status}`);
+            if (!res.ok) {
+              // Try fallback path for Capacitor
+              const fallbackUrl = `http://localhost/tesseract/${name}`;
+              addLog(`[TESSERACT] First try failed, trying fallback: ${fallbackUrl}`);
+              const fallbackRes = await fetch(fallbackUrl);
+              if (!fallbackRes.ok) throw new Error(`Fetch failed for ${name}: ${res.status} and fallback also failed`);
+              const blob = await fallbackRes.blob();
+              addLog(`[OK] Loaded ${name} from fallback (${Math.round(blob.size/1024)}KB)`);
+              return { url: URL.createObjectURL(blob), name };
+            }
             const blob = await res.blob();
             addLog(`[OK] Loaded ${name} (${Math.round(blob.size/1024)}KB)`);
-            return URL.createObjectURL(blob);
+            return { url: URL.createObjectURL(blob), name };
           };
 
-          const workerUrl = await fetchScript('worker.min.js');
-          const coreUrl = await fetchScript('tesseract-core.wasm.js');
+          const workerResult = await fetchScript('worker.min.js', false);
+          const workerUrl = workerResult.url;
+          // Use SIMD core for better Android performance (with fallback)
+          const coreResult = await fetchScript('tesseract-core-simd.wasm.js', true);
+          const coreUrl = coreResult.url;
+          const coreName = coreResult.name;
           const langPath = origin + '/tesseract/';
           
           if (!window.Tesseract) throw new Error('Global Tesseract not found.');
+          
+          // Log what we're using for debugging
+          addLog(`[TESSERACT] Using core: ${coreName}`);
+          addLog(`[TESSERACT] langPath: ${langPath}`);
 
           const w = await window.Tesseract.createWorker({
             workerPath: workerUrl,
@@ -895,18 +947,64 @@ export default function UniversalOCRModal({
       try {
         const origin = window.location.origin;
         
-        const fetchScript = async (name) => {
-          const res = await fetch(`${origin}/tesseract/${name}`);
-          if (!res.ok) throw new Error(`Fetch failed for ${name}`);
+        const isCapacitorNative = window.Capacitor && window.Capacitor.isNative;
+        const isLocalhost = window.location.origin.includes('localhost');
+        
+        // Better path resolution for Capacitor
+        const getTessPath = (name) => {
+          const base = window.location.origin.replace(/\/$/, '');
+          return `${base}/tesseract/${name}`;
+        };
+        
+        // Try multiple core options for compatibility
+        const coreOptions = ['tesseract-core-simd.wasm.js', 'tesseract-core.wasm.js'];
+        
+        const fetchScript = async (name, allowFallback = true) => {
+          // For core, try multiple options
+          if (allowFallback && coreOptions.includes(name)) {
+            for (const coreName of coreOptions) {
+              try {
+                const url = getTessPath(coreName);
+                addLog(`[HYBRID_TESS] Trying core: ${url}`);
+                const res = await fetch(url);
+                if (res.ok) {
+                  const blob = await res.blob();
+                  addLog(`[OK] Loaded ${coreName} (${Math.round(blob.size/1024)}KB)`);
+                  return { url: URL.createObjectURL(blob), name: coreName };
+                }
+              } catch (e) {
+                addLog(`[HYBRID_TESS] ${coreName} failed: ${e.message}`);
+              }
+            }
+            throw new Error('All core options failed');
+          }
+          
+          const url = getTessPath(name);
+          addLog(`[HYBRID_TESS] Fetching: ${url}`);
+          const res = await fetch(url);
+          if (!res.ok) {
+            // Try fallback
+            const fallbackUrl = `http://localhost/tesseract/${name}`;
+            addLog(`[HYBRID_TESS] Trying fallback: ${fallbackUrl}`);
+            const fallbackRes = await fetch(fallbackUrl);
+            if (!fallbackRes.ok) throw new Error(`Fetch failed for ${name}`);
+            const blob = await fallbackRes.blob();
+            return { url: URL.createObjectURL(blob), name };
+          }
           const blob = await res.blob();
-          return URL.createObjectURL(blob);
+          return { url: URL.createObjectURL(blob), name };
         };
 
-        const workerUrl = await fetchScript('worker.min.js');
-        const coreUrl = await fetchScript('tesseract-core.wasm.js');
+        const workerResult = await fetchScript('worker.min.js', false);
+        const workerUrl = workerResult.url;
+        // Use SIMD core for better Android performance (with fallback)
+        const coreResult = await fetchScript('tesseract-core-simd.wasm.js', true);
+        const coreUrl = coreResult.url;
+        const coreName = coreResult.name;
         const langPath = origin + '/tesseract/';
         
         console.log('[HYBRID_TESSERACT_INIT] using local Blobs');
+        addLog(`[HYBRID_TESS] Using core: ${coreName}`);
         
         const tessOptions = {
           workerPath: workerUrl,
