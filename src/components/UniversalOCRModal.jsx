@@ -595,23 +595,25 @@ export default function UniversalOCRModal({
       // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
       for (let i = 0; i < numWorkers; i++) {
         try {
-          // [FIX] Force local paths relative to root for maximum stability in Capacitor
-          const workerPath = '/tesseract/worker.min.js';
-          const corePath = '/tesseract/tesseract-core.wasm.js';
-          const langPath = '/tesseract';
+          // [FIX] Force ABSOLUTE URLs using origin to prevent CDN fallback
+          const baseUrl = window.location.origin + '/tesseract/';
+          const workerPath = baseUrl + 'worker.min.js';
+          const corePath = baseUrl + 'tesseract-core.wasm.js';
+          const langPath = window.location.origin + '/tesseract/';
           
-          console.log('[TESSERACT_INIT] Worker #' + i + ' using global Tesseract and ROOT paths:');
+          console.log('[TESSERACT_INIT] Worker #' + i + ' using ABSOLUTE paths:', { workerPath, corePath, langPath });
           
-          // [FIX] Use global window.Tesseract
-          if (!window.Tesseract) throw new Error('Global Tesseract not found. Check index.html script tag.');
+          if (!window.Tesseract) throw new Error('Global Tesseract not found.');
 
           const w = await window.Tesseract.createWorker({
-            workerPath: workerPath,
-            corePath: corePath,
-            langPath: langPath,
+            workerPath: window.location.origin + '/tesseract/worker.min.js',
+            corePath: window.location.origin + '/tesseract/tesseract-core.wasm.js',
+            langPath: window.location.origin + '/tesseract/',
+            workerBlob: false, 
             gzip: false, 
             cacheMethod: 'none',
             logger: (m) => {
+              // Standard logging
               addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
               if (m.status === 'initializing api') setProgress(10);
               if (m.status === 'loading language' || m.status === 'loading traineddata') {

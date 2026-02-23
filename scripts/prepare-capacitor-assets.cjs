@@ -20,15 +20,12 @@ const filesToCopy = [
   'tesseract/tesseract-core-relaxedsimd.wasm',
   'tesseract/tesseract-core-relaxedsimd-lstm.wasm.js',
   'tesseract/tesseract-core-relaxedsimd-lstm.wasm',
-  // Note: These will be decompressed below
   'tesseract/fra.traineddata.gz',
   'tesseract/ara.traineddata.gz',
   'tesseract/eng.traineddata.gz',
-
   'models/det.onnx',
   'models/rec_ara.onnx',
   'models/keys_ara.txt',
-
   'assets/ort-wasm-simd-threaded.asyncify.mjs',
   'assets/ort-wasm-simd-threaded.asyncify.wasm',
   'assets/ort-wasm-simd-threaded.jsep.mjs',
@@ -39,7 +36,6 @@ const filesToCopy = [
   'assets/ort-wasm-simd-threaded.wasm',
   'ort-wasm-simd.wasm',
   'ort-wasm.wasm',
-
   'app-icon.svg',
   'manifest.json',
   'vite.svg',
@@ -68,19 +64,28 @@ async function prepareCapacitorAssets() {
     }
 
     if (file.endsWith('.traineddata.gz')) {
-      // DECOMPRESSION STEP: Convert .gz to raw .traineddata for better offline compatibility
       const decompressedPath = destinationPath.replace('.gz', '');
-      console.log(`  Decompressing: ${file} -> ${path.basename(decompressedPath)}`);
+      console.log(`  Decompressing: ${file}`);
       const compressedData = fs.readFileSync(sourcePath);
       const decompressedData = zlib.gunzipSync(compressedData);
       fs.writeFileSync(decompressedPath, decompressedData);
+    } else if (file.endsWith('tesseract.min.js') || file.endsWith('worker.min.js')) {
+      // NUCLEAR PATCH: Overwrite the hardcoded CDN fallback inside the library files
+      console.log(`  Patching library for true offline: ${file}`);
+      let content = fs.readFileSync(sourcePath, 'utf8');
+      
+      // Replace any jsdelivr/npm links with local paths
+      content = content.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js@v[0-9.]+\/dist\//g, '/tesseract/');
+      content = content.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js-core@v[0-9.]+\//g, '/tesseract/');
+      
+      fs.writeFileSync(destinationPath, content);
     } else {
       await fs.promises.copyFile(sourcePath, destinationPath);
       console.log(`  Copied: ${file}`);
     }
   }
 
-  console.log('Capacitor assets prepared with decompressed Tesseract data.');
+  console.log('Capacitor assets prepared with Patched Offline Tesseract.');
 }
 
 prepareCapacitorAssets().catch((error) => {
