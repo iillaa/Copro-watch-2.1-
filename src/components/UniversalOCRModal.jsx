@@ -668,13 +668,16 @@ export default function UniversalOCRModal({
           },
           );
 
-          await w.loadLanguage(langs);
-          await w.initialize(langs);
+          // Compatibility: Tesseract.js v5/v6 uses loadLanguage/initialize,
+          // while newer versions can auto-initialize via createWorker(...langs...)
+          if (typeof w.loadLanguage === 'function') await w.loadLanguage(langs);
+          if (typeof w.initialize === 'function') await w.initialize(langs);
           
           workers.push(w);
         } catch (e) {
           console.error('[TESSERACT] Worker init failed:', e);
-          const errorMsg = `[TESSERACT ERROR] Impossible de charger le moteur (Vérifiez que les fichiers .traineddata sont dans /public/tesseract/). Detail: ${e.message}`;
+          const detail = e?.message || e?.toString?.() || JSON.stringify(e);
+          const errorMsg = `[TESSERACT ERROR] Impossible de charger le moteur (Vérifiez que les fichiers .traineddata sont dans /public/tesseract/). Detail: ${detail}`;
           addLog(errorMsg);
           setErrorMessage(errorMsg);
           throw new Error('Moteur OCR indisponible. Erreur de chargement des ressources locales.');
@@ -950,8 +953,8 @@ export default function UniversalOCRModal({
           window.Tesseract.OEM?.DEFAULT,
           tessOptions,
         );
-        await worker1.loadLanguage(langs);
-        await worker1.initialize(langs);
+        if (typeof worker1.loadLanguage === 'function') await worker1.loadLanguage(langs);
+        if (typeof worker1.initialize === 'function') await worker1.initialize(langs);
         
         let worker2 = null;
         if (numTesseractWorkers === 2) {
@@ -960,8 +963,8 @@ export default function UniversalOCRModal({
             window.Tesseract.OEM?.DEFAULT,
             tessOptions,
           );
-          await worker2.loadLanguage(langs);
-          await worker2.initialize(langs);
+          if (typeof worker2.loadLanguage === 'function') await worker2.loadLanguage(langs);
+          if (typeof worker2.initialize === 'function') await worker2.initialize(langs);
         }
         
         tesseractWorkers = worker2 ? [worker1, worker2] : [worker1];
