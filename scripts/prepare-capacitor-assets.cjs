@@ -69,14 +69,16 @@ async function prepareCapacitorAssets() {
       const compressedData = fs.readFileSync(sourcePath);
       const decompressedData = zlib.gunzipSync(compressedData);
       fs.writeFileSync(decompressedPath, decompressedData);
-    } else if (file.endsWith('tesseract.min.js') || file.endsWith('worker.min.js')) {
-      // NUCLEAR PATCH: Overwrite the hardcoded CDN fallback inside the library files
-      console.log(`  Patching library for true offline: ${file}`);
+    } else if (file.endsWith('.js')) {
+      // AGGRESSIVE PATCHING: Remove all CDN links from ALL javascript files
+      console.log(`  Patching JS file: ${file}`);
       let content = fs.readFileSync(sourcePath, 'utf8');
       
-      // Replace any jsdelivr/npm links with local paths
-      content = content.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js@v[0-9.]+\/dist\//g, '/tesseract/');
-      content = content.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js-core@v[0-9.]+\//g, '/tesseract/');
+      // Replace various CDN patterns with local paths
+      const localTess = '/tesseract/';
+      content = content.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js@v[0-9.]+\/dist\//g, localTess);
+      content = content.replace(/https:\/\/cdn\.jsdelivr\.net\/npm\/tesseract\.js-core@v[0-9.]+\//g, localTess);
+      content = content.replace(/https:\/\/unpkg\.com\/tesseract\.js@v[0-9.]+\/dist\//g, localTess);
       
       fs.writeFileSync(destinationPath, content);
     } else {
@@ -85,7 +87,7 @@ async function prepareCapacitorAssets() {
     }
   }
 
-  console.log('Capacitor assets prepared with Patched Offline Tesseract.');
+  console.log('Capacitor assets prepared with Universal Offline Patches.');
 }
 
 prepareCapacitorAssets().catch((error) => {

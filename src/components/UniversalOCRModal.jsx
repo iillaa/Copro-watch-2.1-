@@ -595,25 +595,34 @@ export default function UniversalOCRModal({
       // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
       for (let i = 0; i < numWorkers; i++) {
         try {
-          // [FIX] Force ABSOLUTE URLs using origin to prevent CDN fallback
-          const baseUrl = window.location.origin + '/tesseract/';
-          const workerPath = baseUrl + 'worker.min.js';
-          const corePath = baseUrl + 'tesseract-core.wasm.js';
-          const langPath = window.location.origin + '/tesseract/';
+          const origin = window.location.origin;
           
-          console.log('[TESSERACT_INIT] Worker #' + i + ' using ABSOLUTE paths:', { workerPath, corePath, langPath });
+          if (isMounted.current) addLog(`[TESSERACT] Fetching local engine components...`);
+
+          // [DIAGNOSTIC] Pre-flight fetch
+          const fetchScript = async (name) => {
+            const url = `${origin}/tesseract/${name}`;
+            const res = await fetch(url);
+            if (!res.ok) throw new Error(`Fetch failed for ${name}: ${res.status}`);
+            const blob = await res.blob();
+            addLog(`[OK] Loaded ${name} (${Math.round(blob.size/1024)}KB)`);
+            return URL.createObjectURL(blob);
+          };
+
+          const workerUrl = await fetchScript('worker.min.js');
+          const coreUrl = await fetchScript('tesseract-core.wasm.js');
+          const langPath = origin + '/tesseract/';
           
           if (!window.Tesseract) throw new Error('Global Tesseract not found.');
 
           const w = await window.Tesseract.createWorker({
-            workerPath: window.location.origin + '/tesseract/worker.min.js',
-            corePath: window.location.origin + '/tesseract/tesseract-core.wasm.js',
-            langPath: window.location.origin + '/tesseract/',
-            workerBlob: false, 
+            workerPath: workerUrl,
+            corePath: coreUrl,
+            langPath: langPath,
+            workerBlob: true, 
             gzip: false, 
             cacheMethod: 'none',
             logger: (m) => {
-              // Standard logging
               addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
               if (m.status === 'initializing api') setProgress(10);
               if (m.status === 'loading language' || m.status === 'loading traineddata') {
@@ -884,16 +893,26 @@ export default function UniversalOCRModal({
 
       // [FIX] Safe init for Hybrid mode with local assets
       try {
-        const workerPath = '/tesseract/worker.min.js';
-        const corePath = '/tesseract/tesseract-core.wasm.js';
-        const langPath = '/tesseract';
+        const origin = window.location.origin;
         
-        console.log('[HYBRID_TESSERACT_INIT] using ROOT paths');
+        const fetchScript = async (name) => {
+          const res = await fetch(`${origin}/tesseract/${name}`);
+          if (!res.ok) throw new Error(`Fetch failed for ${name}`);
+          const blob = await res.blob();
+          return URL.createObjectURL(blob);
+        };
+
+        const workerUrl = await fetchScript('worker.min.js');
+        const coreUrl = await fetchScript('tesseract-core.wasm.js');
+        const langPath = origin + '/tesseract/';
+        
+        console.log('[HYBRID_TESSERACT_INIT] using local Blobs');
         
         const tessOptions = {
-          workerPath: workerPath,
-          corePath: corePath,
+          workerPath: workerUrl,
+          corePath: coreUrl,
           langPath: langPath,
+          workerBlob: true,
           gzip: false,
           cacheMethod: 'none',
         };
