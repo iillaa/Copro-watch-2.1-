@@ -3,12 +3,9 @@ import ReactDOM from 'react-dom/client'
 import App from './App'
 import './index.css'
 import ErrorBoundary from './components/ErrorBoundary'
-import { initDiagnostics } from './services/diagnostics'
 
 // [FIX] Removed the global window.onerror alert. 
 // Background worker network errors will no longer freeze the app.
-
-initDiagnostics();
 
 try {
   const rootElement = document.getElementById('root');

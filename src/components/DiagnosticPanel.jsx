@@ -6,6 +6,7 @@ export default function DiagnosticPanel() {
   const [logs, setLogs] = useState([]);
   const [isRunning, setIsRunning] = useState(false);
   const logEndRef = useRef(null);
+  const logsRef = useRef([]);
 
   // [NEW] Hide/Show logic based on Settings
   const [isVisible, setIsVisible] = useState(
@@ -31,7 +32,11 @@ export default function DiagnosticPanel() {
       const message = args.map((a) => (typeof a === 'object' ? JSON.stringify(a) : a)).join(' ');
       const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
 
-      setLogs((prev) => [...prev, `[${timestamp}] [${type.toUpperCase()}] ${message}`]);
+      setLogs((prev) => {
+        const next = [...prev, `[${timestamp}] [${type.toUpperCase()}] ${message}`];
+        logsRef.current = next;
+        return next;
+      });
 
       if (type === 'log') originalLog(...args);
       if (type === 'warn') originalWarn(...args);
@@ -42,10 +47,31 @@ export default function DiagnosticPanel() {
     console.warn = (...args) => captureLog('warn', ...args);
     console.error = (...args) => captureLog('error', ...args);
 
+    const onWindowError = (event) => {
+      captureLog('error', '[WINDOW_ERROR]', event.message, {
+        filename: event.filename,
+        lineno: event.lineno,
+        colno: event.colno,
+      });
+    };
+
+    const onUnhandledRejection = (event) => {
+      captureLog('error', '[UNHANDLED_REJECTION]', event.reason);
+    };
+
+    window.addEventListener('error', onWindowError);
+    window.addEventListener('unhandledrejection', onUnhandledRejection);
+
+    // Developer helper: dump all captured terminal logs from existing DiagnosticPanel
+    window.dumpDiagnostics = () => logsRef.current.join('\n');
+
     return () => {
       console.log = originalLog;
       console.warn = originalWarn;
       console.error = originalError;
+      window.removeEventListener('error', onWindowError);
+      window.removeEventListener('unhandledrejection', onUnhandledRejection);
+      delete window.dumpDiagnostics;
     };
   }, []);
 
