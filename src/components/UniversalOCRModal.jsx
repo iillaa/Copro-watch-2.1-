@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import Tesseract from 'tesseract.js';
+// [FIX] Removed import Tesseract to use global window.Tesseract (UMD) for true offline support
 import Ocr from '@gutenye/ocr-browser';
 import * as ort from 'onnxruntime-web';
 
@@ -595,26 +595,22 @@ export default function UniversalOCRModal({
       // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
       for (let i = 0; i < numWorkers; i++) {
         try {
-          // [FIX] Force local worker and core files to prevent CDN download crash
-          const workerPath = getAssetUrl('/tesseract'); // Will append worker.min.js inside Tesseract.js if needed, or we specify full path
-          // Actually, Tesseract.js v5+ expects paths to the files if provided
-          const workerFullUrl = getAssetUrl('/tesseract/worker.min.js');
-          const coreFullUrl = getAssetUrl('/tesseract/tesseract-core.wasm.js');
-          const langFolderUrl = getAssetUrl('/tesseract', true); // Correctly handles slash and query params
+          // [FIX] Force local paths relative to root for maximum stability in Capacitor
+          const workerPath = '/tesseract/worker.min.js';
+          const corePath = '/tesseract/tesseract-core.wasm.js';
+          const langPath = '/tesseract';
           
-          console.log('[TESSERACT_INIT] Worker #' + i + ' paths:');
-          console.log('[TESSERACT_INIT]   workerPath:', workerFullUrl);
-          console.log('[TESSERACT_INIT]   corePath:', coreFullUrl);
-          console.log('[TESSERACT_INIT]   langPath:', langFolderUrl);
+          console.log('[TESSERACT_INIT] Worker #' + i + ' using global Tesseract and ROOT paths:');
           
-          // [FIX] Modern Tesseract.js API (v5+) uses object-only arguments for createWorker
-          const w = await Tesseract.createWorker({
-            workerPath: workerFullUrl,
-            corePath: coreFullUrl,
-            langPath: langFolderUrl,
-            workerBlob: false, // [FIX] Prevents Blob conversion which causes issues in some WebViews
-            gzip: false, // [FIX] Look for .traineddata instead of .gz
-            cacheMethod: 'none', // [FIX] Disable IndexedDB cache to prevent hangs in WebView
+          // [FIX] Use global window.Tesseract
+          if (!window.Tesseract) throw new Error('Global Tesseract not found. Check index.html script tag.');
+
+          const w = await window.Tesseract.createWorker({
+            workerPath: workerPath,
+            corePath: corePath,
+            langPath: langPath,
+            gzip: false, 
+            cacheMethod: 'none',
             logger: (m) => {
               addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
               if (m.status === 'initializing api') setProgress(10);
@@ -624,7 +620,6 @@ export default function UniversalOCRModal({
             },
           });
           
-          // [FIX] Explicitly load and initialize
           await w.loadLanguage(langs);
           await w.initialize(langs);
           
@@ -887,32 +882,30 @@ export default function UniversalOCRModal({
 
       // [FIX] Safe init for Hybrid mode with local assets
       try {
-        const workerFullUrl = getAssetUrl('/tesseract/worker.min.js');
-        const coreFullUrl = getAssetUrl('/tesseract/tesseract-core.wasm.js');
-        const langFolderUrl = getAssetUrl('/tesseract', true);
+        const workerPath = '/tesseract/worker.min.js';
+        const corePath = '/tesseract/tesseract-core.wasm.js';
+        const langPath = '/tesseract';
         
-        console.log('[HYBRID_TESSERACT_INIT] paths:');
-        console.log('[HYBRID_TESSERACT_INIT]   workerPath:', workerFullUrl);
-        console.log('[HYBRID_TESSERACT_INIT]   corePath:', coreFullUrl);
-        console.log('[HYBRID_TESSERACT_INIT]   langPath:', langFolderUrl);
+        console.log('[HYBRID_TESSERACT_INIT] using ROOT paths');
         
         const tessOptions = {
-          workerPath: workerFullUrl,
-          corePath: coreFullUrl,
-          langPath: langFolderUrl,
-          workerBlob: false, // [FIX]
-          gzip: false, // [FIX] Look for .traineddata instead of .gz
-          cacheMethod: 'none', // [FIX] Disable cache
+          workerPath: workerPath,
+          corePath: corePath,
+          langPath: langPath,
+          gzip: false,
+          cacheMethod: 'none',
         };
         
+        if (!window.Tesseract) throw new Error('Global Tesseract not found.');
+
         // [FIX] Modern API Init
-        const worker1 = await Tesseract.createWorker(tessOptions);
+        const worker1 = await window.Tesseract.createWorker(tessOptions);
         await worker1.loadLanguage(langs);
         await worker1.initialize(langs);
         
         let worker2 = null;
         if (numTesseractWorkers === 2) {
-          worker2 = await Tesseract.createWorker(tessOptions);
+          worker2 = await window.Tesseract.createWorker(tessOptions);
           await worker2.loadLanguage(langs);
           await worker2.initialize(langs);
         }

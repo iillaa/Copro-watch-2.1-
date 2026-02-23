@@ -6,6 +6,7 @@ const publicDir = path.resolve(__dirname, '../public');
 const capacitorAssetsDir = path.resolve(__dirname, '../capacitor-assets');
 
 const filesToCopy = [
+  'tesseract/tesseract.min.js',
   'tesseract/worker.min.js',
   'tesseract/tesseract-core.wasm.js',
   'tesseract/tesseract-core.wasm',
