@@ -244,7 +244,7 @@ export default function UniversalOCRModal({
   }, []);
 
     // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
-    const getAssetUrl = (path, isDirectory = false) => {
+  const getAssetUrl = (path, isDirectory = false) => {
       const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
                           window.location.origin.includes('localhost');
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
@@ -265,6 +265,48 @@ export default function UniversalOCRModal({
         return '/' + cleanPath;
       }
     };
+
+  const resolveTesseractAssetConfig = async (langs) => {
+    const tessRoot = getAssetUrl('/tesseract', true);
+    const workerPath = `${tessRoot}worker.min.js`;
+    const corePath = `${tessRoot}tesseract-core.wasm.js`;
+
+    const checkExists = async (url) => {
+      const res = await fetch(url);
+      return res.ok;
+    };
+
+    const requiredEngineFiles = [workerPath, corePath];
+    for (const fileUrl of requiredEngineFiles) {
+      if (!(await checkExists(fileUrl))) {
+        throw new Error(`Missing local Tesseract file: ${fileUrl}`);
+      }
+    }
+
+    const requiredLangs = langs.split('+').filter(Boolean);
+    const hasRawTrainedData = await Promise.all(
+      requiredLangs.map((lang) => checkExists(`${tessRoot}${lang}.traineddata`)),
+    );
+
+    const useRawTrainedData = hasRawTrainedData.every(Boolean);
+    if (!useRawTrainedData) {
+      const hasGzTrainedData = await Promise.all(
+        requiredLangs.map((lang) => checkExists(`${tessRoot}${lang}.traineddata.gz`)),
+      );
+      if (!hasGzTrainedData.every(Boolean)) {
+        throw new Error(
+          `Missing local language data for ${requiredLangs.join(', ')} in ${tessRoot}`,
+        );
+      }
+    }
+
+    return {
+      workerPath,
+      corePath,
+      langPath: tessRoot,
+      gzip: !useRawTrainedData,
+    };
+  };
     
     // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
   useEffect(() => {
@@ -595,32 +637,24 @@ export default function UniversalOCRModal({
       // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
       for (let i = 0; i < numWorkers; i++) {
         try {
-          const origin = window.location.origin;
-          
-          if (isMounted.current) addLog(`[TESSERACT] Fetching local engine components...`);
+          if (isMounted.current) addLog('[TESSERACT] Resolving local engine assets...');
 
-          // [DIAGNOSTIC] Pre-flight fetch
-          const fetchScript = async (name) => {
-            const url = `${origin}/tesseract/${name}`;
-            const res = await fetch(url);
-            if (!res.ok) throw new Error(`Fetch failed for ${name}: ${res.status}`);
-            const blob = await res.blob();
-            addLog(`[OK] Loaded ${name} (${Math.round(blob.size/1024)}KB)`);
-            return URL.createObjectURL(blob);
-          };
-
-          const workerUrl = await fetchScript('worker.min.js');
-          const coreUrl = await fetchScript('tesseract-core.wasm.js');
-          const langPath = origin + '/tesseract/';
+          const tessConfig = await resolveTesseractAssetConfig(langs);
+          addLog(`[OK] Worker: ${tessConfig.workerPath}`);
+          addLog(`[OK] Core: ${tessConfig.corePath}`);
+          addLog(`[OK] Lang path: ${tessConfig.langPath} (gzip=${tessConfig.gzip})`);
           
           if (!window.Tesseract) throw new Error('Global Tesseract not found.');
 
-          const w = await window.Tesseract.createWorker({
-            workerPath: workerUrl,
-            corePath: coreUrl,
-            langPath: langPath,
-            workerBlob: true, 
-            gzip: false, 
+          const w = await window.Tesseract.createWorker(
+            langs,
+            window.Tesseract.OEM?.DEFAULT,
+            {
+            workerPath: tessConfig.workerPath,
+            corePath: tessConfig.corePath,
+            langPath: tessConfig.langPath,
+            workerBlob: false,
+            gzip: tessConfig.gzip,
             cacheMethod: 'none',
             logger: (m) => {
               addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
@@ -629,8 +663,9 @@ export default function UniversalOCRModal({
                 setProgress(Math.round(m.progress * 100));
               }
             },
-          });
-          
+          },
+          );
+
           await w.loadLanguage(langs);
           await w.initialize(langs);
           
@@ -893,40 +928,36 @@ export default function UniversalOCRModal({
 
       // [FIX] Safe init for Hybrid mode with local assets
       try {
-        const origin = window.location.origin;
-        
-        const fetchScript = async (name) => {
-          const res = await fetch(`${origin}/tesseract/${name}`);
-          if (!res.ok) throw new Error(`Fetch failed for ${name}`);
-          const blob = await res.blob();
-          return URL.createObjectURL(blob);
-        };
-
-        const workerUrl = await fetchScript('worker.min.js');
-        const coreUrl = await fetchScript('tesseract-core.wasm.js');
-        const langPath = origin + '/tesseract/';
-        
-        console.log('[HYBRID_TESSERACT_INIT] using local Blobs');
+        const tessConfig = await resolveTesseractAssetConfig(langs);
+        console.log('[HYBRID_TESSERACT_INIT] using local packaged assets');
         
         const tessOptions = {
-          workerPath: workerUrl,
-          corePath: coreUrl,
-          langPath: langPath,
-          workerBlob: true,
-          gzip: false,
+          workerPath: tessConfig.workerPath,
+          corePath: tessConfig.corePath,
+          langPath: tessConfig.langPath,
+          workerBlob: false,
+          gzip: tessConfig.gzip,
           cacheMethod: 'none',
         };
         
         if (!window.Tesseract) throw new Error('Global Tesseract not found.');
 
         // [FIX] Modern API Init
-        const worker1 = await window.Tesseract.createWorker(tessOptions);
+        const worker1 = await window.Tesseract.createWorker(
+          langs,
+          window.Tesseract.OEM?.DEFAULT,
+          tessOptions,
+        );
         await worker1.loadLanguage(langs);
         await worker1.initialize(langs);
         
         let worker2 = null;
         if (numTesseractWorkers === 2) {
-          worker2 = await window.Tesseract.createWorker(tessOptions);
+          worker2 = await window.Tesseract.createWorker(
+            langs,
+            window.Tesseract.OEM?.DEFAULT,
+            tessOptions,
+          );
           await worker2.loadLanguage(langs);
           await worker2.initialize(langs);
         }
