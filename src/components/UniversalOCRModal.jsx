@@ -667,24 +667,27 @@ export default function UniversalOCRModal({
           addLog(`[TESSERACT] Using core: ${coreName}`);
           addLog(`[TESSERACT] langPath: ${langPath}`);
 
-          const w = await window.Tesseract.createWorker({
-            workerPath: workerUrl,
-            corePath: coreUrl,
-            langPath: langPath,
-            workerBlob: true, 
-            gzip: false, 
-            cacheMethod: 'none',
-            logger: (m) => {
-              addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
-              if (m.status === 'initializing api') setProgress(10);
-              if (m.status === 'loading language' || m.status === 'loading traineddata') {
-                setProgress(Math.round(m.progress * 100));
-              }
-            },
-          });
-          
-          await w.loadLanguage(langs);
-          await w.initialize(langs);
+          // Use modern Tesseract.js v5 API - language is passed to createWorker
+          // loadLanguage() is deprecated in v5
+          const w = await window.Tesseract.createWorker(
+            langs,  // Pass language directly
+            1,      // OEM: 1 = Tesseract only
+            {
+              workerPath: workerUrl,
+              corePath: coreUrl,
+              langPath: langPath,
+              workerBlob: true,
+              gzip: false,
+              cacheMethod: 'none',
+              logger: (m) => {
+                addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
+                if (m.status === 'initializing api') setProgress(10);
+                if (m.status === 'loading language' || m.status === 'loading traineddata') {
+                  setProgress(Math.round(m.progress * 100));
+                }
+              },
+            }
+          );
           
           workers.push(w);
         } catch (e) {
@@ -1017,16 +1020,35 @@ export default function UniversalOCRModal({
         
         if (!window.Tesseract) throw new Error('Global Tesseract not found.');
 
-        // [FIX] Modern API Init
-        const worker1 = await window.Tesseract.createWorker(tessOptions);
-        await worker1.loadLanguage(langs);
-        await worker1.initialize(langs);
+        // Use modern Tesseract.js v5 API - language is passed to createWorker
+        // loadLanguage() is deprecated in v5
+        const worker1 = await window.Tesseract.createWorker(
+          langs,
+          1,
+          {
+            workerPath: workerUrl,
+            corePath: coreUrl,
+            langPath: langPath,
+            workerBlob: true,
+            gzip: false,
+            cacheMethod: 'none',
+          }
+        );
         
-        let worker2 = null;
+        let worker2;
         if (numTesseractWorkers === 2) {
-          worker2 = await window.Tesseract.createWorker(tessOptions);
-          await worker2.loadLanguage(langs);
-          await worker2.initialize(langs);
+          worker2 = await window.Tesseract.createWorker(
+            langs,
+            1,
+            {
+              workerPath: workerUrl,
+              corePath: coreUrl,
+              langPath: langPath,
+              workerBlob: true,
+              gzip: false,
+              cacheMethod: 'none',
+            }
+          );
         }
         
         tesseractWorkers = worker2 ? [worker1, worker2] : [worker1];
