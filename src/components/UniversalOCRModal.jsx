@@ -316,6 +316,9 @@ export default function UniversalOCRModal({
     // 1. Thread & Worker Rules
     ort.env.wasm.proxy = false; 
     ort.env.wasm.numThreads = 1;
+    // [COMPAT] Disable SIMD to support older desktop CPUs/browsers in standalone mode
+    // (prevents: "WebAssembly SIMD is not supported in the current environment")
+    ort.env.wasm.simd = false;
     
     // 2. Suppress ONNX Runtime CPU vendor warning (harmless but noisy)
     ort.env.wasm.logging = { warning: () => {} };
@@ -327,15 +330,14 @@ export default function UniversalOCRModal({
                           (window.location.origin.includes('localhost') && !window.location.port); 
 
       if (isCapacitor) {
-        // For Capacitor, use the path provided by getAssetUrl which includes origin
-        ort.env.wasm.wasmPaths = getAssetUrl('/assets', true);
+        // For Capacitor, use root because non-SIMD fallback binaries are packaged at root.
+        ort.env.wasm.wasmPaths = getAssetUrl('/', true);
       } else if (isFileProtocol) {
         // For standalone HTML opened directly (file://)
         ort.env.wasm.wasmPaths = './';
       } else {
-        // For standard web server (like miniserve or dev server)
-        // Assets are in the /assets subdirectory relative to the server root
-        ort.env.wasm.wasmPaths = '/assets/';
+        // For standard web server (like miniserve), use root to allow non-SIMD fallback.
+        ort.env.wasm.wasmPaths = '/';
       }
     } else {
       // npm run dev
