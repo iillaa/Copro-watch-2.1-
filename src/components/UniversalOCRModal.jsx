@@ -253,16 +253,15 @@ export default function UniversalOCRModal({
       let cleanPath = path.replace(/^\/+|\/+$/g, '');
       
       // [FIX] Directories need a trailing slash
-      if (isDirectory) cleanPath += '/';
-  
+      if (isDirectory && cleanPath) cleanPath += '/';
+
       if (isCapacitor) {
-        // [FIX] Use window.location.origin to match protocol (http or https)
-        // This prevents Mixed Content errors and works for Workers
-        return window.location.origin + '/' + cleanPath;
+        // [FIX] Use origin-based URLs and avoid accidental double slashes.
+        return cleanPath ? `${window.location.origin}/${cleanPath}` : `${window.location.origin}/`;
       } else if (isFileProtocol) {
-        return './' + cleanPath;
+        return cleanPath ? `./${cleanPath}` : './';
       } else {
-        return '/' + cleanPath;
+        return cleanPath ? `/${cleanPath}` : '/';
       }
     };
 
@@ -326,19 +325,32 @@ export default function UniversalOCRModal({
     // 2. Path Rules
     if (isProd) {
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
-      const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
-                          (window.location.origin.includes('localhost') && !window.location.port); 
+      const assetsBase = getAssetUrl('/assets', true);
+      const rootBase = getAssetUrl('/', true);
 
-      if (isCapacitor) {
-        // For Capacitor, use root because non-SIMD fallback binaries are packaged at root.
-        ort.env.wasm.wasmPaths = getAssetUrl('/', true);
-      } else if (isFileProtocol) {
+      // [ROBUST] Explicit mapping prevents bad URL resolution (ex: https://localhost//...)
+      // and lets ORT load JS loader chunks from /assets while keeping wasm fallbacks at root.
+      ort.env.wasm.wasmPaths = {
+        'ort-wasm-simd-threaded.mjs': `${assetsBase}ort-wasm-simd-threaded.mjs`,
+        'ort-wasm-simd-threaded.jsep.mjs': `${assetsBase}ort-wasm-simd-threaded.jsep.mjs`,
+        'ort-wasm-simd-threaded.asyncify.mjs': `${assetsBase}ort-wasm-simd-threaded.asyncify.mjs`,
+        'ort-wasm-simd-threaded.jspi.mjs': `${assetsBase}ort-wasm-simd-threaded.jspi.mjs`,
+        'ort-wasm-simd-threaded.wasm': `${assetsBase}ort-wasm-simd-threaded.wasm`,
+        'ort-wasm-simd-threaded.jsep.wasm': `${assetsBase}ort-wasm-simd-threaded.jsep.wasm`,
+        'ort-wasm-simd-threaded.asyncify.wasm': `${assetsBase}ort-wasm-simd-threaded.asyncify.wasm`,
+        'ort-wasm-simd-threaded.jspi.wasm': `${assetsBase}ort-wasm-simd-threaded.jspi.wasm`,
+        // non-SIMD fallback binaries kept at root
+        'ort-wasm.wasm': `${rootBase}ort-wasm.wasm`,
+        'ort-wasm-simd.wasm': `${rootBase}ort-wasm-simd.wasm`,
+      };
+
+      if (isFileProtocol) {
         // For standalone HTML opened directly (file://)
+        // Keep deterministic local relative loading.
         ort.env.wasm.wasmPaths = './';
-      } else {
-        // For standard web server (like miniserve), use root to allow non-SIMD fallback.
-        ort.env.wasm.wasmPaths = '/';
       }
+
+      console.log('[ORT] wasmPaths configured:', ort.env.wasm.wasmPaths);
     } else {
       // npm run dev
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
