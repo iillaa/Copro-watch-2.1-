@@ -250,6 +250,21 @@ export const db = {
   },
 
   // --- WORKERS ---
+
+  // [NEW] IndexedDB Native Search
+  async searchWorkers(prefix) {
+    if (!prefix) return await dbInstance.workers.toArray();
+    
+    // Dexie native IndexedDB query (Lightning fast, skips JS RAM overhead)
+    // We search full_name index, and also filter by national_id just in case
+    return await dbInstance.workers
+      .where('full_name')
+      .startsWithIgnoreCase(prefix)
+      .or('national_id')
+      .startsWithIgnoreCase(prefix)
+      .toArray();
+  },
+
   async getWorkers() {
     return await dbInstance.workers.toArray();
   },

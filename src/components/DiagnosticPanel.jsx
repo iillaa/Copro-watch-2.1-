@@ -33,7 +33,8 @@ export default function DiagnosticPanel() {
       const timestamp = new Date().toISOString().split('T')[1].slice(0, -1);
 
       setLogs((prev) => {
-        const next = [...prev, `[${timestamp}] [${type.toUpperCase()}] ${message}`];
+        // [FIX] Keep only the last 500 logs to prevent memory leaks
+        const next = [...prev, `[${timestamp}] [${type.toUpperCase()}] ${message}`].slice(-500);
         logsRef.current = next;
         return next;
       });

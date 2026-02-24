@@ -1272,3 +1272,36 @@ body {
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
+
+/* =========================================
+   GPU-ACCELERATED ENTRANCE ANIMATION (Zero JS Cost)
+   ========================================= */
+
+.hybrid-row {
+  animation: slideFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  /* Hardware acceleration */
+  will-change: transform, opacity;
+}
+
+/* Staggered waterfall effect for the first 10 items in a chunk */
+.hybrid-row:nth-child(1) { animation-delay: 0.03s; }
+.hybrid-row:nth-child(2) { animation-delay: 0.06s; }
+.hybrid-row:nth-child(3) { animation-delay: 0.09s; }
+.hybrid-row:nth-child(4) { animation-delay: 0.12s; }
+.hybrid-row:nth-child(5) { animation-delay: 0.15s; }
+.hybrid-row:nth-child(6) { animation-delay: 0.18s; }
+.hybrid-row:nth-child(7) { animation-delay: 0.21s; }
+.hybrid-row:nth-child(8) { animation-delay: 0.24s; }
+.hybrid-row:nth-child(9) { animation-delay: 0.27s; }
+.hybrid-row:nth-child(10) { animation-delay: 0.30s; }
+
+@keyframes slideFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

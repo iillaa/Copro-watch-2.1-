@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import useDebounce from '../hooks/useDebounce';
 import { db } from '../services/db';
 import { logic } from '../services/logic';
 import backupService from '../services/backup';
@@ -91,9 +92,25 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   // UI State
   const [searchTerm, setSearchTerm] = useState('');
 
-  // KEY FIX: Defer the search term. React allows the UI to update immediately
-  // while the heavy filtering happens in the background.
-  const deferredSearch = useDeferredValue(searchTerm);
+  // [NEW] 250ms Debounce Shield (Prevents keystroke lag)
+  const debouncedSearch = useDebounce(searchTerm, 250);
+
+  // [NEW] Progressive Chunking Limit
+  const [displayLimit, setDisplayLimit] = useState(30);
+
+  // [NEW] Reset Chunking when any filter changes
+  useEffect(() => {
+    setDisplayLimit(30);
+  }, [debouncedSearch, filterDept, filterStatus, showArchived, sortConfig]);
+
+  // [NEW] Scroll Listener for Infinite Chunking
+  const handleScroll = (e) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.target;
+    // If user scrolls within 300px of the bottom, load 30 more items
+    if (scrollHeight - scrollTop <= clientHeight + 300) {
+      setDisplayLimit((prev) => prev + 30);
+    }
+  };
 
   const [filterDept, setFilterDept] = useState(
     () => localStorage.getItem('worker_filter_dept') || ''
@@ -129,9 +146,9 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     try {
       setIsLoading(true); // [START] Show spinner
 
-      // Load Workers, Departments, and Workplaces
+      // [NEW] Use IndexedDB Native Search, plus Departments and Workplaces
       const [w, d, wp] = await Promise.all([
-        db.getWorkers(),
+        db.searchWorkers(debouncedSearch),
         db.getDepartments(),
         db.getWorkplaces(),
       ]);
@@ -146,9 +163,10 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     }
   };
 
+  // [NEW] Re-fetch from DB only when the debounced term changes
   useEffect(() => {
     loadData();
-  }, []);
+  }, [debouncedSearch]);
 
   useEffect(() => {
     localStorage.setItem('worker_filter_dept', filterDept);
@@ -195,18 +213,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
         );
       }
     }
-    // C. Filter Search (Using the deferred value!)
-    if (deferredSearch) {
-      const lower = deferredSearch.toLowerCase();
-      result = result.filter((w) => {
-        // [FIX] Recherche sécurisée sur le Nom ET le Matricule
-        const nameMatch = w.full_name && w.full_name.toLowerCase().includes(lower);
-        // On convertit le matricule en String pour éviter les erreurs si c'est un nombre
-        const idMatch = w.national_id && String(w.national_id).toLowerCase().includes(lower);
 
-        return nameMatch || idMatch;
-      });
-    }
 
     // D. Sorting Logic
     if (sortConfig.key) {
@@ -233,7 +240,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     }
 
     return result;
-  }, [workers, deferredSearch, filterDept, showArchived, sortConfig, departments, filterStatus]);
+  }, [workers, filterDept, showArchived, sortConfig, departments, filterStatus]);
 
   // [SURGICAL ADDITION] Fix #4: Memoized List for Performance
   // This prevents recalculating "isOverdue" and "Department Name" on every render.
@@ -856,6 +863,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
             className="scroll-wrapper"
             // [SURGICAL FIX] When compactMode is OFF, remove limit ('none') to disable internal scroll
             style={{ maxHeight: compactMode ? '75vh' : 'none', paddingBottom: '120px' }}
+            onScroll={handleScroll}
           >
             <div className="hybrid-container">
               {/* 1. STICKY HEADER ROW */}
@@ -895,8 +903,8 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                 <div style={{ textAlign: 'right', paddingRight: '0.5rem' }}>Actions</div>
               </div>
 
-              {/* 2. OPTIMIZED DATA ROWS (Uses memoizedWorkers now!) */}
-              {memoizedWorkers.map((w) => {
+              {/* 2. OPTIMIZED DATA ROWS (Uses memoizedWorkers now with progressive chunking!) */}
+              {memoizedWorkers.slice(0, displayLimit).map((w) => {
                 const isSelected = selectedIds.has(w.id);
 
                 return (
@@ -927,7 +935,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
 
                     {/* Nom et prénom */}
                     <div className="hybrid-cell cell-name">
-                      {highlightMatch(w.full_name, deferredSearch)}
+                      {highlightMatch(w.full_name, debouncedSearch)}
                       {w.archived && (
                         <span
                           className="badge"
@@ -955,7 +963,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                           color: '#64748b',
                         }}
                       >
-                        {highlightMatch(w.national_id, deferredSearch)}
+                        {highlightMatch(w.national_id, debouncedSearch)}
                       </span>
                     </div>
 

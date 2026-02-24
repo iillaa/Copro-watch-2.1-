@@ -69,7 +69,7 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
     }
   };
 
-  // [FIX] useMemo for expensive stats computation
+  // [FIX] useMemo for expensive stats computation (Immutable Sorting)
   const stats = useMemo(() => {
     // 1. Filtrer les archivés
     const activeWorkers = (workers || []).filter((w) => !w.archived);
@@ -77,13 +77,22 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
     // 2. Calculer les stats
     const computed = logic.getDashboardStats(activeWorkers, exams || []);
 
-    // 3. TRI AUTOMATIQUE
-    if (computed.dueSoon)
-      computed.dueSoon.sort((a, b) => (a.next_exam_due || '').localeCompare(b.next_exam_due || ''));
-    if (computed.overdue)
-      computed.overdue.sort((a, b) => (a.next_exam_due || '').localeCompare(b.next_exam_due || ''));
-    if (computed.retests)
-      computed.retests.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    // 3. TRI AUTOMATIQUE (Strictement Immuable)
+    if (computed.dueSoon) {
+      computed.dueSoon = [...computed.dueSoon].sort((a, b) => 
+        (a.next_exam_due || '').localeCompare(b.next_exam_due || '')
+      );
+    }
+    if (computed.overdue) {
+      computed.overdue = [...computed.overdue].sort((a, b) => 
+        (a.next_exam_due || '').localeCompare(b.next_exam_due || '')
+      );
+    }
+    if (computed.retests) {
+      computed.retests = [...computed.retests].sort((a, b) => 
+        (a.date || '').localeCompare(b.date || '')
+      );
+    }
 
     return computed;
   }, [workers, exams]);
