@@ -305,19 +305,35 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
             <div
               style={{ marginTop: '0.5rem', display: 'flex', gap: '10px', alignItems: 'center' }}
             >
-              {/* [FIX] Badge changes color if overdue */}
+              {/* [NEW] VISUAL VALIDITY INDICATOR SVG */}
+              {worker.next_exam_due && !worker.archived && (() => {
+                const due = new Date(worker.next_exam_due);
+                const now = new Date();
+                const diffTime = due - now;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const totalDays = 180; // Assuming 6-month standard validity
+                const percentage = Math.max(0, Math.min(100, (diffDays / totalDays) * 100));
+                
+                const gaugeColor = isOverdue ? '#ef4444' : percentage > 30 ? '#22c55e' : '#f59e0b';
+
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '4px 8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+                    <svg width="24" height="24" viewBox="0 0 36 36">
+                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" strokeWidth="4"/>
+                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={gaugeColor} strokeWidth="4" strokeDasharray={`${percentage}, 100`} />
+                    </svg>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: gaugeColor }}>
+                      {isOverdue ? 'EXPIRÉ' : `${diffDays}J RESTANTS`}
+                    </span>
+                  </div>
+                );
+              })()}
+
               <span
                 className={`badge ${isOverdue && !worker.archived ? 'badge-red' : 'badge-yellow'}`}
               >
                 Prochain Examen: {logic.formatDateDisplay(worker.next_exam_due)}
               </span>
-
-              {/* [FIX] Explicit Text Warning */}
-              {isOverdue && !worker.archived && (
-                <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                  ⚠️ En Retard
-                </span>
-              )}
             </div>
           </div>
 
