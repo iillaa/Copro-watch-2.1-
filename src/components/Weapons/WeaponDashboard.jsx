@@ -251,27 +251,27 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
           }
         >
           {isMobile ? (
-            <>
-              <FaUserShield size={20} color="#166534" />
-              <div style={{ color: '#166534', fontSize: '1.5rem', fontWeight: 'bold' }}>
-                {stats.active.length}
-              </div>
-              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: '#166534' }}>
-                Apte
-              </p>
-            </>
+             <>
+               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                 <polyline points="9 12 11 14 15 10"></polyline>
+               </svg>
+               <div style={{ color: '#166534', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                 {stats.active.length}
+               </div>
+               <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: '#166534' }}>Apte</p>
+             </>
           ) : (
             <>
               <div>
-                <h3 className="stat-card-title" style={{ color: '#166534' }}>
-                  Apte
-                </h3>
-                <div className="stat-card-value" style={{ color: '#166534' }}>
-                  {stats.active.length}
-                </div>
+                <h3 className="stat-card-title" style={{ color: '#166534' }}>Apte</h3>
+                <div className="stat-card-value" style={{ color: '#166534' }}>{stats.active.length}</div>
                 <p style={{ margin: 0, fontWeight: 600, color: '#166534' }}>Agents actifs</p>
               </div>
-              <FaUserShield size={60} color="#166534" style={{ opacity: 0.8 }} />
+              <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+                <circle cx="12" cy="11" r="3"></circle>
+              </svg>
             </>
           )}
         </div>
@@ -304,35 +304,28 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
         >
           {isMobile ? (
             <>
-              <FaExclamationTriangle size={20} color="var(--danger)" />
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                 <circle cx="12" cy="12" r="10"></circle>
+                 <line x1="15" y1="9" x2="9" y2="15"></line>
+                 <line x1="9" y1="9" x2="15" y2="15"></line>
+              </svg>
               <div style={{ color: 'var(--danger)', fontSize: '1.5rem', fontWeight: 'bold' }}>
                 {stats.inapte.length}
               </div>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  color: 'var(--danger-text)',
-                }}
-              >
-                Inapte
-              </p>
+              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: 'var(--danger-text)' }}>Inapte</p>
             </>
           ) : (
             <>
               <div>
-                <h3 className="stat-card-title" style={{ color: 'var(--danger-text)' }}>
-                  Inapte
-                </h3>
-                <div className="stat-card-value" style={{ color: 'var(--danger)' }}>
-                  {stats.inapte.length}
-                </div>
-                <p style={{ margin: 0, fontWeight: 600, color: 'var(--danger-text)' }}>
-                  Armes retirées
-                </p>
+                <h3 className="stat-card-title" style={{ color: 'var(--danger-text)' }}>Inapte</h3>
+                <div className="stat-card-value" style={{ color: 'var(--danger)' }}>{stats.inapte.length}</div>
+                <p style={{ margin: 0, fontWeight: 600, color: 'var(--danger-text)' }}>Armes retirées</p>
               </div>
-              <FaExclamationTriangle size={60} color="var(--danger)" style={{ opacity: 0.8 }} />
+              <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
+                 <circle cx="12" cy="12" r="10"></circle>
+                 <path d="M12 8v4"></path>
+                 <path d="M12 16h.01"></path>
+              </svg>
             </>
           )}
         </div>
@@ -365,35 +358,30 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
         >
           {isMobile ? (
             <>
-              <FaCalendarCheck size={20} color="var(--warning)" />
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
               <div style={{ color: 'var(--warning)', fontSize: '1.5rem', fontWeight: 'bold' }}>
                 {stats.dueSoon.length}
               </div>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  color: 'var(--warning-text)',
-                }}
-              >
-                Revoir
-              </p>
+              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: 'var(--warning-text)' }}>Revoir</p>
             </>
           ) : (
             <>
               <div>
-                <h3 className="stat-card-title" style={{ color: 'var(--warning-text)' }}>
-                  À Revoir
-                </h3>
-                <div className="stat-card-value" style={{ color: 'var(--warning)' }}>
-                  {stats.dueSoon.length}
-                </div>
-                <p style={{ margin: 0, fontWeight: 600, color: 'var(--warning-text)' }}>
-                  Sous 20 jours
-                </p>
+                <h3 className="stat-card-title" style={{ color: 'var(--warning-text)' }}>À Revoir</h3>
+                <div className="stat-card-value" style={{ color: 'var(--warning)' }}>{stats.dueSoon.length}</div>
+                <p style={{ margin: 0, fontWeight: 600, color: 'var(--warning-text)' }}>Sous 20 jours</p>
               </div>
-              <FaCalendarCheck size={60} color="var(--warning)" style={{ opacity: 0.8 }} />
+              <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8 }}>
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+                <path d="M12 14v4"></path>
+                <path d="M10 16h4"></path>
+              </svg>
             </>
           )}
         </div>
