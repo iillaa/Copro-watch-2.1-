@@ -1212,3 +1212,96 @@ html.force-mobile .pin-pad {
   flex: 1;
   gap: 0.5rem;
 }
+/* =========================================
+   NATIVE WEBVIEW OPTIMIZATIONS & SVG CSS
+   ========================================= */
+
+/* 1. NATIVE SCROLLBARS (Overrides clunky default Android scrollbars) */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 10px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
+}
+
+/* 2. TOUCH PERFORMANCE */
+button, .btn, .hybrid-row, a, input, select {
+  /* Disables the ugly blue tap highlight on Android */
+  -webkit-tap-highlight-color: transparent;
+  /* Forces GPU to handle touch events faster, removing 300ms delay */
+  touch-action: manipulation; 
+}
+
+/* 3. HARDWARE-ACCELERATED SVG ANIMATIONS (Zero JS cost) */
+.svg-pulse-danger {
+  /* Use for the 'Inapte' or 'En Retard' SVG icons */
+  animation: pulse-danger 2s infinite cubic-bezier(0.4, 0, 0.6, 1);
+  transform-origin: center;
+}
+@keyframes pulse-danger {
+  0%, 100% { transform: scale(1); filter: drop-shadow(0 0 0 rgba(239, 68, 68, 0)); }
+  50% { transform: scale(1.05); filter: drop-shadow(0 0 6px rgba(239, 68, 68, 0.6)); }
+}
+
+.svg-spin-slow {
+  /* Use for loading states or the Copro validity gauge if you want it to build up */
+  animation: spin-slow 4s linear infinite;
+  transform-origin: center;
+}
+@keyframes spin-slow {
+  100% { transform: rotate(360deg); }
+}
+
+/* 4. WATER LAB LIQUID TRANSITION */
+/* Modern Android WebViews support SVG path 'd' attribute transitions natively */
+.liquid-path {
+  transition: d 0.6s cubic-bezier(0.34, 1.56, 0.64, 1), fill 0.4s ease-in-out;
+}
+
+/* 5. CRISPER TEXT RENDERING ON MOBILE SCREENS */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* =========================================
+   GPU-ACCELERATED ENTRANCE ANIMATION (Zero JS Cost)
+   ========================================= */
+
+.hybrid-row {
+  animation: slideFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  /* Hardware acceleration */
+  will-change: transform, opacity;
+}
+
+/* Staggered waterfall effect for the first 10 items in a chunk */
+.hybrid-row:nth-child(1) { animation-delay: 0.03s; }
+.hybrid-row:nth-child(2) { animation-delay: 0.06s; }
+.hybrid-row:nth-child(3) { animation-delay: 0.09s; }
+.hybrid-row:nth-child(4) { animation-delay: 0.12s; }
+.hybrid-row:nth-child(5) { animation-delay: 0.15s; }
+.hybrid-row:nth-child(6) { animation-delay: 0.18s; }
+.hybrid-row:nth-child(7) { animation-delay: 0.21s; }
+.hybrid-row:nth-child(8) { animation-delay: 0.24s; }
+.hybrid-row:nth-child(9) { animation-delay: 0.27s; }
+.hybrid-row:nth-child(10) { animation-delay: 0.30s; }
+
+@keyframes slideFadeIn {
+  0% {
+    opacity: 0;
+    transform: translateY(15px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
