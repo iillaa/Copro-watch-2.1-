@@ -1,935 +1,443 @@
-import { jsPDF } from 'jspdf';
 import { logic } from './logic';
 import { db } from './db';
 
-// [FIX] Proper dynamic import handling for Capacitor
-let Filesystem, Directory;
-let Capacitor = { isNativePlatform: () => false };
-let capacitorReady = false;
-
-async function initCapacitor() {
-  if (capacitorReady) return;
-  try {
-    const capModule = await import('@capacitor/core');
-    Capacitor = capModule.Capacitor;
-    const fsModule = await import('@capacitor/filesystem');
-    Filesystem = fsModule.Filesystem;
-    Directory = fsModule.Directory;
-    capacitorReady = true;
-  } catch (e) {
-    console.warn('[PDF] Capacitor not available:', e);
-    capacitorReady = true;
+// CSS Constants
+const STYLE = `
+  @page { margin: 0; }
+  body {
+    font-family: 'Helvetica', sans-serif;
+    margin: 0;
+    padding: 0;
+    background: white;
+    -webkit-print-color-adjust: exact;
   }
-}
+  .page {
+    position: relative;
+    box-sizing: border-box;
+    page-break-after: always;
+    overflow: hidden;
+  }
+  .page.portrait { width: 210mm; height: 296mm; }
+  .page.landscape { width: 297mm; height: 209mm; }
 
-if (typeof window !== 'undefined') {
-  initCapacitor();
-}
+  .list-page {
+    width: 210mm;
+    min-height: 296mm;
+    padding: 10mm;
+    box-sizing: border-box;
+    page-break-after: always;
+  }
 
-const MARGIN = 20;
+  .page:last-child, .list-page:last-child { page-break-after: auto; }
+
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+
+  .half-page-h { height: 148mm; position: relative; border-bottom: 1px dashed #ccc; box-sizing: border-box; padding: 10mm; }
+  .half-page-h:last-child { border-bottom: none; }
+
+  .half-page-v { width: 148mm; height: 100%; float: left; position: relative; border-right: 1px dashed #ccc; box-sizing: border-box; padding: 10mm; }
+  .half-page-v:last-child { border-right: none; }
+
+  .header { text-align: center; margin-bottom: 10mm; }
+  .header h1 { font-size: 11pt; font-weight: bold; margin: 0; text-transform: uppercase; }
+  .header h2 { font-size: 9pt; font-weight: normal; margin: 2px 0; }
+
+  .title-box {
+    border: 2px solid black;
+    border-radius: 8px;
+    padding: 5px 20px;
+    display: inline-block;
+    font-weight: bold;
+    font-size: 14pt;
+    margin: 10px 0;
+  }
+
+  .field-row { margin-bottom: 8px; font-size: 11pt; display: flex; align-items: baseline; }
+  .field-label { white-space: nowrap; margin-right: 5px; }
+  .field-dots { flex: 1; border-bottom: 1px dotted black; position: relative; }
+  .field-value { position: absolute; left: 10px; bottom: 2px; font-weight: bold; font-size: 12pt; }
+
+  .signature { position: absolute; bottom: 20mm; right: 20mm; font-weight: bold; font-size: 11pt; }
+  .footer-note { position: absolute; bottom: 5mm; width: 100%; text-align: center; font-size: 8pt; color: #888; }
+
+  table { width: 100%; border-collapse: collapse; font-size: 10pt; }
+  th { background: #eee; font-weight: bold; padding: 5px; border: 1px solid black; text-align: left; }
+  td { padding: 5px; border: 1px solid black; }
+
+  .watermark {
+    position: absolute;
+    top: 50%; left: 50%;
+    transform: translate(-50%, -50%) rotate(-45deg);
+    font-size: 80pt;
+    color: rgba(255, 0, 0, 0.1);
+    font-weight: bold;
+    pointer-events: none;
+    z-index: 0;
+  }
+`;
 
 export const pdfService = {
   generateBatchDoc: async (workers, docType, options = {}) => {
-    // 1. Determine Orientation
-    const isLandscape = docType === 'copro' || docType === 'convocation';
-    const orientation = isLandscape ? 'l' : 'p';
-    const doc = new jsPDF(orientation, 'mm', 'a4');
-
-    // Fetch workplaces for custom certificate text
+    // 1. Fetch Workplaces for Aptitude Text
     const workplaceMap = new Map();
     if (docType === 'aptitude') {
       try {
-        const allWorkplaces = await db.getWorkplaces();
-        allWorkplaces.forEach((wp) => {
-          if (wp.name && wp.certificate_text) {
-            workplaceMap.set(wp.name.toLowerCase().trim(), wp.certificate_text);
-          }
+        const all = await db.getWorkplaces();
+        all.forEach(wp => {
+          if (wp.name && wp.certificate_text) workplaceMap.set(wp.name.toLowerCase().trim(), wp.certificate_text);
         });
-      } catch (e) {
-        console.error('Failed to load workplaces', e);
-      }
+      } catch(e) {}
     }
 
-    if (docType === 'list_manager') {
-      generateGroupedList(doc, workers, options);
-    } else if (docType === 'weapon_registre') {
-      generateWeaponRegistrePortrait(doc, workers, options);
-    } else if (docType === 'weapon_convocation_list') {
-      generateWeaponConvocationList(doc, workers, options);
-    } else if (docType === 'weapon_convocation_individual') {
-      for (let i = 0; i < workers.length; i++) {
-        if (i > 0) doc.addPage();
-        drawWeaponConvocationIndividual(doc, workers[i], options);
-      }
-    } else if (docType === 'weapon_aptitude') {
-      // WEAPON APTITUDE (Portrait)
-      workers.forEach((agent, index) => {
-        if (index > 0) doc.addPage();
-        drawWeaponAptitude(doc, agent, options);
-      });
-    } else if (docType === 'aptitude') {
-      // APTITUDE (Portrait 2/page)
-      for (let i = 0; i < workers.length; i++) {
-        if (i > 0 && i % 2 === 0) doc.addPage();
-        const yOffset = i % 2 === 0 ? 0 : 148.5;
-        drawAptitudeCertificate(doc, workers[i], options, yOffset, workplaceMap);
+    // 2. Build HTML
+    let html = '';
+    const isLandscape = ['copro', 'convocation', 'weapon_convocation_individual'].includes(docType);
 
-        if (i % 2 === 0 && i < workers.length - 1) {
-          doc.setLineDash([2, 2], 0);
-          doc.setDrawColor(150);
-          doc.line(10, 148.5, 200, 148.5);
-          doc.setDrawColor(0);
-          doc.setLineDash([]);
+    if (docType === 'aptitude') {
+      // Portrait, 2 per page
+      for (let i = 0; i < workers.length; i += 2) {
+        html += `<div class="page portrait">`;
+        html += generateAptitudeItem(workers[i], options, workplaceMap);
+        if (i + 1 < workers.length) {
+          html += generateAptitudeItem(workers[i+1], options, workplaceMap);
         }
+        html += `</div>`;
       }
     } else if (docType === 'copro' || docType === 'convocation') {
-      // PAYSAGE (2 par page)
-      for (let i = 0; i < workers.length; i++) {
-        if (i > 0 && i % 2 === 0) doc.addPage();
+      // Landscape, 2 per page (Side by Side)
+      for (let i = 0; i < workers.length; i += 2) {
+        html += `<div class="page landscape">`;
+        html += `<div class="half-page-v" style="width: 50%; float: left; border-right: 1px dashed #ccc; height: 100%">`;
+        html += docType === 'copro' ? generateCoproItem(workers[i], options) : generateConvocationItem(workers[i], options);
+        html += `</div>`;
 
-        const xOffset = i % 2 === 0 ? 0 : 148.5;
-
-        if (docType === 'copro') {
-          drawCoproRequest(doc, workers[i], options, xOffset);
-        } else {
-          drawConvocation(doc, workers[i], options, xOffset);
+        if (i + 1 < workers.length) {
+          html += `<div class="half-page-v" style="width: 50%; float: left; border: none; height: 100%">`;
+          html += docType === 'copro' ? generateCoproItem(workers[i+1], options) : generateConvocationItem(workers[i+1], options);
+          html += `</div>`;
         }
-
-        if (i % 2 === 0 && i < workers.length - 1) {
-          doc.setLineDash([2, 2], 0);
-          doc.setDrawColor(150);
-          doc.line(148.5, 10, 148.5, 200);
-          doc.setDrawColor(0);
-          doc.setLineDash([]);
-        }
+        html += `</div>`;
       }
-    } else {
-      workers.forEach((worker, index) => {
-        if (index > 0) doc.addPage();
-        doc.text('Document inconnu', MARGIN, 50);
-      });
+    } else if (docType === 'weapon_aptitude') {
+       // Portrait, 1 per page
+       workers.forEach(w => {
+         html += `<div class="page portrait" style="padding: 20mm">`;
+         html += generateWeaponAptitudeItem(w, options);
+         html += `</div>`;
+       });
+    } else if (docType === 'weapon_convocation_individual') {
+       // Portrait, 1 per page (Matches previous logic, though previous code function said 'Landscape' but implementation was Portrait-like?
+       // Wait, previous code `drawWeaponConvocationIndividual` used `centerX = 105` which is Portrait center.
+       // But `generateBatchDoc` for it didn't set landscape.
+       // So I will stick to Portrait for Individual Weapon Convocation as per previous logic.
+       // Correction: My variable `isLandscape` above included it. I should remove it if it's portrait.
+       // Looking at previous code: `drawWeaponConvocationIndividual` used `centerX = 105`. That's Portrait (A4 width 210).
+       workers.forEach(w => {
+         html += `<div class="page portrait" style="padding: 20mm">`;
+         html += generateWeaponConvocationIndividual(w, options);
+         html += `</div>`;
+       });
+    } else if (['list_manager', 'weapon_convocation_list', 'weapon_registre'].includes(docType)) {
+       html += generateLists(workers, docType, options);
     }
 
-    // [SURGICAL REPLACEMENT START]
-    // 1. Generate unique filename with Date AND Time (HH-MM-SS) to prevent overwriting
-    const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
-    const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, '-'); // 14:30:00 -> 14-30-00
-    const fileName = `CoproWatch_${docType}_${dateStr}_${timeStr}.pdf`;
-
-    await initCapacitor();
-
-    if (Capacitor.isNativePlatform()) {
-      try {
-        const base64Data = doc.output('datauristring').split(',')[1];
-
-        // 2. Define specific Export folder
-        const folder = 'copro-watch/Exports';
-
-        // 3. Create folder if it doesn't exist (safe - won't overwrite existing)
-        try {
-          await Filesystem.mkdir({
-            path: folder,
-            directory: Directory.Documents,
-            recursive: true,
-          });
-        } catch (e) {
-          // Folder likely exists - that's fine, we can still write to it
-          console.log('[PDF] Folder already exists or creation warning, attempting write...');
-        }
-
-        // 4. Save file to the specific folder
-        await Filesystem.writeFile({
-          path: `${folder}/${fileName}`,
-          data: base64Data,
-          directory: Directory.Documents,
-        });
-
-        alert(`✅ PDF sauvegardé :\nDocuments/${folder}/${fileName}`);
-      } catch (e) {
-        console.error(e);
-        alert(
-          '❌ Erreur de sauvegarde. Le dossier Documents/copro-watch existe peut-être déjà.\n\nEssayez de renommer ou déplacer ce dossier, puis réessayez.'
-        );
-      }
-    } else {
-      // Web fallback
-      doc.save(fileName);
-    }
-    // [SURGICAL REPLACEMENT END]
-  },
+    // 3. Print
+    printHTML(html, isLandscape && docType !== 'weapon_convocation_individual' ? 'landscape' : 'portrait');
+  }
 };
 
-// ==========================================
-// 1. CONVOCATION INDIVIDUELLE (PAYSAGE)
-// ==========================================
-function drawConvocation(doc, worker, options, xOffset) {
-  const centerX = xOffset + 74.25;
-  const leftMargin = xOffset + 10;
-  const y = (val) => val;
+const printHTML = (content, orientation) => {
+  const iframe = document.createElement('iframe');
+  iframe.style.position = 'fixed';
+  iframe.style.top = '-10000px';
+  document.body.appendChild(iframe);
 
-  // HEADER OFFICIEL
-  doc.setTextColor(0);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(`
+    <html>
+      <head>
+        <title>Print</title>
+        <style>
+          @page { size: A4 ${orientation}; margin: 0; }
+          ${STYLE}
+        </style>
+      </head>
+      <body>${content}</body>
+    </html>
+  `);
+  doc.close();
 
-  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, y(15), { align: 'center' });
+  setTimeout(() => {
+    iframe.contentWindow.focus();
+    iframe.contentWindow.print();
+    setTimeout(() => document.body.removeChild(iframe), 2000);
+  }, 500);
+};
 
-  doc.setFontSize(8);
-  doc.text("MINISTERE DE L'INTERIEUR ET", leftMargin, y(22));
-  doc.text('DE TRANSPORT', leftMargin, y(26));
-  doc.text('DIRECTION GENERALE', leftMargin, y(30));
-  doc.text('DE LA SURETE NATIONALE', leftMargin, y(34));
-  doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, y(38));
-  doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, y(42));
-  doc.text("DE L'ACTION SOCIAL ET ACTIVITES SPORTIVES", leftMargin, y(46));
+// --- GENERATORS ---
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text(`LE : ${logic.formatDateDisplay(options.date)}`, xOffset + 130, y(48), {
-    align: 'right',
-  });
+const getHeader = () => `
+  <div class="header">
+    <h1>Republique Algerienne Democratique et Populaire</h1>
+    <h2>MINISTERE DE L'INTERIEUR ET DES COLLECTIVITES LOCALES</h2>
+    <h2>DIRECTION GENERALE DE LA SURETE NATIONALE</h2>
+    <h2>SURETE DE WILAYA D'IN-SALAH</h2>
+    <h2>SERVICE DE WILAYA DE SANTE, DE L'ACTION SOCIALE ET DES SPORTS</h2>
+  </div>
+`;
 
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.setLineWidth(0.5);
-  doc.roundedRect(centerX - 35, y(53), 70, 10, 2, 2);
-  doc.text('CONVOCATION', centerX, y(60), { align: 'center' });
+const generateAptitudeItem = (w, opts, wpMap) => {
+  const isApte = w.latest_status === 'apte';
+  const isPartiel = w.latest_status === 'apte_partielle';
+  const statusText = isApte ? 'APTE' : (w.latest_status === 'inapte' ? 'INAPTE' : 'EN COURS');
 
-  const drawField = (label, value, posY) => {
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(label, leftMargin, posY);
+  let workplaceText = '';
+  if (wpMap) {
+     const wpName = (w.workplaceName || '').trim().toLowerCase();
+     workplaceText = wpMap.get(wpName);
+  }
+  if (!workplaceText) {
+     const wpLower = (w.workplaceName || '').toLowerCase();
+     if (wpLower.includes('cuisine')) workplaceText = 'A travailler dans la CUISINE';
+     else if (wpLower.includes('foyer')) workplaceText = 'A travailler dans le FOYER';
+     else workplaceText = `A travailler dans : ${w.workplaceName || '________'}`;
+  }
 
-    const startDots = leftMargin + doc.getTextWidth(label) + 2;
-    const endDots = xOffset + 135;
-    let dots = '';
-    while (doc.getTextWidth(dots) < endDots - startDots) {
-      dots += '.';
-    }
-    doc.text(dots, startDots, posY);
+  const isOverdue = w.next_exam_due && logic.isOverdue(w.next_exam_due);
 
-    doc.setFont('helvetica', 'bold');
-    doc.text(value, startDots + 5, posY - 1);
-  };
+  return `
+    <div class="half-page-h">
+      ${getHeader()}
+      <div class="text-right" style="margin-bottom: 20px">Le : ${logic.formatDateDisplay(opts.date)}</div>
 
-  const nomPrenom = `${worker.last_name || ''} ${worker.first_name || ''}`;
-  const service = `${worker.deptName || ''} ${
-    worker.workplaceName ? '(' + worker.workplaceName + ')' : ''
-  }`;
+      <div style="text-align: center">
+        <div class="title-box">CERTIFICAT D'APTITUDE</div>
+      </div>
 
-  drawField('M./Mme :', nomPrenom, y(75));
-  drawField('Service :', service, y(85));
-  drawField('Matricule :', worker.national_id || '', y(95));
+      <div style="margin-top: 20px">
+        <div class="field-row">
+          <span class="field-label">Je soussigné certifie que M/Mme :</span>
+          <div class="field-dots"><span class="field-value">${w.full_name}</span></div>
+        </div>
+        <div class="field-row">
+          <span class="field-label">Est reconnu(e) :</span>
+        </div>
 
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Est convoqué(e) à se présenter au Service Médical le :', leftMargin, y(115));
+        <div style="text-align: center; font-size: 24pt; font-weight: bold; margin: 20px 0; letter-spacing: 5px">
+          ${statusText}
+        </div>
 
-  const rdvDate = options.consultDate || options.date;
-  const rdvTime = options.consultTime || '08:30';
+        <div style="text-align: center; font-size: 12pt; margin-bottom: 20px">
+          ${workplaceText}
+        </div>
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(14);
-  doc.text(`${logic.formatDateDisplay(rdvDate)} à ${rdvTime}`, centerX, y(130), {
-    align: 'center',
-  });
+        ${w.next_exam_due ? `<div style="font-size: 10pt">Prochaine visite avant le : <b>${logic.formatDateDisplay(w.next_exam_due)}</b></div>` : ''}
+      </div>
 
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Objet : Visite Médicale de Médecine du Travail.', leftMargin, y(145));
-  doc.text('La présence est obligatoire.', leftMargin, y(155));
+      <div class="signature">Le Médecin</div>
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(11);
-  doc.text('Le Médecin', xOffset + 110, y(180));
-}
+      ${isOverdue ? `<div class="watermark">EN RETARD</div>` : ''}
+    </div>
+  `;
+};
 
-// ==========================================
-// 2. LISTE DE CONVOCATION (PORTRAIT - GROUPÉE)
-// ==========================================
-function generateGroupedList(doc, workers, options) {
+const generateCoproItem = (w, opts) => {
+  return `
+    <div>
+      ${getHeader()}
+      <div class="text-right" style="margin-bottom: 10px">Le : ${logic.formatDateDisplay(opts.date)}</div>
+      <div style="text-align: center; margin-bottom: 20px">
+        <div class="title-box">ORDONNANCE</div>
+      </div>
+
+      <div class="field-row"><span class="field-label">Nom & Prénom :</span><div class="field-dots"><span class="field-value">${w.full_name}</span></div></div>
+      <div class="field-row"><span class="field-label">Age :</span><div class="field-dots"><span class="field-value">${w.age ? w.age + ' ans' : ''}</span></div></div>
+
+      <div style="margin-top: 30px; font-size: 12pt">
+        <p>Cher confrère,</p>
+        <p>Prière de pratiquer pour le patient sus-nommé :</p>
+        <h3 style="text-align: center; margin: 30px 0; text-decoration: underline">Une Copro-parasitologie des selles</h3>
+      </div>
+
+      <div class="signature">Le Médecin</div>
+      <div class="footer-note" style="border-top: 1px solid black; padding-top: 5px; margin-top: 50px">
+         NB: Ne pas laisser les médicaments à la portée des enfants.
+      </div>
+    </div>
+  `;
+};
+
+const generateConvocationItem = (w, opts) => {
+  return `
+    <div>
+      ${getHeader()}
+      <div class="text-right" style="margin-bottom: 10px">Le : ${logic.formatDateDisplay(opts.date)}</div>
+      <div style="text-align: center; margin-bottom: 20px">
+        <div class="title-box">CONVOCATION</div>
+      </div>
+
+      <div class="field-row"><span class="field-label">M./Mme :</span><div class="field-dots"><span class="field-value">${w.full_name}</span></div></div>
+      <div class="field-row"><span class="field-label">Matricule :</span><div class="field-dots"><span class="field-value">${w.national_id || ''}</span></div></div>
+      <div class="field-row"><span class="field-label">Service :</span><div class="field-dots"><span class="field-value">${w.deptName || ''}</span></div></div>
+
+      <div style="margin-top: 20px; font-size: 12pt">
+        <p>Est convoqué(e) au Service Médical le :</p>
+        <div style="text-align: center; font-size: 14pt; font-weight: bold; margin: 15px 0">
+           ${logic.formatDateDisplay(opts.consultDate)} à ${opts.consultTime || '08:30'}
+        </div>
+        <p>Objet : Visite Médicale de Médecine du Travail.</p>
+        <p style="font-weight: bold">La présence est obligatoire.</p>
+      </div>
+
+      <div class="signature">Le Médecin</div>
+    </div>
+  `;
+};
+
+const generateWeaponAptitudeItem = (w, opts) => {
+  const isApte = w.status === 'apte';
+  return `
+    <div>
+       ${getHeader()}
+       <div style="text-align: center; font-weight: bold; margin-bottom: 10mm">COMMISSION MEDICALE D'APTITUDE AU PORT D'ARME</div>
+       <div class="text-right" style="margin-bottom: 20px">Le : ${logic.formatDateDisplay(opts.date)}</div>
+
+       <div style="text-align: center; margin-bottom: 30px">
+         <div class="title-box" style="font-size: 18pt">CERTIFICAT D'APTITUDE</div>
+       </div>
+
+       <div style="padding: 0 10mm">
+          <div class="field-row"><span class="field-label">Nom & Prénom :</span><div class="field-dots"><span class="field-value">${w.full_name}</span></div></div>
+          <div class="field-row"><span class="field-label">Matricule :</span><div class="field-dots"><span class="field-value">${w.national_id}</span></div></div>
+          <div class="field-row"><span class="field-label">Grade / Poste :</span><div class="field-dots"><span class="field-value">${w.job_function || ''}</span></div></div>
+
+          <div style="margin-top: 30px">
+            <p>La Commission Médicale, après examen clinique et psychologique, déclare l'intéressé(e) :</p>
+            <div style="text-align: center; font-size: 36pt; font-weight: bold; margin: 40px 0; color: ${isApte ? 'black' : 'red'}">
+               ${isApte ? 'APTE' : 'INAPTE'}
+            </div>
+            ${isApte ? '<p style="text-align: center">Pour le port et la détention d\'arme de service.</p>' : ''}
+          </div>
+       </div>
+
+       <div class="signature">Le Médecin Chef</div>
+    </div>
+  `;
+};
+
+const generateWeaponConvocationIndividual = (w, opts) => {
+  return `
+    <div>
+       ${getHeader()}
+       <div style="text-align: center; font-size: 16pt; font-weight: bold; margin: 30mm 0 10mm 0">
+         CONVOCATION MÉDICALE<br/>(APTITUDE AU PORT D'ARME)
+       </div>
+
+       <div style="padding: 0 10mm; font-size: 14pt; line-height: 1.6">
+          <div><b>M. ${w.full_name}</b></div>
+          <div>Matricule : ${w.national_id}</div>
+          <div style="margin-bottom: 20px">Service : ${w.deptName || '-'}</div>
+
+          <p>Est convoqué(e) pour sa visite d'aptitude au port d'arme le :</p>
+          <div style="text-align: center; font-size: 20pt; font-weight: bold; margin: 20px 0">
+             ${logic.formatDateDisplay(opts.consultDate)} à ${opts.consultTime || '08:30'}
+          </div>
+          <p>La présence est obligatoire muni de sa pièce d'identité.</p>
+       </div>
+
+       <div class="signature" style="bottom: 40mm">Le Médecin Chef</div>
+       <div class="footer-note" style="text-align: left; padding-left: 20mm">Fait le : ${logic.formatDateDisplay(opts.date)}</div>
+    </div>
+  `;
+};
+
+const generateLists = (workers, type, opts) => {
+  // Group by Dept
   const groups = {};
-  workers.forEach((w) => {
-    const deptName = w.deptName || 'Service Inconnu';
-    if (!groups[deptName]) groups[deptName] = [];
-    groups[deptName].push(w);
+  workers.forEach(w => {
+    const d = w.deptName || 'Autre';
+    if (!groups[d]) groups[d] = [];
+    groups[d].push(w);
   });
 
-  const deptNames = Object.keys(groups);
+  let html = '';
+  const title = type === 'weapon_registre' ? 'REGISTRE DE SUIVI' : 'LISTE DE CONVOCATION';
+  const isWeapon = type.includes('weapon');
 
-  deptNames.forEach((dept, i) => {
-    if (i > 0) doc.addPage();
-
-    const centerX = 105;
-    const leftMargin = MARGIN;
-
-    // --- HEADER OFFICIEL ---
-    doc.setTextColor(0);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-
-    doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 15, { align: 'center' });
-
-    doc.setFontSize(8);
-    doc.text("MINISTERE DE L'INTERIEUR ET DE TRANSPORT", leftMargin, 22);
-    doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', leftMargin, 26);
-    doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, 30);
-    doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 34);
-    doc.text("DE L'ACTION SOCIAL ET ACTIVITES SPORTIVES", leftMargin, 38);
-
-    // --- TITRE ---
-    doc.setFontSize(16);
-    doc.text(`LISTE DE CONVOCATION`, centerX, 50, { align: 'center' });
-
-    // Info
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`SERVICE : ${dept.toUpperCase()}`, leftMargin, 65);
-
-    const rdvDate = options.consultDate || options.date;
-    const rdvTime = options.consultTime || '08:30';
-    doc.text(`DATE PRÉVUE : ${logic.formatDateDisplay(rdvDate)} à ${rdvTime}`, leftMargin, 72);
-
-    doc.setFontSize(10);
-    doc.text(`Le : ${logic.formatDateDisplay(options.date)}`, 190, 65, { align: 'right' });
-
-    // --- TABLEAU ---
-    let y = 80;
-    doc.setFillColor(230, 230, 230);
-    doc.rect(leftMargin, y - 6, 170, 8, 'F');
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-
-    doc.text('Matricule', leftMargin + 2, y);
-    doc.text('Nom et Prénom', leftMargin + 30, y);
-    doc.text('Poste / Lieu', leftMargin + 90, y);
-    // [CHANGE] "Visa" -> "Observation"
-    doc.text('Observation', leftMargin + 140, y);
-
-    y += 10;
-    doc.setFont('helvetica', 'normal');
-
-    groups[dept].forEach((w) => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.text(w.national_id ? String(w.national_id) : '-', leftMargin + 2, y);
-      doc.text(w.full_name, leftMargin + 30, y);
-      doc.text(w.workplaceName || '-', leftMargin + 90, y);
-      doc.line(leftMargin, y + 2, 190, y + 2);
-      y += 12;
-    });
-
-    // --- PIED DE PAGE ---
-    // [CHANGE] Signature du Médecin + Note légale
-    doc.setTextColor(0);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Le Médecin', 160, 265); // Signature en bas à droite
-
-    // Note légale brève
-    doc.setFontSize(9);
-    doc.setTextColor(80);
-    const note = 'Rappel : Visite médicale obligatoire tous les 6 mois.';
-    doc.text(note, centerX, 285, { align: 'center' });
-    doc.setTextColor(0);
-  });
-}
-
-// ==========================================
-// 3. DEMANDE COPRO (PAYSAGE)
-// ==========================================
-function drawCoproRequest(doc, worker, options, xOffset) {
-  const centerX = xOffset + 74.25;
-  const leftMargin = xOffset + 10;
-  const y = (val) => val;
-
-  let nom = worker.last_name || '';
-  let prenom = worker.first_name || '';
-  if (!nom && !prenom && worker.full_name) {
-    const parts = worker.full_name.trim().split(/\s+/);
-    if (parts.length > 0) {
-      nom = parts[0];
-      prenom = parts.slice(1).join(' ');
-    }
-  }
-
-  doc.setTextColor(0);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, y(15), { align: 'center' });
-  doc.setFontSize(8);
-  doc.text("MINISTERE DE L'INTERIEUR ET", leftMargin, y(22));
-  doc.text('DE TRANSPORT', leftMargin, y(26));
-  doc.text('DIRECTION GENERALE', leftMargin, y(30));
-  doc.text('DE LA SURETE NATIONALE', leftMargin, y(34));
-  doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, y(38));
-  doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, y(42));
-  doc.text("DE L'ACTION SOCIAL ET DES ACTIVITES SPORTIVES", leftMargin, y(46));
-
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(10);
-  doc.text(`LE : ${logic.formatDateDisplay(options.date)}`, xOffset + 130, y(48), {
-    align: 'right',
-  });
-
-  doc.setFontSize(18);
-  doc.setFont('helvetica', 'bold');
-  doc.setLineWidth(0.5);
-  doc.roundedRect(centerX - 30, y(53), 60, 10, 2, 2);
-  doc.text('ORDONNANCE', centerX, y(60), { align: 'center' });
-
-  const drawField = (label, value, posY) => {
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(label, leftMargin, posY);
-    const startDots = leftMargin + doc.getTextWidth(label) + 2;
-    const endDots = xOffset + 135;
-    let dots = '';
-    while (doc.getTextWidth(dots) < endDots - startDots) {
-      dots += '.';
-    }
-    doc.text(dots, startDots, posY);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    const centerDots = startDots + (endDots - startDots) / 2;
-    doc.text(value, centerDots, posY - 1, { align: 'center' });
-  };
-
-  drawField('Nom :', nom, y(80));
-  drawField('Prénom :', prenom, y(90));
-  drawField('Age :', worker.age ? String(worker.age) + ' ans' : '', y(100));
-
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Cher confrère,', leftMargin, y(120));
-  doc.text('Permettez-moi de vous confier le patient sus-nommé pour :', leftMargin, y(130));
-  doc.setFontSize(14);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Une Copro-parasitologie des selles', centerX, y(145), { align: 'center' });
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Cordialement.', leftMargin + 100, y(165), { align: 'center' });
-
-  doc.setLineWidth(0.3);
-  doc.line(leftMargin, y(190), xOffset + 138, y(190));
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text('NB : Ne pas laisser les médicaments à la portée des enfants.', centerX, y(196), {
-    align: 'center',
-  });
-}
-
-// ==========================================
-// 4. CERTIFICAT APTITUDE (PORTRAIT)
-// ==========================================
-function drawAptitudeCertificate(doc, worker, options, offset, workplaceMap) {
-  const y = (val) => offset + val;
-  const centerX = 105;
-  let nom = worker.last_name || '';
-  let prenom = worker.first_name || '';
-  if (!nom && !prenom && worker.full_name) {
-    const parts = worker.full_name.trim().split(/\s+/);
-    if (parts.length > 0) {
-      nom = parts[0];
-      prenom = parts.slice(1).join(' ');
-    }
-  }
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, y(10), { align: 'center' });
-  doc.setFontSize(9);
-  doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', centerX, y(18), { align: 'center' });
-  doc.text("SURETE DE WILAYA D'IN-SALAH", centerX, y(23), { align: 'center' });
-  doc.text('SERVICE DE WILAYA DE SANTE', centerX, y(28), { align: 'center' });
-  doc.text("DE L'ACTION SOCIAL ET DES ACTIVITES SPORTIVES", centerX, y(33), { align: 'center' });
-  doc.setFont('helvetica', 'normal');
-  doc.text(`LE : ${logic.formatDateDisplay(options.date)}`, 160, y(38));
-
-  const status = worker.latest_status;
-  const drawDynamicField = (label, value, startX, startY, dotLength) => {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.text(label, startX, startY);
-    const labelWidth = doc.getTextWidth(label);
-    const dotsStartX = startX + labelWidth + 2;
-    let dots = '';
-    while (doc.getTextWidth(dots) < dotLength) {
-      dots += '.';
-    }
-    doc.text(dots, dotsStartX, startY);
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    const valueWidth = doc.getTextWidth(value);
-    const centerDots = dotsStartX + dotLength / 2;
-    if (valueWidth > dotLength) doc.text(value, dotsStartX, startY - 1);
-    else doc.text(value, centerDots, startY - 1, { align: 'center' });
-  };
-
-  if (status === 'apte_partielle') {
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'bold');
-    doc.text("CERTIFICAT D'APTITUDE AU POSTE DE TRAVAIL", centerX, y(48), { align: 'center' });
-    doc.text('(AVEC AMÉNAGEMENT)', centerX, y(54), { align: 'center' });
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'normal');
-    doc.text(
-      `Je soussigné Dr ........................................................ certifie avoir examiné ce jour :`,
-      MARGIN,
-      y(62)
-    );
-    drawDynamicField('Nom:', nom, MARGIN, y(70), 65);
-    drawDynamicField('Prénom:', prenom, MARGIN + 85, y(70), 65);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Et déclare que son état de santé actuel est :', MARGIN, y(78));
-    doc.setFont('helvetica', 'bold');
-    doc.text('APTE AU TRAVAIL AVEC RESTRICTIONS TEMPORAIRES', centerX, y(85), { align: 'center' });
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    doc.text(
-      "L'employé est autorisé à travailler, mais avec des restrictions temporaires strictes.",
-      MARGIN,
-      y(92)
-    );
-    doc.setFont('helvetica', 'bold');
-    doc.text('Interdictions formelles :', MARGIN, y(97));
-    doc.setFont('helvetica', 'normal');
-    doc.text("* Aucune manipulation d'aliments crus (salades, fruits).", MARGIN + 5, y(101));
-    doc.text(
-      '* Aucun contact à mains nues avec des plats cuits (dressage, sandwichs).',
-      MARGIN + 5,
-      y(105)
-    );
-    doc.setFont('helvetica', 'bold');
-    doc.text('Tâches autorisées uniquement :', MARGIN, y(111));
-    doc.setFont('helvetica', 'normal');
-    doc.text('* Poste de cuisson (grill, four, friteuse).', MARGIN + 5, y(115));
-    doc.text('* Préparation de légumes destinés à une cuisson immédiate.', MARGIN + 5, y(119));
-    doc.text('* Plonge et nettoyage des locaux.', MARGIN + 5, y(123));
-    doc.setFont('helvetica', 'bold');
-    doc.text('Hygiène imposée :', MARGIN, y(129));
-    doc.setFont('helvetica', 'normal');
-    doc.text(
-      'Port de gants obligatoire en continu et lavage des mains au savon bactéricide chaque heure.',
-      MARGIN + 28,
-      y(129)
-    );
-    doc.setFont('helvetica', 'bold');
-    doc.text('Durée :', MARGIN, y(134));
-    doc.setFont('helvetica', 'normal');
-    doc.text(
-      "Valable jusqu'à la fin du traitement et l'obtention de résultats d'analyses médicales satisfaisants.",
-      MARGIN + 12,
-      y(134)
-    );
-    doc.setFontSize(11);
-    doc.text('Le Médecin', 160, y(140));
+  // For Registry, just one big list usually, but let's keep group logic if needed.
+  // Actually registry is usually one continuous table.
+  if (type === 'weapon_registre') {
+     html += `<div class="list-page">
+       ${getHeader()}
+       <div style="text-align: center; font-weight: bold; font-size: 14pt; margin: 20px 0">${title}</div>
+       <div style="display: flex; justify-content: space-between; margin-bottom: 10px">
+         <span>Total : ${workers.length} agents</span>
+         <span>Date : ${logic.formatDateDisplay(opts.date)}</span>
+       </div>
+       <table>
+         <thead>
+           <tr>
+             <th width="5%">N°</th>
+             <th width="15%">Matricule</th>
+             <th width="25%">Nom & Prénom</th>
+             <th width="20%">Service</th>
+             <th width="15%">Date</th>
+             <th width="10%">Décision</th>
+             <th width="10%">Prochaine</th>
+           </tr>
+         </thead>
+         <tbody>
+           ${workers.map((w, i) => `
+             <tr>
+               <td>${i+1}</td>
+               <td>${w.national_id}</td>
+               <td>${w.full_name}</td>
+               <td>${w.deptName || ''}</td>
+               <td>${logic.formatDateDisplay(w.last_exam_date || w.exam_date)}</td>
+               <td style="font-weight: bold; color: ${w.status === 'apte' ? 'green' : 'red'}">${w.status === 'apte' ? 'APTE' : 'INAPTE'}</td>
+               <td>${logic.formatDateDisplay(w.next_review_date)}</td>
+             </tr>
+           `).join('')}
+         </tbody>
+       </table>
+       <div class="signature">Le Médecin Chef</div>
+     </div>`;
   } else {
-    doc.setFontSize(14);
-    doc.setFont('helvetica', 'bold');
-    doc.text('CERTIFICAT MEDICAL', centerX, y(55), { align: 'center' });
-    drawDynamicField('Nom:', nom, MARGIN, y(70), 70);
-    drawDynamicField('Prénom:', prenom, MARGIN + 90, y(70), 70);
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Je soussigné certifie que le(la) susnommé(e) est :', MARGIN, y(82));
-    doc.setFontSize(18);
-    doc.setFont('helvetica', 'bold');
-    if (status === 'apte') {
-      doc.text('APTE', centerX, y(95), { align: 'center' });
-    } else if (status === 'inapte') {
-      doc.text('INAPTE', centerX, y(95), { align: 'center' });
-    } else {
-      doc.setFontSize(14);
-      doc.text("EN COURS D'ÉVALUATION", centerX, y(95), { align: 'center' });
-    }
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    const wpName = (worker.workplaceName || '').trim();
-    const wpLower = wpName.toLowerCase();
-    let customText = workplaceMap ? workplaceMap.get(wpLower) : null;
-    let textLieu;
-    if (customText) {
-      textLieu = customText;
-    } else {
-      if (wpLower.includes('cuisine')) textLieu = 'A travailler dans la CUISINE';
-      else if (wpLower.includes('foyer')) textLieu = 'A travailler dans le FOYER';
-      else if (wpLower.includes('coiffure')) textLieu = 'A travailler dans le SALON DE COIFFURE';
-      else textLieu = 'A travailler dans : ' + (wpName || '________________');
-    }
-    doc.text(textLieu, centerX, y(110), { align: 'center' });
-    const ySignature = y(125);
-    if (worker.next_exam_due) {
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      const nextDate = logic.formatDateDisplay(worker.next_exam_due);
-      doc.text(`Prochaine visite avant le : ${nextDate}`, MARGIN, ySignature);
-    }
-    doc.setFontSize(11);
-    doc.text('Le Médecin', 160, ySignature);
-  }
+    // Convocations Lists
+    Object.keys(groups).forEach(dept => {
+      html += `<div class="list-page">
+         ${getHeader()}
+         <div style="text-align: center; font-weight: bold; font-size: 14pt; margin: 20px 0">${title}</div>
 
-  if (worker.next_exam_due && logic.isOverdue(worker.next_exam_due)) {
-    try {
-      doc.saveGraphicsState();
-      doc.setTextColor(255, 0, 0);
-      doc.setFontSize(30);
-      doc.setFont('helvetica', 'bold');
-      if (doc.GState) {
-        doc.setGState(new doc.GState({ opacity: 0.3 }));
-      }
-      const centerY = offset + 74;
-      doc.text('[ EN RETARD ]', 105, centerY, { align: 'center', angle: 35 });
-      doc.restoreGraphicsState();
-    } catch (e) {
-      doc.setTextColor(255, 0, 0);
-      doc.text('[ EN RETARD ]', 105, offset + 80, { align: 'center' });
-      doc.setTextColor(0);
-    }
-  }
-}
+         <div style="margin-bottom: 10px; font-weight: bold">SERVICE : ${dept}</div>
+         <div style="margin-bottom: 20px">DATE PRÉVUE : ${logic.formatDateDisplay(opts.consultDate)} à ${opts.consultTime || '08:30'}</div>
 
-function drawHeader(doc) {
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('SERVICE DE MÉDECINE DU TRAVAIL', MARGIN, 20);
-  doc.setLineWidth(0.5);
-  doc.line(MARGIN, 25, 190, 25);
-}
-
-function drawFooter(doc) {
-  const pageHeight = doc.internal.pageSize.height;
-  doc.setFontSize(8);
-  doc.setTextColor(150);
-  doc.text('Généré par Copro Watch', 105, pageHeight - 10, { align: 'center' });
-  doc.setTextColor(0);
-}
-
-// ==========================================
-// 5. CERTIFICAT APTITUDE PORT D'ARME (PORTRAIT)
-// ==========================================
-function drawWeaponAptitude(doc, agent, options) {
-  const centerX = 105;
-  const y = (val) => val;
-
-  // HEADER OFFICIEL
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, y(15), { align: 'center' });
-  doc.setFontSize(9);
-  doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', centerX, y(23), { align: 'center' });
-  doc.text("SURETE DE WILAYA D'IN-SALAH", centerX, y(28), { align: 'center' });
-  doc.text('SERVICE DE WILAYA DE SANTE', centerX, y(28), { align: 'center' });
-  doc.text("COMMISSION MEDICALE D'APTITUDE AU PORT D'ARME", centerX, y(38), { align: 'center' });
-
-  doc.setFont('helvetica', 'normal');
-  doc.text(`LE : ${logic.formatDateDisplay(options.date || new Date())}`, 160, y(45));
-
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text("CERTIFICAT D'APTITUDE", centerX, y(60), { align: 'center' });
-
-  const drawField = (label, value, posY) => {
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(label, MARGIN, posY);
-    const startDots = MARGIN + doc.getTextWidth(label) + 2;
-    const endDots = 180;
-    let dots = '';
-    while (doc.getTextWidth(dots) < endDots - startDots) dots += '.';
-    doc.text(dots, startDots, posY);
-    doc.setFont('helvetica', 'bold');
-    doc.text(String(value), startDots + 5, posY - 1);
-  };
-
-  drawField('Nom et Prénom :', agent.full_name, y(80));
-  drawField('Matricule :', agent.national_id, y(90));
-  drawField('Service :', agent.deptName || '-', y(100));
-  drawField('Poste / Grade :', agent.job_function || '-', y(110));
-
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  doc.text(
-    "La Commission Médicale, après examen clinique et psychologique, déclare l'intéressé(e) :",
-    MARGIN,
-    y(130)
-  );
-
-  doc.setFontSize(22);
-  doc.setFont('helvetica', 'bold');
-  const decision = agent.status === 'apte' ? 'APTE' : 'INAPTE';
-  doc.text(decision, centerX, y(150), { align: 'center' });
-
-  if (agent.status === 'apte') {
-    doc.setFontSize(12);
-    doc.setFont('helvetica', 'normal');
-    doc.text("Pour le port et la détention d'arme de service.", centerX, y(165), {
-      align: 'center',
+         <table>
+           <thead>
+             <tr>
+               <th width="15%">Matricule</th>
+               <th width="35%">Nom & Prénom</th>
+               <th width="25%">Poste / Grade</th>
+               <th width="25%">Observation / Émargement</th>
+             </tr>
+           </thead>
+           <tbody>
+             ${groups[dept].map(w => `
+               <tr style="height: 10mm">
+                 <td>${w.national_id || ''}</td>
+                 <td>${w.full_name}</td>
+                 <td>${w.job_function || w.job_role || ''}</td>
+                 <td></td>
+               </tr>
+             `).join('')}
+           </tbody>
+         </table>
+         <div class="signature">Le Médecin</div>
+      </div>`;
     });
   }
+  return html;
+};
 
-  const ySig = y(200);
-  if (agent.next_review_date) {
-    doc.setFontSize(11);
-    doc.text(
-      `Prochaine révision : ${logic.formatDateDisplay(agent.next_review_date)}`,
-      MARGIN,
-      ySig
-    );
-  }
-
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Le Médecin Chef', 150, ySig);
-}
-
-// ==========================================
-// 6. LISTE DE CONVOCATION ARME (PORTRAIT - GROUPÉE)
-// ==========================================
-function generateWeaponConvocationList(doc, agents, options) {
-  const groups = {};
-  agents.forEach((a) => {
-    const dName = a.deptName || 'Service Inconnu';
-    if (!groups[dName]) groups[dName] = [];
-    groups[dName].push(a);
-  });
-
-  Object.keys(groups).forEach((dept, i) => {
-    if (i > 0) doc.addPage();
-    const centerX = 105;
-    const leftMargin = MARGIN;
-
-    // HEADER
-    doc.setTextColor(0);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 15, { align: 'center' });
-    doc.setFontSize(8);
-    doc.text("MINISTERE DE L'INTERIEUR ET DE TRANSPORT", leftMargin, 22);
-    doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', leftMargin, 26);
-    doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, 30);
-    doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 34);
-
-    doc.setFontSize(14);
-    doc.text("CONVOCATION VISITE MÉDICALE (PORT D'ARME)", centerX, 50, { align: 'center' });
-
-    doc.setFontSize(11);
-    doc.setFont('helvetica', 'normal');
-    doc.text(`SERVICE : ${dept.toUpperCase()}`, leftMargin, 65);
-    const rdv = `${logic.formatDateDisplay(options.consultDate)} à ${
-      options.consultTime || '08:30'
-    }`;
-    doc.text(`DATE PRÉVUE : ${rdv}`, leftMargin, 72);
-    doc.text(`Le : ${logic.formatDateDisplay(options.date)}`, 190, 65, { align: 'right' });
-
-    // TABLE
-    let y = 80;
-    doc.setFillColor(230, 230, 230);
-    doc.rect(leftMargin, y - 6, 170, 8, 'F');
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'bold');
-    doc.text('Matricule', leftMargin + 2, y);
-    doc.text('Nom et Prénom', leftMargin + 30, y);
-    doc.text('Grade / Poste', leftMargin + 90, y);
-    doc.text('Émargement', leftMargin + 140, y);
-
-    y += 10;
-    doc.setFont('helvetica', 'normal');
-    groups[dept].forEach((a) => {
-      if (y > 270) {
-        doc.addPage();
-        y = 20;
-      }
-      doc.text(String(a.national_id || '-'), leftMargin + 2, y);
-      doc.text(a.full_name, leftMargin + 30, y);
-      doc.text(a.job_function || '-', leftMargin + 90, y);
-      doc.line(leftMargin, y + 2, 190, y + 2);
-      y += 12;
-    });
-
-    doc.setFont('helvetica', 'bold');
-    doc.text('Le Médecin Chef', 160, 270);
-  });
-}
-
-// ==========================================
-// 7. CONVOCATION ARME INDIVIDUELLE (PORTRAIT)
-// ==========================================
-function drawWeaponConvocationIndividual(doc, agent, options) {
-  const centerX = 105;
-  const leftMargin = MARGIN;
-
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 15, { align: 'center' });
-  doc.setFontSize(8);
-  doc.text("MINISTERE DE L'INTERIEUR", leftMargin, 22);
-  doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', leftMargin, 26);
-  doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 30);
-
-  doc.setFontSize(16);
-  doc.text('CONVOCATION MÉDICALE', centerX, 60, { align: 'center' });
-  doc.text("(APTITUDE AU PORT D'ARME)", centerX, 68, { align: 'center' });
-
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'normal');
-  const yStart = 90;
-  doc.text(`M. ${agent.full_name}`, leftMargin, yStart);
-  doc.text(`Matricule : ${agent.national_id}`, leftMargin, yStart + 10);
-  doc.text(`Service : ${agent.deptName || '-'}`, leftMargin, yStart + 20);
-
-  const rdv = `${logic.formatDateDisplay(options.consultDate)} à ${options.consultTime || '08:30'}`;
-  doc.setFont('helvetica', 'bold');
-  doc.text(
-    `Est convoqué(e) pour sa visite d'aptitude au port d'arme le :`,
-    leftMargin,
-    yStart + 40
-  );
-  doc.setFontSize(14);
-  doc.text(rdv, centerX, yStart + 55, { align: 'center' });
-
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
-  doc.text("La présence est obligatoire muni de sa pièce d'identité.", leftMargin, yStart + 80);
-
-  doc.setFont('helvetica', 'bold');
-  doc.text('Le Médecin Chef', 150, 250);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(9);
-  doc.text(`Fait le : ${logic.formatDateDisplay(options.date)}`, leftMargin, 250);
-}
-
-// ==========================================
-// 8. REGISTRE DE SUIVI (PORT D'ARME) - PORTRAIT - LISTE UNIQUE
-// ==========================================
-function generateWeaponRegistrePortrait(doc, agents, options) {
-  // Portrait mode - Single unified list
-  const centerX = 105;
-  const leftMargin = 10;
-  const pageWidth = 190; // Usable width in portrait (210 - 20)
-
-  // HEADER - Only show once at the beginning
-  doc.setTextColor(0);
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'bold');
-
-  doc.text('REPUBLIQUE ALGERIENNE DEMOCRATIQUE ET POPULAIRE', centerX, 12, { align: 'center' });
-  doc.setFontSize(9);
-  doc.text("MINISTERE DE L'INTERIEUR ET DES COLLECTIVITES TERRITORIALES", leftMargin, 20);
-  doc.text('DIRECTION GENERALE DE LA SURETE NATIONALE', leftMargin, 26);
-  doc.text("SURETE DE WILAYA D'IN-SALAH", leftMargin, 32);
-  doc.text('SERVICE DE WILAYA DE SANTE', leftMargin, 38);
-  doc.text("COMMISSION MEDICALE D'APTITUDE AU PORT D'ARME", leftMargin, 44);
-
-  // TITLE
-  doc.setFontSize(14);
-  doc.text('REGISTRE DE SUIVI MEDICAL', centerX, 56, { align: 'center' });
-  doc.setFontSize(11);
-  doc.text(`Total des agents : ${agents.length}`, leftMargin, 66);
-  doc.text(`Date d'établissement : ${logic.formatDateDisplay(options.date)}`, 200, 66, {
-    align: 'right',
-  });
-
-  // TABLE HEADER - Optimized columns for portrait
-  let y = 76;
-  doc.setFillColor(50, 50, 50);
-  doc.rect(leftMargin, y - 5, 190, 8, 'F');
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(8);
-  doc.setFont('helvetica', 'bold');
-
-  doc.text('N°', leftMargin + 2, y);
-  doc.text('Matricule', leftMargin + 12, y);
-  doc.text('Nom et Prénom', leftMargin + 42, y);
-  doc.text('Service', leftMargin + 90, y);
-  doc.text('Date', leftMargin + 125, y);
-  doc.text('Décision', leftMargin + 150, y);
-  doc.text('Prochaine', leftMargin + 172, y);
-
-  // TABLE BODY - Single continuous list
-  y += 10;
-  doc.setTextColor(0, 0, 0);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-
-  let rowNum = 1;
-  agents.forEach((a) => {
-    if (y > 275) {
-      doc.addPage();
-      y = 20;
-      // Re-add header on new page
-      doc.setFillColor(50, 50, 50);
-      doc.rect(leftMargin, y - 5, 190, 8, 'F');
-      doc.setTextColor(255, 255, 255);
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'bold');
-      doc.text('N°', leftMargin + 2, y);
-      doc.text('Matricule', leftMargin + 12, y);
-      doc.text('Nom et Prénom', leftMargin + 42, y);
-      doc.text('Service', leftMargin + 90, y);
-      doc.text('Date', leftMargin + 125, y);
-      doc.text('Décision', leftMargin + 150, y);
-      doc.text('Prochaine', leftMargin + 172, y);
-      y += 10;
-      doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
-      doc.setFontSize(8);
-    }
-
-    // Alternate row colors
-    if (rowNum % 2 === 0) {
-      doc.setFillColor(245, 245, 245);
-      doc.rect(leftMargin, y - 4, 190, 8, 'F');
-    }
-
-    // Get latest exam date and decision
-    const lastExamDate = a.last_exam_date || a.exam_date || '-';
-    const decision =
-      a.status === 'apte'
-        ? 'APTE'
-        : a.status === 'inapte_definitif'
-        ? 'INAPTE DÉF.'
-        : a.status === 'inapte_temporaire'
-        ? 'INAPTE TEMP.'
-        : '-';
-    const nextDate = a.next_review_date || '-';
-
-    doc.text(String(rowNum), leftMargin + 2, y);
-    doc.text(String(a.national_id || '-'), leftMargin + 12, y);
-    doc.text(a.full_name || '-', leftMargin + 42, y);
-    doc.text(a.deptName || '-', leftMargin + 90, y);
-    doc.text(
-      lastExamDate !== '-' ? logic.formatDateDisplay(lastExamDate) : '-',
-      leftMargin + 125,
-      y
-    );
-
-    // Decision with color
-    if (decision === 'APTE') {
-      doc.setTextColor(0, 120, 0);
-    } else if (decision.includes('INAPTE')) {
-      doc.setTextColor(200, 0, 0);
-    }
-    doc.text(decision, leftMargin + 150, y);
-    doc.setTextColor(0, 0, 0);
-
-    doc.text(nextDate !== '-' ? logic.formatDateDisplay(nextDate) : '-', leftMargin + 172, y);
-    doc.line(leftMargin + 185, y - 2, leftMargin + 200, y - 2); // Signature line
-
-    y += 8;
-    rowNum++;
-  });
-
-  // FOOTER
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Le Médecin Chef', 160, 285);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(100);
-  doc.text('Document généré par Copro Watch', centerX, 293, { align: 'center' });
-  doc.setTextColor(0);
-}

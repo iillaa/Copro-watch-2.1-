@@ -2,14 +2,104 @@ import { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import {
   FaSave,
-  FaCheckCircle,
-  FaExclamationTriangle,
   FaNotesMedical,
-  FaVial,
   FaCalendarAlt,
   FaClipboardList,
   FaTrash,
 } from 'react-icons/fa';
+
+// [NEW] SVG Visual Component
+const WaterQualityVisualizer = ({ status, size = 50 }) => {
+  // status: 'potable', 'non_potable', 'pending', 'none'
+  const config = {
+    potable: { color: '#16a34a', fill: 0.85, bub: true },
+    non_potable: { color: '#dc2626', fill: 0.4, bub: false },
+    pending: { color: '#ca8a04', fill: 0.6, bub: true },
+    new_test: { color: '#0ea5e9', fill: 0.2, bub: false },
+    none: { color: '#94a3b8', fill: 0.1, bub: false },
+  };
+
+  const { color, fill, bub } = config[status] || config.none;
+  const fillHeight = 90 * fill;
+  const yPos = 95 - fillHeight;
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 60 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ filter: 'drop-shadow(0px 2px 2px rgba(0,0,0,0.1))' }}
+    >
+      {/* Test Tube Body */}
+      <path
+        d="M10 5 V85 Q10 95 30 95 Q50 95 50 85 V5"
+        stroke="#1e293b"
+        strokeWidth="4"
+        fill="white"
+        fillOpacity="0.9"
+      />
+
+      {/* Liquid Level */}
+      <path d={`M12 ${yPos} V85 Q12 93 30 93 Q48 93 48 85 V${yPos} Z`} fill={color} opacity="0.9" />
+
+      {/* Surface Line */}
+      <path d={`M12 ${yPos} H48`} stroke={color} strokeWidth="2" opacity="0.5" />
+
+      {/* Dynamic Bubbles */}
+      {bub && (
+        <>
+          <circle cx="20" cy={yPos + 15} r="2" fill="white" opacity="0.6">
+            <animate
+              attributeName="cy"
+              from={yPos + 15}
+              to={yPos - 5}
+              dur="1.5s"
+              repeatCount="indefinite"
+            />
+            <animate attributeName="opacity" values="0.6;0" dur="1.5s" repeatCount="indefinite" />
+          </circle>
+          <circle cx="40" cy={yPos + 25} r="3" fill="white" opacity="0.6">
+            <animate
+              attributeName="cy"
+              from={yPos + 25}
+              to={yPos}
+              dur="2s"
+              repeatCount="indefinite"
+            />
+            <animate attributeName="opacity" values="0.6;0" dur="2s" repeatCount="indefinite" />
+          </circle>
+        </>
+      )}
+
+      {/* Status Indicators */}
+      {status === 'non_potable' && (
+        <text
+          x="30"
+          y="70"
+          textAnchor="middle"
+          fill="white"
+          fontSize="35"
+          fontWeight="bold"
+          style={{ textShadow: '0px 2px 2px rgba(0,0,0,0.5)' }}
+        >
+          !
+        </text>
+      )}
+      {status === 'potable' && (
+        <path
+          d="M20 60 L28 68 L40 52"
+          stroke="white"
+          strokeWidth="4"
+          strokeLinecap="round"
+          fill="none"
+          style={{ filter: 'drop-shadow(0px 1px 1px rgba(0,0,0,0.5))' }}
+        />
+      )}
+    </svg>
+  );
+};
 
 // [FIX] Default empty array for analyses to prevent "undefined" crash
 export default function WaterAnalysisPanel({
@@ -128,20 +218,20 @@ export default function WaterAnalysisPanel({
       return {
         bg: 'var(--danger)',
         text: 'CONTRE-VISITE (NOUVELLE)',
-        icon: <FaExclamationTriangle />,
+        visual: 'non_potable', // Visually alarming
       };
 
     if (activeRecord?.result === 'non_potable')
-      return { bg: 'var(--danger)', text: 'EAU NON POTABLE', icon: <FaExclamationTriangle /> };
+      return { bg: 'var(--danger)', text: 'EAU NON POTABLE', visual: 'non_potable' };
     if (activeRecord?.result === 'potable')
-      return { bg: 'var(--success)', text: 'EAU POTABLE', icon: <FaCheckCircle /> };
+      return { bg: 'var(--success)', text: 'EAU POTABLE', visual: 'potable' };
 
     if (isResultSaved)
-      return { bg: 'var(--warning)', text: 'EN ATTENTE VALIDATION', icon: <FaClipboardList /> };
-    if (isSampleSaved) return { bg: 'var(--warning)', text: 'ANALYSE EN COURS', icon: <FaVial /> };
+      return { bg: 'var(--warning)', text: 'EN ATTENTE VALIDATION', visual: 'pending' };
+    if (isSampleSaved) return { bg: 'var(--warning)', text: 'ANALYSE EN COURS', visual: 'pending' };
     if (isRequestSaved)
-      return { bg: 'var(--primary)', text: 'DEMANDE CRÉÉE', icon: <FaCalendarAlt /> };
-    return { bg: '#94a3b8', text: 'AUCUNE ANALYSE', icon: <FaClipboardList /> };
+      return { bg: 'var(--primary)', text: 'DEMANDE CRÉÉE', visual: 'new_test' };
+    return { bg: '#94a3b8', text: 'AUCUNE ANALYSE', visual: 'none' };
   };
   const status = getStatusHeader();
 
@@ -179,7 +269,7 @@ export default function WaterAnalysisPanel({
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <span style={{ fontSize: '1.5rem' }}>{status.icon}</span>
+          <WaterQualityVisualizer status={status.visual} size={60} />
           <div>
             <div
               style={{

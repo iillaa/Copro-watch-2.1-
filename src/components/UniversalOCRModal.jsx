@@ -542,9 +542,6 @@ export default function UniversalOCRModal({
       rect.height * scale
     );
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-
     if (binarize) {
       // [FIX] Hardware Acceleration: Use Canvas filters for binarization
       ctx.filter = 'contrast(200%) grayscale(100%)'; // Apply filter directly to context
@@ -553,8 +550,6 @@ export default function UniversalOCRModal({
     }
     // For Paddle (!binarize), do absolutely nothing. Return the raw, natural image.
     // Removed the manual pixel loop as it's replaced by canvas filter.
-
-    // ctx.putImageData(imageData, 0, 0); // No longer needed after using ctx.drawImage with filter
 
     return canvas.toDataURL('image/png');
   };

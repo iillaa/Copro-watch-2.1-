@@ -18,6 +18,102 @@ import {
 } from 'react-icons/fa';
 import BulkActionsToolbar from './BulkActionsToolbar'; // [NEW] Import Toolbar
 
+// [NEW] SVG Visual Indicator for Copro Validity
+const CoproValidityIndicator = ({ dueDate, size = 60 }) => {
+  if (!dueDate) return null;
+
+  const today = new Date();
+  const due = new Date(dueDate);
+  const diffTime = due - today;
+  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+  let status = 'valid'; // > 20 days
+  // Total cycle is 6 months (approx 180 days)
+  const totalCycle = 180;
+  // Calculate percentage remaining (100% = full 6 months, 0% = due today)
+  let p = Math.max(0, Math.min(100, (diffDays / totalCycle) * 100));
+
+  if (diffDays < 0) {
+    status = 'expired';
+    p = 100; // Full circle but red
+  } else if (diffDays < 20) {
+    status = 'warning';
+  }
+
+  const colors = {
+    valid: '#16a34a',
+    warning: '#eab308',
+    expired: '#dc2626',
+  };
+
+  const color = colors[status];
+
+  // Circle geometry
+  const r = 20;
+  const c = 2 * Math.PI * r;
+  const offset = c - (p / 100) * c;
+
+  return (
+    <div
+      style={{
+        position: 'relative',
+        width: size,
+        height: size,
+        marginRight: '1rem',
+      }}
+      title={`Validité : ${diffDays} jours restants`}
+    >
+      <svg
+        width={size}
+        height={size}
+        viewBox="0 0 50 50"
+        style={{ transform: 'rotate(-90deg)', filter: 'drop-shadow(0 2px 2px rgba(0,0,0,0.1))' }}
+      >
+        {/* Background Track */}
+        <circle cx="25" cy="25" r={r} stroke="#f1f5f9" strokeWidth="5" fill="white" />
+        {/* Progress Arc */}
+        <circle
+          cx="25"
+          cy="25"
+          r={r}
+          stroke={color}
+          strokeWidth="5"
+          fill="none"
+          strokeDasharray={c}
+          strokeDashoffset={status === 'expired' ? 0 : offset}
+          strokeLinecap="round"
+          style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+        />
+        {/* Exclamation mark for expired */}
+        {status === 'expired' && (
+           <text x="25" y="30" textAnchor="middle" transform="rotate(90 25 25)" fill="white" fontSize="20" fontWeight="bold">!</text>
+        )}
+      </svg>
+      {/* Center Text (Days) - Hidden if expired to show exclamation */}
+      {status !== 'expired' && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            flexDirection: 'column',
+          }}
+        >
+          <span style={{ fontSize: '0.8rem', fontWeight: 'bold', color: color, lineHeight: 1 }}>
+            {diffDays}
+          </span>
+          <span style={{ fontSize: '0.5rem', color: '#64748b', fontWeight: 600 }}>Jours</span>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export default function WorkerDetail({ workerId, onBack, compactMode }) {
   const [worker, setWorker] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
@@ -275,49 +371,54 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
 
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
-          <div>
-            <h2 style={{ margin: 0 }}>
-              {worker.full_name}
-              {/* Indicateur visuel si archivé */}
-              {worker.archived && (
-                <span
-                  style={{
-                    fontSize: '0.5em',
-                    marginLeft: '10px',
-                    background: '#eee',
-                    padding: '2px 6px',
-                    borderRadius: '4px',
-                    color: '#666',
-                    verticalAlign: 'middle',
-                  }}
-                >
-                  ARCHIVÉ
-                </span>
-              )}
-            </h2>
-            <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-              <strong>Service:</strong> {deptName} • <strong>Lieu:</strong> {workplaceName} •{' '}
-              <strong>Poste:</strong> {worker.job_role}
-            </p>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-              Matricule: {worker.national_id}
-            </p>
-            <div
-              style={{ marginTop: '0.5rem', display: 'flex', gap: '10px', alignItems: 'center' }}
-            >
-              {/* [FIX] Badge changes color if overdue */}
-              <span
-                className={`badge ${isOverdue && !worker.archived ? 'badge-red' : 'badge-yellow'}`}
-              >
-                Prochain Examen: {logic.formatDateDisplay(worker.next_exam_due)}
-              </span>
+          <div style={{ display: 'flex', alignItems: 'center' }}>
+            {/* [NEW] Visual Indicator */}
+            <CoproValidityIndicator dueDate={worker.next_exam_due} size={70} />
 
-              {/* [FIX] Explicit Text Warning */}
-              {isOverdue && !worker.archived && (
-                <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                  ⚠️ En Retard
+            <div>
+              <h2 style={{ margin: 0 }}>
+                {worker.full_name}
+                {/* Indicateur visuel si archivé */}
+                {worker.archived && (
+                  <span
+                    style={{
+                      fontSize: '0.5em',
+                      marginLeft: '10px',
+                      background: '#eee',
+                      padding: '2px 6px',
+                      borderRadius: '4px',
+                      color: '#666',
+                      verticalAlign: 'middle',
+                    }}
+                  >
+                    ARCHIVÉ
+                  </span>
+                )}
+              </h2>
+              <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+                <strong>Service:</strong> {deptName} • <strong>Lieu:</strong> {workplaceName} •{' '}
+                <strong>Poste:</strong> {worker.job_role}
+              </p>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+                Matricule: {worker.national_id}
+              </p>
+              <div
+                style={{ marginTop: '0.5rem', display: 'flex', gap: '10px', alignItems: 'center' }}
+              >
+                {/* [FIX] Badge changes color if overdue */}
+                <span
+                  className={`badge ${isOverdue && !worker.archived ? 'badge-red' : 'badge-yellow'}`}
+                >
+                  Prochain Examen: {logic.formatDateDisplay(worker.next_exam_due)}
                 </span>
-              )}
+
+                {/* [FIX] Explicit Text Warning */}
+                {isOverdue && !worker.archived && (
+                  <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                    ⚠️ En Retard
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 

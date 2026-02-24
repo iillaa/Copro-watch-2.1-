@@ -2,9 +2,6 @@ import { useState, useEffect, useMemo } from 'react';
 import { db } from '../../services/db';
 import { logic } from '../../services/logic';
 import {
-  FaUserShield,
-  FaExclamationTriangle,
-  FaCalendarCheck,
   FaEye,
   FaHistory,
   FaCog,
@@ -19,6 +16,58 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
   const [holders, setHolders] = useState([]);
   const [exams, setExams] = useState([]);
   const [alert, setAlert] = useState(null);
+
+// [NEW] SVG Visual Indicator
+const WeaponAptitudeIndicator = ({ status, size = 60 }) => {
+  const colors = {
+    apte: '#166534', // Green
+    inapte: '#dc2626', // Red
+    revoir: '#d97706', // Orange
+  };
+  const color = colors[status] || '#cbd5e1';
+
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 100 100"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+      style={{ filter: 'drop-shadow(0px 2px 4px rgba(0,0,0,0.1))' }}
+    >
+      {/* Target Outer Ring */}
+      <circle cx="50" cy="50" r="45" stroke={color} strokeWidth="8" fill="white" fillOpacity="0.1" />
+
+      {/* Target Middle Ring */}
+      <circle cx="50" cy="50" r="30" stroke={color} strokeWidth="5" strokeDasharray="4 2" opacity="0.6" />
+
+      {/* Center Icon Logic */}
+      {status === 'apte' && (
+        <path
+          d="M32 52 L45 65 L68 35"
+          stroke={color}
+          strokeWidth="8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+      {status === 'inapte' && (
+        <path
+          d="M35 35 L65 65 M65 35 L35 65"
+          stroke={color}
+          strokeWidth="8"
+          strokeLinecap="round"
+        />
+      )}
+      {status === 'revoir' && (
+        <>
+          <circle cx="50" cy="50" r="6" fill={color} />
+          <path d="M50 20 V30 M50 70 V80 M20 50 H30 M70 50 H80" stroke={color} strokeWidth="4" />
+        </>
+      )}
+    </svg>
+  );
+};
 
   // [SURGICAL FIX] Robust Alert Logic
   const calculateAlert = (pendingCount, reviewCount, overdueCount, examList) => {
@@ -252,7 +301,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
         >
           {isMobile ? (
             <>
-              <FaUserShield size={20} color="#166534" />
+              <WeaponAptitudeIndicator status="apte" size={30} />
               <div style={{ color: '#166534', fontSize: '1.5rem', fontWeight: 'bold' }}>
                 {stats.active.length}
               </div>
@@ -271,7 +320,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
                 </div>
                 <p style={{ margin: 0, fontWeight: 600, color: '#166534' }}>Agents actifs</p>
               </div>
-              <FaUserShield size={60} color="#166534" style={{ opacity: 0.8 }} />
+              <WeaponAptitudeIndicator status="apte" size={80} />
             </>
           )}
         </div>
@@ -304,7 +353,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
         >
           {isMobile ? (
             <>
-              <FaExclamationTriangle size={20} color="var(--danger)" />
+              <WeaponAptitudeIndicator status="inapte" size={30} />
               <div style={{ color: 'var(--danger)', fontSize: '1.5rem', fontWeight: 'bold' }}>
                 {stats.inapte.length}
               </div>
@@ -332,7 +381,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
                   Armes retirées
                 </p>
               </div>
-              <FaExclamationTriangle size={60} color="var(--danger)" style={{ opacity: 0.8 }} />
+              <WeaponAptitudeIndicator status="inapte" size={80} />
             </>
           )}
         </div>
@@ -365,7 +414,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
         >
           {isMobile ? (
             <>
-              <FaCalendarCheck size={20} color="var(--warning)" />
+              <WeaponAptitudeIndicator status="revoir" size={30} />
               <div style={{ color: 'var(--warning)', fontSize: '1.5rem', fontWeight: 'bold' }}>
                 {stats.dueSoon.length}
               </div>
@@ -393,7 +442,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
                   Sous 20 jours
                 </p>
               </div>
-              <FaCalendarCheck size={60} color="var(--warning)" style={{ opacity: 0.8 }} />
+              <WeaponAptitudeIndicator status="revoir" size={80} />
             </>
           )}
         </div>
