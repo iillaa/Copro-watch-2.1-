@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import useDebounce from '../hooks/useDebounce';
 import { db } from '../services/db';
 import { logic } from '../services/logic';
@@ -92,25 +92,56 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   // UI State
   const [searchTerm, setSearchTerm] = useState('');
 
-  // [NEW] 250ms Debounce Shield (Prevents keystroke lag)
+  // [NEW] 250ms Debounce Shield
   const debouncedSearch = useDebounce(searchTerm, 250);
 
   // [NEW] Progressive Chunking Limit
   const [displayLimit, setDisplayLimit] = useState(30);
 
-  // [NEW] Reset Chunking when any filter changes
   useEffect(() => {
     setDisplayLimit(30);
   }, [debouncedSearch, filterDept, filterStatus, showArchived, sortConfig]);
 
-  // [NEW] Scroll Listener for Infinite Chunking
-  const handleScroll = (e) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.target;
-    // If user scrolls within 300px of the bottom, load 30 more items
-    if (scrollHeight - scrollTop <= clientHeight + 300) {
-      setDisplayLimit((prev) => prev + 30);
+  // [CRITICAL FIX] Bulletproof Intersection Observer (Replaces broken onScroll)
+  const observer = useRef();
+  const lastElementRef = useCallback(
+    (node) => {
+      if (isLoading) return;
+      if (observer.current) observer.current.disconnect();
+
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && displayLimit < memoizedWorkers.length) {
+          setDisplayLimit((prev) => prev + 30);
+        }
+      });
+
+      if (node) observer.current.observe(node);
+    },
+    [isLoading, displayLimit, memoizedWorkers.length]
+  );
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [w, d, wp] = await Promise.all([
+        db.getWorkers(), // <-- Reverted to pull all data once (Enables deep search)
+        db.getDepartments(),
+        db.getWorkplaces(),
+      ]);
+      setWorkers(w);
+      setDepartments(d);
+      setWorkplaces(wp);
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  // Run strictly once on mount (No DB spam on every keystroke)
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const [filterDept, setFilterDept] = useState(
     () => localStorage.getItem('worker_filter_dept') || ''
@@ -142,31 +173,6 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   // ==================================================================================
   // 2. DATA LOADING & EFFECTS
   // ==================================================================================
-  const loadData = async () => {
-    try {
-      setIsLoading(true); // [START] Show spinner
-
-      // [NEW] Use IndexedDB Native Search, plus Departments and Workplaces
-      const [w, d, wp] = await Promise.all([
-        db.searchWorkers(debouncedSearch),
-        db.getDepartments(),
-        db.getWorkplaces(),
-      ]);
-
-      setWorkers(w);
-      setDepartments(d);
-      setWorkplaces(wp);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-    } finally {
-      setIsLoading(false); // [STOP] Hide spinner (Show content or Empty State)
-    }
-  };
-
-  // [NEW] Re-fetch from DB only when the debounced term changes
-  useEffect(() => {
-    loadData();
-  }, [debouncedSearch]);
 
   useEffect(() => {
     localStorage.setItem('worker_filter_dept', filterDept);
@@ -178,61 +184,47 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   const filteredWorkers = useMemo(() => {
     let result = workers;
 
-    // A. Filter Archive
-    if (!showArchived) {
-      result = result.filter((w) => !w.archived);
-    }
-
-    // B. Filter Department
-    if (filterDept) {
-      result = result.filter((w) => w.department_id === Number(filterDept));
-    }
-    // B2. Filter Status (The New Feature)
+    if (!showArchived) result = result.filter((w) => !w.archived);
+    if (filterDept) result = result.filter((w) => w.department_id === Number(filterDept));
+    
+    // Status filters...
     if (filterStatus) {
-      const today = new Date();
-
       if (filterStatus === 'late') {
-        // En Retard Only
         result = result.filter((w) => !w.archived && logic.isOverdue(w.next_exam_due));
       } else if (filterStatus === 'due_soon') {
-        // À Prévoir (15 jours)
-        result = result.filter(
-          (w) =>
-            !w.archived && logic.isDueSoon(w.next_exam_due) && !logic.isOverdue(w.next_exam_due)
-        );
+        result = result.filter((w) => !w.archived && logic.isDueSoon(w.next_exam_due) && !logic.isOverdue(w.next_exam_due));
       } else if (filterStatus === 'inapte') {
-        // Inapte Temporaire (Malades)
         result = result.filter((w) => w.latest_status === 'inapte');
       } else if (filterStatus === 'apte_partielle') {
-        // Apte Sous Réserve
         result = result.filter((w) => w.latest_status === 'apte_partielle');
       } else if (filterStatus === 'apte') {
-        // [MODIFICATION] : On garde les aptes MAIS on exclut ceux en retard
-        result = result.filter(
-          (w) => w.latest_status === 'apte' && !logic.isOverdue(w.next_exam_due)
-        );
+        result = result.filter((w) => w.latest_status === 'apte' && !logic.isOverdue(w.next_exam_due));
       }
     }
 
+    // [RESTORED] Deep Substring Search (Lightning fast now due to debounce)
+    if (debouncedSearch) {
+      const lower = debouncedSearch.toLowerCase();
+      result = result.filter((w) => {
+        const nameMatch = w.full_name && w.full_name.toLowerCase().includes(lower);
+        const idMatch = w.national_id && String(w.national_id).toLowerCase().includes(lower);
+        return nameMatch || idMatch;
+      });
+    }
 
-    // D. Sorting Logic
+    // Sort logic...
     if (sortConfig.key) {
       result = [...result].sort((a, b) => {
         let aVal = a[sortConfig.key];
         let bVal = b[sortConfig.key];
-
-        // Sort by Department Name
         if (sortConfig.key === 'department_id') {
           const getDeptName = (id) => departments.find((x) => x.id == id)?.name || '';
           aVal = getDeptName(a.department_id);
           bVal = getDeptName(b.department_id);
-        }
-        // Case insensitive string sort
-        else if (typeof aVal === 'string') {
+        } else if (typeof aVal === 'string') {
           aVal = aVal.toLowerCase();
           bVal = bVal ? bVal.toLowerCase() : '';
         }
-
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
@@ -240,7 +232,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     }
 
     return result;
-  }, [workers, filterDept, showArchived, sortConfig, departments, filterStatus]);
+  }, [workers, filterDept, showArchived, sortConfig, departments, filterStatus, debouncedSearch]);
 
   // [SURGICAL ADDITION] Fix #4: Memoized List for Performance
   // This prevents recalculating "isOverdue" and "Department Name" on every render.
@@ -863,7 +855,6 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
             className="scroll-wrapper"
             // [SURGICAL FIX] When compactMode is OFF, remove limit ('none') to disable internal scroll
             style={{ maxHeight: compactMode ? '75vh' : 'none', paddingBottom: '120px' }}
-            onScroll={handleScroll}
           >
             <div className="hybrid-container">
               {/* 1. STICKY HEADER ROW */}
@@ -903,12 +894,14 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                 <div style={{ textAlign: 'right', paddingRight: '0.5rem' }}>Actions</div>
               </div>
 
-              {/* 2. OPTIMIZED DATA ROWS (Uses memoizedWorkers now with progressive chunking!) */}
-              {memoizedWorkers.slice(0, displayLimit).map((w) => {
+              {/* 2. OPTIMIZED DATA ROWS (Intersection Observer Chunking) */}
+              {memoizedWorkers.slice(0, displayLimit).map((w, index) => {
                 const isSelected = selectedIds.has(w.id);
+                const isLast = index === displayLimit - 1;
 
                 return (
                   <div
+                    ref={isLast ? lastElementRef : null}
                     key={w.id}
                     onClick={() =>
                       isSelectionMode ? toggleSelectOne(w.id) : onNavigateWorker(w.id)
