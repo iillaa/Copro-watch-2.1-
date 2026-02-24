@@ -4,6 +4,7 @@ import { logic } from '../../services/logic';
 import {
   FaEye,
   FaHistory,
+  FaCalendarCheck,
   FaCog,
   FaPlus,
   FaTrash,

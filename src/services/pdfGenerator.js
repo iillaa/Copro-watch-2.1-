@@ -170,10 +170,16 @@ const printHTML = (content, orientation) => {
   doc.close();
 
   setTimeout(() => {
-    iframe.contentWindow.focus();
-    iframe.contentWindow.print();
-    setTimeout(() => document.body.removeChild(iframe), 2000);
-  }, 500);
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch (e) {
+      console.error('Print failed', e);
+      alert('Erreur impression: ' + e.message);
+    }
+    // [FIX] Increased cleanup timeout for mobile
+    setTimeout(() => document.body.removeChild(iframe), 5000);
+  }, 1000);
 };
 
 // --- GENERATORS ---
