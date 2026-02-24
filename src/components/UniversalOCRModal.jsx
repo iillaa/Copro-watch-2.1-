@@ -244,7 +244,7 @@ export default function UniversalOCRModal({
   }, []);
 
     // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
-    const getAssetUrl = (path, isDirectory = false) => {
+  const getAssetUrl = (path, isDirectory = false) => {
       const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
                           window.location.origin.includes('localhost');
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
@@ -253,18 +253,59 @@ export default function UniversalOCRModal({
       let cleanPath = path.replace(/^\/+|\/+$/g, '');
       
       // [FIX] Directories need a trailing slash
-      if (isDirectory) cleanPath += '/';
-  
+      if (isDirectory && cleanPath) cleanPath += '/';
+
       if (isCapacitor) {
-        // [FIX] Use window.location.origin to match protocol (http or https)
-        // This prevents Mixed Content errors and works for Workers
-        return window.location.origin + '/' + cleanPath;
+        // [FIX] Use origin-based URLs and avoid accidental double slashes.
+        return cleanPath ? `${window.location.origin}/${cleanPath}` : `${window.location.origin}/`;
       } else if (isFileProtocol) {
-        return './' + cleanPath;
+        return cleanPath ? `./${cleanPath}` : './';
       } else {
-        return '/' + cleanPath;
+        return cleanPath ? `/${cleanPath}` : '/';
       }
     };
+
+  const resolveTesseractAssetConfig = async (langs) => {
+    const tessRoot = getAssetUrl('/tesseract', true);
+    const workerPath = `${tessRoot}worker.min.js`;
+    const corePath = `${tessRoot}tesseract-core.wasm.js`;
+
+    const checkExists = async (url) => {
+      const res = await fetch(url);
+      return res.ok;
+    };
+
+    const requiredEngineFiles = [workerPath, corePath];
+    for (const fileUrl of requiredEngineFiles) {
+      if (!(await checkExists(fileUrl))) {
+        throw new Error(`Missing local Tesseract file: ${fileUrl}`);
+      }
+    }
+
+    const requiredLangs = langs.split('+').filter(Boolean);
+    const hasRawTrainedData = await Promise.all(
+      requiredLangs.map((lang) => checkExists(`${tessRoot}${lang}.traineddata`)),
+    );
+
+    const useRawTrainedData = hasRawTrainedData.every(Boolean);
+    if (!useRawTrainedData) {
+      const hasGzTrainedData = await Promise.all(
+        requiredLangs.map((lang) => checkExists(`${tessRoot}${lang}.traineddata.gz`)),
+      );
+      if (!hasGzTrainedData.every(Boolean)) {
+        throw new Error(
+          `Missing local language data for ${requiredLangs.join(', ')} in ${tessRoot}`,
+        );
+      }
+    }
+
+    return {
+      workerPath,
+      corePath,
+      langPath: tessRoot,
+      gzip: !useRawTrainedData,
+    };
+  };
     
     // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
   useEffect(() => {
@@ -274,6 +315,9 @@ export default function UniversalOCRModal({
     // 1. Thread & Worker Rules
     ort.env.wasm.proxy = false; 
     ort.env.wasm.numThreads = 1;
+    // [COMPAT] Disable SIMD to support older desktop CPUs/browsers in standalone mode
+    // (prevents: "WebAssembly SIMD is not supported in the current environment")
+    ort.env.wasm.simd = false;
     
     // 2. Suppress ONNX Runtime CPU vendor warning (harmless but noisy)
     ort.env.wasm.logging = { warning: () => {} };
@@ -281,20 +325,32 @@ export default function UniversalOCRModal({
     // 2. Path Rules
     if (isProd) {
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
-      const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
-                          (window.location.origin.includes('localhost') && !window.location.port); 
+      const assetsBase = getAssetUrl('/assets', true);
+      const rootBase = getAssetUrl('/', true);
 
-      if (isCapacitor) {
-        // For Capacitor, use the path provided by getAssetUrl which includes origin
-        ort.env.wasm.wasmPaths = getAssetUrl('/assets', true);
-      } else if (isFileProtocol) {
+      // [ROBUST] Explicit mapping prevents bad URL resolution (ex: https://localhost//...)
+      // and lets ORT load JS loader chunks from /assets while keeping wasm fallbacks at root.
+      ort.env.wasm.wasmPaths = {
+        'ort-wasm-simd-threaded.mjs': `${assetsBase}ort-wasm-simd-threaded.mjs`,
+        'ort-wasm-simd-threaded.jsep.mjs': `${assetsBase}ort-wasm-simd-threaded.jsep.mjs`,
+        'ort-wasm-simd-threaded.asyncify.mjs': `${assetsBase}ort-wasm-simd-threaded.asyncify.mjs`,
+        'ort-wasm-simd-threaded.jspi.mjs': `${assetsBase}ort-wasm-simd-threaded.jspi.mjs`,
+        'ort-wasm-simd-threaded.wasm': `${assetsBase}ort-wasm-simd-threaded.wasm`,
+        'ort-wasm-simd-threaded.jsep.wasm': `${assetsBase}ort-wasm-simd-threaded.jsep.wasm`,
+        'ort-wasm-simd-threaded.asyncify.wasm': `${assetsBase}ort-wasm-simd-threaded.asyncify.wasm`,
+        'ort-wasm-simd-threaded.jspi.wasm': `${assetsBase}ort-wasm-simd-threaded.jspi.wasm`,
+        // non-SIMD fallback binaries kept at root
+        'ort-wasm.wasm': `${rootBase}ort-wasm.wasm`,
+        'ort-wasm-simd.wasm': `${rootBase}ort-wasm-simd.wasm`,
+      };
+
+      if (isFileProtocol) {
         // For standalone HTML opened directly (file://)
+        // Keep deterministic local relative loading.
         ort.env.wasm.wasmPaths = './';
-      } else {
-        // For standard web server (like miniserve or dev server)
-        // Assets are in the /assets subdirectory relative to the server root
-        ort.env.wasm.wasmPaths = '/assets/';
       }
+
+      console.log('[ORT] wasmPaths configured:', ort.env.wasm.wasmPaths);
     } else {
       // npm run dev
       ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
@@ -595,104 +651,45 @@ export default function UniversalOCRModal({
       // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
       for (let i = 0; i < numWorkers; i++) {
         try {
-          const origin = window.location.origin;
-          
-          if (isMounted.current) addLog(`[TESSERACT] Fetching local engine components...`);
+          if (isMounted.current) addLog('[TESSERACT] Resolving local engine assets...');
 
-          // [DIAGNOSTIC] Pre-flight fetch with better path resolution for Capacitor
-          // Use explicit path approach per chat recommendations
-          const isCapacitorNative = window.Capacitor && window.Capacitor.isNative;
-          const isLocalhost = window.location.origin.includes('localhost');
-          
-          // For Capacitor Android, assets are served from http://localhost or similar
-          // We need to use absolute paths that WebView can resolve
-          const getTessPath = (name) => {
-            // Remove any trailing slash from origin and append tesseract path
-            const base = window.location.origin.replace(/\/$/, '');
-            return `${base}/tesseract/${name}`;
-          };
-          
-          // Try multiple core options for compatibility
-          const coreOptions = ['tesseract-core-simd.wasm.js', 'tesseract-core.wasm.js'];
-          
-          const fetchScript = async (name, allowFallback = true) => {
-            // For core, try multiple options
-            if (allowFallback && coreOptions.includes(name)) {
-              for (const coreName of coreOptions) {
-                try {
-                  const url = getTessPath(coreName);
-                  addLog(`[TESSERACT] Trying core: ${url}`);
-                  const res = await fetch(url);
-                  if (res.ok) {
-                    const blob = await res.blob();
-                    addLog(`[OK] Loaded ${coreName} (${Math.round(blob.size/1024)}KB)`);
-                    return { url: URL.createObjectURL(blob), name: coreName };
-                  }
-                } catch (e) {
-                  addLog(`[TESSERACT] ${coreName} failed: ${e.message}`);
-                }
-              }
-              throw new Error('All core options failed');
-            }
-            
-            const url = getTessPath(name);
-            addLog(`[TESSERACT] Fetching: ${url}`);
-            const res = await fetch(url);
-            if (!res.ok) {
-              // Try fallback path for Capacitor
-              const fallbackUrl = `http://localhost/tesseract/${name}`;
-              addLog(`[TESSERACT] First try failed, trying fallback: ${fallbackUrl}`);
-              const fallbackRes = await fetch(fallbackUrl);
-              if (!fallbackRes.ok) throw new Error(`Fetch failed for ${name}: ${res.status} and fallback also failed`);
-              const blob = await fallbackRes.blob();
-              addLog(`[OK] Loaded ${name} from fallback (${Math.round(blob.size/1024)}KB)`);
-              return { url: URL.createObjectURL(blob), name };
-            }
-            const blob = await res.blob();
-            addLog(`[OK] Loaded ${name} (${Math.round(blob.size/1024)}KB)`);
-            return { url: URL.createObjectURL(blob), name };
-          };
-
-          const workerResult = await fetchScript('worker.min.js', false);
-          const workerUrl = workerResult.url;
-          // Use SIMD core for better Android performance (with fallback)
-          const coreResult = await fetchScript('tesseract-core-simd.wasm.js', true);
-          const coreUrl = coreResult.url;
-          const coreName = coreResult.name;
-          const langPath = origin + '/tesseract/';
+          const tessConfig = await resolveTesseractAssetConfig(langs);
+          addLog(`[OK] Worker: ${tessConfig.workerPath}`);
+          addLog(`[OK] Core: ${tessConfig.corePath}`);
+          addLog(`[OK] Lang path: ${tessConfig.langPath} (gzip=${tessConfig.gzip})`);
           
           if (!window.Tesseract) throw new Error('Global Tesseract not found.');
-          
-          // Log what we're using for debugging
-          addLog(`[TESSERACT] Using core: ${coreName}`);
-          addLog(`[TESSERACT] langPath: ${langPath}`);
 
-          // Use modern Tesseract.js v5 API - language is passed to createWorker
-          // loadLanguage() is deprecated in v5
           const w = await window.Tesseract.createWorker(
-            langs,  // Pass language directly
-            1,      // OEM: 1 = Tesseract only
+            langs,
+            window.Tesseract.OEM?.DEFAULT,
             {
-              workerPath: workerUrl,
-              corePath: coreUrl,
-              langPath: langPath,
-              workerBlob: true,
-              gzip: false,
-              cacheMethod: 'none',
-              logger: (m) => {
-                addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
-                if (m.status === 'initializing api') setProgress(10);
-                if (m.status === 'loading language' || m.status === 'loading traineddata') {
-                  setProgress(Math.round(m.progress * 100));
-                }
-              },
-            }
+            workerPath: tessConfig.workerPath,
+            corePath: tessConfig.corePath,
+            langPath: tessConfig.langPath,
+            workerBlob: false,
+            gzip: tessConfig.gzip,
+            cacheMethod: 'none',
+            logger: (m) => {
+              addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
+              if (m.status === 'initializing api') setProgress(10);
+              if (m.status === 'loading language' || m.status === 'loading traineddata') {
+                setProgress(Math.round(m.progress * 100));
+              }
+            },
+          },
           );
+
+          // Compatibility: Tesseract.js v5/v6 uses loadLanguage/initialize,
+          // while newer versions can auto-initialize via createWorker(...langs...)
+          if (typeof w.loadLanguage === 'function') await w.loadLanguage(langs);
+          if (typeof w.initialize === 'function') await w.initialize(langs);
           
           workers.push(w);
         } catch (e) {
           console.error('[TESSERACT] Worker init failed:', e);
-          const errorMsg = `[TESSERACT ERROR] Impossible de charger le moteur (Vérifiez que les fichiers .traineddata sont dans /public/tesseract/). Detail: ${e.message}`;
+          const detail = e?.message || e?.toString?.() || JSON.stringify(e);
+          const errorMsg = `[TESSERACT ERROR] Impossible de charger le moteur (Vérifiez que les fichiers .traineddata sont dans /public/tesseract/). Detail: ${detail}`;
           addLog(errorMsg);
           setErrorMessage(errorMsg);
           throw new Error('Moteur OCR indisponible. Erreur de chargement des ressources locales.');
@@ -948,107 +945,38 @@ export default function UniversalOCRModal({
 
       // [FIX] Safe init for Hybrid mode with local assets
       try {
-        const origin = window.location.origin;
-        
-        const isCapacitorNative = window.Capacitor && window.Capacitor.isNative;
-        const isLocalhost = window.location.origin.includes('localhost');
-        
-        // Better path resolution for Capacitor
-        const getTessPath = (name) => {
-          const base = window.location.origin.replace(/\/$/, '');
-          return `${base}/tesseract/${name}`;
-        };
-        
-        // Try multiple core options for compatibility
-        const coreOptions = ['tesseract-core-simd.wasm.js', 'tesseract-core.wasm.js'];
-        
-        const fetchScript = async (name, allowFallback = true) => {
-          // For core, try multiple options
-          if (allowFallback && coreOptions.includes(name)) {
-            for (const coreName of coreOptions) {
-              try {
-                const url = getTessPath(coreName);
-                addLog(`[HYBRID_TESS] Trying core: ${url}`);
-                const res = await fetch(url);
-                if (res.ok) {
-                  const blob = await res.blob();
-                  addLog(`[OK] Loaded ${coreName} (${Math.round(blob.size/1024)}KB)`);
-                  return { url: URL.createObjectURL(blob), name: coreName };
-                }
-              } catch (e) {
-                addLog(`[HYBRID_TESS] ${coreName} failed: ${e.message}`);
-              }
-            }
-            throw new Error('All core options failed');
-          }
-          
-          const url = getTessPath(name);
-          addLog(`[HYBRID_TESS] Fetching: ${url}`);
-          const res = await fetch(url);
-          if (!res.ok) {
-            // Try fallback
-            const fallbackUrl = `http://localhost/tesseract/${name}`;
-            addLog(`[HYBRID_TESS] Trying fallback: ${fallbackUrl}`);
-            const fallbackRes = await fetch(fallbackUrl);
-            if (!fallbackRes.ok) throw new Error(`Fetch failed for ${name}`);
-            const blob = await fallbackRes.blob();
-            return { url: URL.createObjectURL(blob), name };
-          }
-          const blob = await res.blob();
-          return { url: URL.createObjectURL(blob), name };
-        };
-
-        const workerResult = await fetchScript('worker.min.js', false);
-        const workerUrl = workerResult.url;
-        // Use SIMD core for better Android performance (with fallback)
-        const coreResult = await fetchScript('tesseract-core-simd.wasm.js', true);
-        const coreUrl = coreResult.url;
-        const coreName = coreResult.name;
-        const langPath = origin + '/tesseract/';
-        
-        console.log('[HYBRID_TESSERACT_INIT] using local Blobs');
-        addLog(`[HYBRID_TESS] Using core: ${coreName}`);
+        const tessConfig = await resolveTesseractAssetConfig(langs);
+        console.log('[HYBRID_TESSERACT_INIT] using local packaged assets');
         
         const tessOptions = {
-          workerPath: workerUrl,
-          corePath: coreUrl,
-          langPath: langPath,
-          workerBlob: true,
-          gzip: false,
+          workerPath: tessConfig.workerPath,
+          corePath: tessConfig.corePath,
+          langPath: tessConfig.langPath,
+          workerBlob: false,
+          gzip: tessConfig.gzip,
           cacheMethod: 'none',
         };
         
         if (!window.Tesseract) throw new Error('Global Tesseract not found.');
 
-        // Use modern Tesseract.js v5 API - language is passed to createWorker
-        // loadLanguage() is deprecated in v5
+        // [FIX] Modern API Init
         const worker1 = await window.Tesseract.createWorker(
           langs,
-          1,
-          {
-            workerPath: workerUrl,
-            corePath: coreUrl,
-            langPath: langPath,
-            workerBlob: true,
-            gzip: false,
-            cacheMethod: 'none',
-          }
+          window.Tesseract.OEM?.DEFAULT,
+          tessOptions,
         );
+        if (typeof worker1.loadLanguage === 'function') await worker1.loadLanguage(langs);
+        if (typeof worker1.initialize === 'function') await worker1.initialize(langs);
         
         let worker2;
         if (numTesseractWorkers === 2) {
           worker2 = await window.Tesseract.createWorker(
             langs,
-            1,
-            {
-              workerPath: workerUrl,
-              corePath: coreUrl,
-              langPath: langPath,
-              workerBlob: true,
-              gzip: false,
-              cacheMethod: 'none',
-            }
+            window.Tesseract.OEM?.DEFAULT,
+            tessOptions,
           );
+          if (typeof worker2.loadLanguage === 'function') await worker2.loadLanguage(langs);
+          if (typeof worker2.initialize === 'function') await worker2.initialize(langs);
         }
         
         tesseractWorkers = worker2 ? [worker1, worker2] : [worker1];

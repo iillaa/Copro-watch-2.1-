@@ -1,31 +1,20 @@
 package com.coprowatch.app;
 
+import android.os.Bundle;
 import android.webkit.WebSettings;
-import android.webkit.WebView;
 import com.getcapacitor.BridgeActivity;
 
 public class MainActivity extends BridgeActivity {
-    @Override
-    protected void onCreate() {
-        super.onCreate();
+  @Override
+  public void onCreate(Bundle savedInstanceState) {
+    super.onCreate(savedInstanceState);
 
-        // [FIX] Enable file access for Tesseract.js offline mode
-        // This allows the WebView to load local assets instead of fetching from CDN
-        WebView webView = this.getBridge().getWebView();
-        WebSettings settings = webView.getSettings();
-        
-        settings.setAllowFileAccess(true);
-        settings.setAllowUniversalAccessFromFileURLs(true);
-        
-        // Additional recommended settings for WebView
-        settings.setAllowContentAccess(true);
-        settings.setAllowFileAccessFromFileURLs(true);
-        
-        // Enable JavaScript
-        settings.setJavaScriptEnabled(true);
-        
-        // Enable DOM storage for IndexedDB caching
-        settings.setDomStorageEnabled(true);
-        settings.setDatabaseEnabled(true);
+    if (getBridge() != null && getBridge().getWebView() != null) {
+      WebSettings webSettings = getBridge().getWebView().getSettings();
+      webSettings.setAllowFileAccess(true);
+      webSettings.setAllowContentAccess(true);
+      webSettings.setAllowFileAccessFromFileURLs(true);
+      webSettings.setAllowUniversalAccessFromFileURLs(true);
     }
+  }
 }
