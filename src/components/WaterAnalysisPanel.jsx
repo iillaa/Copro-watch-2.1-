@@ -310,7 +310,7 @@ export default function WaterAnalysisPanel({
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
             <label className="label" style={{ color: 'var(--primary)', fontWeight: 800 }}>
-              3. RÉSULTATS
+              3. RÉSULTATS LABO
             </label>
             {isResultSaved && savedRecord?.result !== 'non_potable' && (
               <span
@@ -327,57 +327,108 @@ export default function WaterAnalysisPanel({
             )}
           </div>
 
+          {/* DYNAMIC SVG MICROBIOLOGY VISUALIZER & INPUTS */}
           <div
             style={{
-              display: 'grid',
-              gridTemplateColumns: '1fr 1.5fr',
-              gap: '1rem',
+              display: 'flex',
+              gap: '1.5rem',
+              alignItems: 'center',
               marginBottom: '1rem',
+              background: '#f8fafc',
+              padding: '1rem',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
             }}
           >
-            <div>
-              <label className="label" style={{ fontSize: '0.7rem' }}>
-                Date
-              </label>
-              <input
-                type="date"
-                className="input"
-                value={formData.result_date}
-                onChange={(e) => setFormData({ ...formData, result_date: e.target.value })}
-                disabled={!isSampleSaved}
-                style={{ borderRadius: '8px' }}
-              />
+            {/* SVG Visualizer */}
+            <div style={{ width: '50px', height: '70px', display: 'flex', justifyContent: 'center' }}>
+              <svg viewBox="0 0 100 120" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+                {/* Tube Body */}
+                <path d="M 30 10 L 30 90 A 20 20 0 0 0 70 90 L 70 10" fill="none" stroke="#64748b" strokeWidth="6" strokeLinecap="round" />
+                {/* Tube Rim */}
+                <line x1="20" y1="10" x2="80" y2="10" stroke="#64748b" strokeWidth="6" strokeLinecap="round" />
+                
+                {/* Liquid Fill - Animates based on status */}
+                <g style={{ transition: 'all 0.5s cubic-bezier(0.4, 0, 0.2, 1)' }}>
+                  <path 
+                    className="liquid-path"
+                    d={
+                      formData.result === 'potable' ? "M 33 40 L 33 90 A 17 17 0 0 0 67 90 L 67 40 Q 50 45 33 40 Z" :
+                      formData.result === 'non_potable' ? "M 33 30 L 33 90 A 17 17 0 0 0 67 90 L 67 30 Q 50 25 33 30 Z" :
+                      "M 33 70 L 33 90 A 17 17 0 0 0 67 90 L 67 70 Q 50 72 33 70 Z"
+                    } 
+                    fill={
+                      formData.result === 'potable' ? '#38bdf8' : 
+                      formData.result === 'non_potable' ? '#ef4444' : 
+                      '#cbd5e1'
+                    } 
+                  />
+                  
+                  {/* Biohazard/Bacteria particles for non_potable */}
+                  {formData.result === 'non_potable' && (
+                    <g opacity="0.8">
+                      <circle cx="45" cy="50" r="4" fill="#7f1d1d" />
+                      <circle cx="55" cy="65" r="3" fill="#7f1d1d" />
+                      <circle cx="40" cy="75" r="5" fill="#7f1d1d" />
+                      <circle cx="60" cy="80" r="3.5" fill="#7f1d1d" />
+                    </g>
+                  )}
+                  {/* Sparkles for potable */}
+                  {formData.result === 'potable' && (
+                    <g opacity="0.9">
+                      <path d="M 45 60 L 45 70 M 40 65 L 50 65" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+                      <path d="M 55 75 L 55 81 M 52 78 L 58 78" stroke="#ffffff" strokeWidth="2" strokeLinecap="round" />
+                    </g>
+                  )}
+                </g>
+              </svg>
             </div>
-            <div>
-              <label className="label" style={{ fontSize: '0.7rem' }}>
-                Verdict
-              </label>
-              <select
-                className="input"
-                value={formData.result}
-                onChange={(e) => setFormData({ ...formData, result: e.target.value })}
-                disabled={!isSampleSaved}
-                style={{
-                  fontWeight: 800,
-                  borderRadius: '8px',
-                  color:
-                    formData.result === 'potable'
-                      ? 'var(--success)'
-                      : formData.result === 'non_potable'
-                      ? 'var(--danger)'
-                      : 'inherit',
-                }}
-              >
-                <option value="pending">⏳ En attente</option>
-                <option value="potable">✅ EAU POTABLE</option>
-                <option value="non_potable">⚠️ EAU NON POTABLE</option>
-              </select>
+
+            <div style={{ flex: 1, display: 'grid', gridTemplateColumns: '1fr 1.5fr', gap: '1rem' }}>
+              <div>
+                <label className="label" style={{ fontSize: '0.7rem' }}>
+                  Date d'Analyse
+                </label>
+                <input
+                  type="date"
+                  className="input"
+                  value={formData.result_date}
+                  onChange={(e) => setFormData({ ...formData, result_date: e.target.value })}
+                  disabled={!isSampleSaved}
+                  style={{ borderRadius: '8px' }}
+                />
+              </div>
+              <div>
+                <label className="label" style={{ fontSize: '0.7rem' }}>
+                  Verdict Bactériologique
+                </label>
+                <select
+                  className="input"
+                  value={formData.result}
+                  onChange={(e) => setFormData({ ...formData, result: e.target.value })}
+                  disabled={!isSampleSaved}
+                  style={{
+                    fontWeight: 800,
+                    borderRadius: '8px',
+                    color:
+                      formData.result === 'potable'
+                        ? 'var(--success)'
+                        : formData.result === 'non_potable'
+                        ? 'var(--danger)'
+                        : 'inherit',
+                  }}
+                >
+                  <option value="pending">⏳ En attente</option>
+                  <option value="potable">✅ CONFORME (Potable)</option>
+                  <option value="non_potable">⚠️ CONTAMINÉE (Non Potable)</option>
+                </select>
+              </div>
             </div>
           </div>
 
           <input
             className="input"
-            placeholder="Notes..."
+            placeholder="Notes (ex: Taux de coliformes, observations du labo)..."
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             disabled={!isSampleSaved}
