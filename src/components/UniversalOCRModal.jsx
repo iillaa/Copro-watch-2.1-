@@ -968,7 +968,7 @@ export default function UniversalOCRModal({
         if (typeof worker1.loadLanguage === 'function') await worker1.loadLanguage(langs);
         if (typeof worker1.initialize === 'function') await worker1.initialize(langs);
         
-        let worker2 = null;
+        let worker2;
         if (numTesseractWorkers === 2) {
           worker2 = await window.Tesseract.createWorker(
             langs,

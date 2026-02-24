@@ -1,0 +1,265 @@
+Tesseract ocr  did not want to be used 100% offline in react vite app Android wrapped  with capacitor . It always ask to fetch files from cdn despite i downloaded all files 
+
+That’s not a bug in your setup. It’s how Tesseract.js is designed by default.
+
+Tesseract.js always tries to load these at runtime unless you override it explicitly:
+
+worker.min.js
+
+tesseract-core.wasm.js / .wasm
+
+language traineddata files (eng.traineddata, etc.)
+
+If any of these paths are missing or wrong, it silently falls back to the CDN:
+https://cdn.jsdelivr.net/npm/tesseract.js/...
+
+In a Capacitor + Vite + Android WebView environment, this happens because:
+
+WebView cannot resolve relative paths the same way as a browser.
+
+Assets are bundled under android_asset/public/
+
+Tesseract.js expects HTTP-style URLs, not filesystem paths.
+
+So even if you “downloaded all files”, Tesseract doesn’t know where they are unless you force local paths.
+
+The only reliable solution: self-host everything and override paths
+1. Put files in public/tesseract/
+
+Example structure:
+
+public/tesseract/
+  worker.min.js
+  tesseract-core.wasm.js
+  eng.traineddata.gz
+
+Vite will copy them into:
+
+android_asset/public/tesseract/
+2. Create worker with explicit local paths
+import { createWorker } from 'tesseract.js';
+
+const worker = await createWorker({
+  workerPath: '/tesseract/worker.min.js',
+  corePath: '/tesseract/tesseract-core.wasm.js',
+  langPath: '/tesseract',
+  gzip: true,
+});
+
+Then:
+
+await worker.loadLanguage('eng');
+await worker.initialize('eng');
+Critical Android Capacitor fix (most people miss this)
+
+Capacitor WebView blocks file:// fetch by default.
+
+You must allow local file access in Android:
+
+In MainActivity.java or MainActivity.kt:
+
+getBridge().getWebView().getSettings().setAllowFileAccess(true);
+getBridge().getWebView().getSettings().setAllowUniversalAccessFromFileURLs(true);
+
+Without this → it tries CDN.
+
+Verify offline behavior
+
+Turn on airplane mode and run:
+
+await worker.load();
+
+If it still hits CDN → one of your paths is wrong.
+
+Open Chrome DevTools (remote debug) and check Network tab:
+If you see:
+
+cdn.jsdelivr.net
+
+then your override is not applied correctly.
+
+Why this happens (truth)
+
+Tesseract.js was built for browsers first, not mobile WebViews.
+Offline mode is:
+
+undocumented
+
+fragile
+
+path-sensitive
+
+broken unless you force it
+
+This is why many Android apps switch to:
+
+native Tesseract (via ML Kit or tess-two)
+instead of Tesseract.js.
+
+Best practical advice
+
+If you want 100% offline OCR on Android:
+
+Option 1 (best):
+
+Use native OCR:
+
+ML Kit Text Recognition (offline)
+
+tess-two (native Tesseract)
+
+Option 2 (harder):
+
+Force Tesseract.js local assets as above and debug every path.
+
+If you want, I can give you:
+✅ A minimal working Vite + Capacitor + Tesseract.js offline example
+or
+✅ A native Android OCR alternative setup (much more reliable)
+
+Just say which one:
+1) Tesseract.js offline example
+2) Native OCR solution
+
+Yes rightnow it keeps fetching traindata while ignoring them from my public ( folder inside apk ) 
+
+That means one thing: Tesseract.js does not see your local traineddata path as valid, so it silently falls back to CDN.
+APK having the files is irrelevant unless the WebView can fetch them via a proper URL.
+
+This is not optional. You must satisfy all three conditions below or it will always fetch from CDN.
+
+1. Your traineddata MUST be accessible via HTTP-style URL
+
+In Capacitor, assets are served from:
+
+http://localhost/
+
+So if your file is in:
+
+public/tesseract/eng.traineddata.gz
+
+The real runtime URL is:
+
+http://localhost/tesseract/eng.traineddata.gz
+
+NOT:
+
+file:///android_asset/... ❌
+
+relative paths like ./tesseract ❌
+
+filesystem paths ❌
+
+2. You MUST force langPath explicitly (or it will use CDN)
+
+Do NOT rely on defaults.
+
+Use this exactly:
+
+import { createWorker } from 'tesseract.js';
+
+const worker = await createWorker({
+  workerPath: 'http://localhost/tesseract/worker.min.js',
+  corePath: 'http://localhost/tesseract/tesseract-core.wasm.js',
+  langPath: 'http://localhost/tesseract',
+  gzip: true,
+  cacheMethod: 'none'   // avoid IndexedDB weirdness
+});
+
+await worker.loadLanguage('eng');
+await worker.initialize('eng');
+
+If even ONE of these paths is wrong → CDN.
+
+3. Your file names must match EXACTLY
+
+If you call:
+
+await worker.loadLanguage('eng');
+
+Then the file must be named:
+
+eng.traineddata.gz
+
+Not:
+
+eng.traineddata
+
+eng.traineddata.zip
+
+ENG.traineddata.gz
+
+Case-sensitive. No exceptions.
+
+4. Confirm the files are really inside the APK
+
+Open your built APK:
+
+unzip app-release.apk
+
+Check:
+
+assets/public/tesseract/eng.traineddata.gz
+
+If not there → Vite didn’t copy them.
+They MUST be inside public/, not src/.
+
+5. Android WebView permissions (mandatory)
+
+In MainActivity:
+
+getBridge().getWebView().getSettings().setAllowFileAccess(true);
+getBridge().getWebView().getSettings().setAllowUniversalAccessFromFileURLs(true);
+
+Without this → fetch fails → CDN fallback.
+
+6. How to prove what’s happening (no guessing)
+
+Enable remote debugging and inspect Network tab.
+
+If you see:
+
+https://cdn.jsdelivr.net/npm/tesseract.js...
+
+Then your config is wrong.
+
+You should see instead:
+
+http://localhost/tesseract/eng.traineddata.gz
+Why it keeps ignoring your files
+
+Because Tesseract.js internally does:
+
+if (!langPath) use CDN
+if fetch(langPath) fails → use CDN
+
+It never throws an error. It just fetches from CDN silently.
+This is bad design, but that’s reality.
+
+Brutal truth
+
+Tesseract.js + Capacitor offline is:
+
+fragile
+
+undocumented
+
+path hell
+
+breaks easily between versions
+
+If you need medical-grade offline OCR, you should not use Tesseract.js in WebView.
+
+Better options:
+
+ML Kit Text Recognition (offline)
+
+native Tesseract (tess-two)
+
+They:
+
+don’t fetch CDN
+
+don’t depend on WebView paths
+
+are 10x more reliable
