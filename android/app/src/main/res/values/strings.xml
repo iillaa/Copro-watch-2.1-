@@ -1,8 +1,0 @@
-<?xml version='1.0' encoding='utf-8'?>
-
-<resources>
-    <string name="app_name">Copro Watch</string>
-    <string name="title_activity_main">Copro Watch</string>
-    <string name="package_name">com.coprowatch.app</string>
-    <string name="custom_url_scheme">com.coprowatch.app</string>
-</resources>

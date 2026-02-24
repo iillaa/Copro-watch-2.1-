@@ -1,1 +1,0 @@
-(function(){"use strict";self.onmessage=async e=>{const{data:t,password:a}=e.data;try{const s=JSON.stringify(t);self.postMessage({success:!0,json:s})}catch(s){self.postMessage({success:!1,error:s.message})}}})();
