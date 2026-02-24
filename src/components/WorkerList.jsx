@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, useDeferredValue } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import useDebounce from '../hooks/useDebounce';
 import { db } from '../services/db';
 import { logic } from '../services/logic';
 import backupService from '../services/backup';
@@ -91,9 +92,56 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   // UI State
   const [searchTerm, setSearchTerm] = useState('');
 
-  // KEY FIX: Defer the search term. React allows the UI to update immediately
-  // while the heavy filtering happens in the background.
-  const deferredSearch = useDeferredValue(searchTerm);
+  // [NEW] 250ms Debounce Shield
+  const debouncedSearch = useDebounce(searchTerm, 250);
+
+  // [NEW] Progressive Chunking Limit
+  const [displayLimit, setDisplayLimit] = useState(30);
+
+  useEffect(() => {
+    setDisplayLimit(30);
+  }, [debouncedSearch, filterDept, filterStatus, showArchived, sortConfig]);
+
+  // [CRITICAL FIX] Bulletproof Intersection Observer (Replaces broken onScroll)
+  const observer = useRef();
+  const lastElementRef = useCallback(
+    (node) => {
+      if (isLoading) return;
+      if (observer.current) observer.current.disconnect();
+
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && displayLimit < memoizedWorkers.length) {
+          setDisplayLimit((prev) => prev + 30);
+        }
+      });
+
+      if (node) observer.current.observe(node);
+    },
+    [isLoading, displayLimit, memoizedWorkers.length]
+  );
+
+  const loadData = async () => {
+    try {
+      setIsLoading(true);
+      const [w, d, wp] = await Promise.all([
+        db.getWorkers(), // <-- Reverted to pull all data once (Enables deep search)
+        db.getDepartments(),
+        db.getWorkplaces(),
+      ]);
+      setWorkers(w);
+      setDepartments(d);
+      setWorkplaces(wp);
+    } catch (error) {
+      console.error('Failed to load data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Run strictly once on mount (No DB spam on every keystroke)
+  useEffect(() => {
+    loadData();
+  }, []);
 
   const [filterDept, setFilterDept] = useState(
     () => localStorage.getItem('worker_filter_dept') || ''
@@ -125,30 +173,6 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   // ==================================================================================
   // 2. DATA LOADING & EFFECTS
   // ==================================================================================
-  const loadData = async () => {
-    try {
-      setIsLoading(true); // [START] Show spinner
-
-      // Load Workers, Departments, and Workplaces
-      const [w, d, wp] = await Promise.all([
-        db.getWorkers(),
-        db.getDepartments(),
-        db.getWorkplaces(),
-      ]);
-
-      setWorkers(w);
-      setDepartments(d);
-      setWorkplaces(wp);
-    } catch (error) {
-      console.error('Failed to load data:', error);
-    } finally {
-      setIsLoading(false); // [STOP] Hide spinner (Show content or Empty State)
-    }
-  };
-
-  useEffect(() => {
-    loadData();
-  }, []);
 
   useEffect(() => {
     localStorage.setItem('worker_filter_dept', filterDept);
@@ -160,72 +184,47 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   const filteredWorkers = useMemo(() => {
     let result = workers;
 
-    // A. Filter Archive
-    if (!showArchived) {
-      result = result.filter((w) => !w.archived);
-    }
-
-    // B. Filter Department
-    if (filterDept) {
-      result = result.filter((w) => w.department_id === Number(filterDept));
-    }
-    // B2. Filter Status (The New Feature)
+    if (!showArchived) result = result.filter((w) => !w.archived);
+    if (filterDept) result = result.filter((w) => w.department_id === Number(filterDept));
+    
+    // Status filters...
     if (filterStatus) {
-      const today = new Date();
-
       if (filterStatus === 'late') {
-        // En Retard Only
         result = result.filter((w) => !w.archived && logic.isOverdue(w.next_exam_due));
       } else if (filterStatus === 'due_soon') {
-        // À Prévoir (15 jours)
-        result = result.filter(
-          (w) =>
-            !w.archived && logic.isDueSoon(w.next_exam_due) && !logic.isOverdue(w.next_exam_due)
-        );
+        result = result.filter((w) => !w.archived && logic.isDueSoon(w.next_exam_due) && !logic.isOverdue(w.next_exam_due));
       } else if (filterStatus === 'inapte') {
-        // Inapte Temporaire (Malades)
         result = result.filter((w) => w.latest_status === 'inapte');
       } else if (filterStatus === 'apte_partielle') {
-        // Apte Sous Réserve
         result = result.filter((w) => w.latest_status === 'apte_partielle');
       } else if (filterStatus === 'apte') {
-        // [MODIFICATION] : On garde les aptes MAIS on exclut ceux en retard
-        result = result.filter(
-          (w) => w.latest_status === 'apte' && !logic.isOverdue(w.next_exam_due)
-        );
+        result = result.filter((w) => w.latest_status === 'apte' && !logic.isOverdue(w.next_exam_due));
       }
     }
-    // C. Filter Search (Using the deferred value!)
-    if (deferredSearch) {
-      const lower = deferredSearch.toLowerCase();
-      result = result.filter((w) => {
-        // [FIX] Recherche sécurisée sur le Nom ET le Matricule
-        const nameMatch = w.full_name && w.full_name.toLowerCase().includes(lower);
-        // On convertit le matricule en String pour éviter les erreurs si c'est un nombre
-        const idMatch = w.national_id && String(w.national_id).toLowerCase().includes(lower);
 
+    // [RESTORED] Deep Substring Search (Lightning fast now due to debounce)
+    if (debouncedSearch) {
+      const lower = debouncedSearch.toLowerCase();
+      result = result.filter((w) => {
+        const nameMatch = w.full_name && w.full_name.toLowerCase().includes(lower);
+        const idMatch = w.national_id && String(w.national_id).toLowerCase().includes(lower);
         return nameMatch || idMatch;
       });
     }
 
-    // D. Sorting Logic
+    // Sort logic...
     if (sortConfig.key) {
       result = [...result].sort((a, b) => {
         let aVal = a[sortConfig.key];
         let bVal = b[sortConfig.key];
-
-        // Sort by Department Name
         if (sortConfig.key === 'department_id') {
           const getDeptName = (id) => departments.find((x) => x.id == id)?.name || '';
           aVal = getDeptName(a.department_id);
           bVal = getDeptName(b.department_id);
-        }
-        // Case insensitive string sort
-        else if (typeof aVal === 'string') {
+        } else if (typeof aVal === 'string') {
           aVal = aVal.toLowerCase();
           bVal = bVal ? bVal.toLowerCase() : '';
         }
-
         if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
         if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
         return 0;
@@ -233,7 +232,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     }
 
     return result;
-  }, [workers, deferredSearch, filterDept, showArchived, sortConfig, departments, filterStatus]);
+  }, [workers, filterDept, showArchived, sortConfig, departments, filterStatus, debouncedSearch]);
 
   // [SURGICAL ADDITION] Fix #4: Memoized List for Performance
   // This prevents recalculating "isOverdue" and "Department Name" on every render.
@@ -895,12 +894,14 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                 <div style={{ textAlign: 'right', paddingRight: '0.5rem' }}>Actions</div>
               </div>
 
-              {/* 2. OPTIMIZED DATA ROWS (Uses memoizedWorkers now!) */}
-              {memoizedWorkers.map((w) => {
+              {/* 2. OPTIMIZED DATA ROWS (Intersection Observer Chunking) */}
+              {memoizedWorkers.slice(0, displayLimit).map((w, index) => {
                 const isSelected = selectedIds.has(w.id);
+                const isLast = index === displayLimit - 1;
 
                 return (
                   <div
+                    ref={isLast ? lastElementRef : null}
                     key={w.id}
                     onClick={() =>
                       isSelectionMode ? toggleSelectOne(w.id) : onNavigateWorker(w.id)
@@ -927,7 +928,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
 
                     {/* Nom et prénom */}
                     <div className="hybrid-cell cell-name">
-                      {highlightMatch(w.full_name, deferredSearch)}
+                      {highlightMatch(w.full_name, debouncedSearch)}
                       {w.archived && (
                         <span
                           className="badge"
@@ -955,7 +956,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                           color: '#64748b',
                         }}
                       >
-                        {highlightMatch(w.national_id, deferredSearch)}
+                        {highlightMatch(w.national_id, debouncedSearch)}
                       </span>
                     </div>
 
