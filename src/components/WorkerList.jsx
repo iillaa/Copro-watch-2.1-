@@ -98,28 +98,6 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   // [NEW] Progressive Chunking Limit
   const [displayLimit, setDisplayLimit] = useState(30);
 
-  useEffect(() => {
-    setDisplayLimit(30);
-  }, [debouncedSearch, filterDept, filterStatus, showArchived, sortConfig]);
-
-  // [CRITICAL FIX] Bulletproof Intersection Observer (Replaces broken onScroll)
-  const observer = useRef();
-  const lastElementRef = useCallback(
-    (node) => {
-      if (isLoading) return;
-      if (observer.current) observer.current.disconnect();
-
-      observer.current = new IntersectionObserver((entries) => {
-        if (entries[0].isIntersecting && displayLimit < memoizedWorkers.length) {
-          setDisplayLimit((prev) => prev + 30);
-        }
-      });
-
-      if (node) observer.current.observe(node);
-    },
-    [isLoading, displayLimit, memoizedWorkers.length]
-  );
-
   const loadData = async () => {
     try {
       setIsLoading(true);
@@ -157,6 +135,12 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   });
 
   const [showArchived, setShowArchived] = useState(false);
+
+  // [NEW] Progressive Chunking Limit - Reset when filters change
+  useEffect(() => {
+    setDisplayLimit(30);
+  }, [debouncedSearch, filterDept, filterStatus, showArchived, sortConfig]);
+
   const [showForm, setShowForm] = useState(false);
   const [editingWorker, setEditingWorker] = useState(null);
   const [deletingId, setDeletingId] = useState(null); // [NEW] Track which worker is being deleted
@@ -894,14 +878,12 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                 <div style={{ textAlign: 'right', paddingRight: '0.5rem' }}>Actions</div>
               </div>
 
-              {/* 2. OPTIMIZED DATA ROWS (Intersection Observer Chunking) */}
-              {memoizedWorkers.slice(0, displayLimit).map((w, index) => {
+              {/* 2. OPTIMIZED DATA ROWS (Manual Chunking) */}
+              {memoizedWorkers.slice(0, displayLimit).map((w) => {
                 const isSelected = selectedIds.has(w.id);
-                const isLast = index === displayLimit - 1;
 
                 return (
                   <div
-                    ref={isLast ? lastElementRef : null}
                     key={w.id}
                     onClick={() =>
                       isSelectionMode ? toggleSelectOne(w.id) : onNavigateWorker(w.id)
@@ -1023,6 +1005,19 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                   </div>
                 );
               })}
+
+              {/* [NEW] THE BULLETPROOF FALLBACK BUTTON */}
+              {displayLimit < memoizedWorkers.length && (
+                <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
+                  <button 
+                    className="btn btn-outline" 
+                    onClick={() => setDisplayLimit(prev => prev + 30)}
+                    style={{ fontWeight: 'bold', width: '200px' }}
+                  >
+                    Afficher plus...
+                  </button>
+                </div>
+              )}
 
               {/* Empty Search Result State */}
               {memoizedWorkers.length === 0 && (

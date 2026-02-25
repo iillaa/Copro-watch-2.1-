@@ -4,7 +4,7 @@ import { logic } from '../../services/logic';
 import {
   FaUserShield,
   FaExclamationTriangle,
-  FaCalendarCheck,
+  FaCalendarAlt, /* [SURGICAL FIX] Bulletproof icon - FaCalendarCheck not in all versions */
   FaEye,
   FaHistory,
   FaCog,
@@ -18,6 +18,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
   const [showSettings, setShowSettings] = useState(false);
   const [holders, setHolders] = useState([]);
   const [exams, setExams] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [alert, setAlert] = useState(null);
 
   // [SURGICAL FIX] Robust Alert Logic
@@ -92,9 +93,10 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
   const loadData = async () => {
     try {
       setLoading(true);
-      const [h, e] = await Promise.all([db.getWeaponHolders(), db.getWeaponExams()]);
+      const [h, e, d] = await Promise.all([db.getWeaponHolders(), db.getWeaponExams(), db.getWeaponDepartments()]);
       setHolders(h || []);
       setExams(e || []);
+      setDepartments(d || []);
 
       // [SURGICAL UPDATE] Count both Pending and Due Reviews (including Overdue)
       const activeHolders = h || [];
@@ -131,6 +133,70 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
   const stats = useMemo(() => {
     return logic.getWeaponDashboardStats(holders, exams);
   }, [holders, exams]);
+
+  // ============================================================================
+  // [NEW] MASTER ANALYTICS & ACTION ENGINE
+  // ============================================================================
+
+  // 1. The Action Inbox (Sorted by Urgency)
+  const actionableTasks = useMemo(() => {
+    const tasks = [];
+    holders.filter(h => !h.archived).forEach(h => {
+      // Priority 1: Overdue
+      if (h.status === 'inapte_temporaire' && h.next_review_date && logic.isOverdue(h.next_review_date)) {
+        tasks.push({ ...h, urgency: 1, type: 'retard', label: 'En Retard', color: 'var(--danger)' });
+      } 
+      // Priority 2: Brand New
+      else if (h.status === 'pending') {
+        tasks.push({ ...h, urgency: 2, type: 'initial', label: 'Initiale', color: '#f59e0b' });
+      } 
+      // Priority 3: Due Soon
+      else if (h.status === 'inapte_temporaire' && h.next_review_date && logic.isWeaponDueSoon(h.next_review_date)) {
+        tasks.push({ ...h, urgency: 3, type: 'due_soon', label: 'À Revoir', color: '#d97706' });
+      }
+    });
+    return tasks.sort((a,b) => a.urgency - b.urgency);
+  }, [holders]);
+
+  // 2. The Clinical Profile (Etiology)
+  const clinicalProfile = useMemo(() => {
+    const reasonCounts = { 'Somatique': 0, 'Psychiatrique': 0, 'Psychologique': 0, 'Précaution': 0, 'Inconnu': 0 };
+    const inapteHolders = holders.filter(h => !h.archived && (h.status === 'inapte_temporaire' || h.status === 'inapte_definitif'));
+    
+    inapteHolders.forEach(h => {
+      const holderExams = exams.filter(e => e.holder_id === h.id).sort((a,b) => new Date(b.exam_date) - new Date(a.exam_date));
+      if (holderExams.length > 0 && holderExams[0].visit_reason) {
+        let r = holderExams[0].visit_reason;
+        if (r.includes('Somatique')) reasonCounts['Somatique']++;
+        else if (r.includes('Psychiatrique')) reasonCounts['Psychiatrique']++;
+        else if (r.includes('Psychologique')) reasonCounts['Psychologique']++;
+        else if (r.includes('Précaution')) reasonCounts['Précaution']++;
+        else reasonCounts['Inconnu']++;
+      } else {
+        reasonCounts['Inconnu']++;
+      }
+    });
+
+    return [
+      { label: 'Somat.', count: reasonCounts['Somatique'], color: '#3b82f6' },
+      { label: 'Psychiat.', count: reasonCounts['Psychiatrique'], color: '#a855f7' },
+      { label: 'Psychol.', count: reasonCounts['Psychologique'], color: '#f43f5e' },
+      { label: 'Précaution', count: reasonCounts['Précaution'], color: '#f59e0b' },
+    ].filter(m => m.count > 0).sort((a,b) => b.count - a.count);
+  }, [holders, exams]);
+
+  // 3. Department Distribution
+  const deptDistribution = useMemo(() => {
+    const counts = {};
+    const apteHolders = holders.filter(h => !h.archived && h.status === 'apte');
+    apteHolders.forEach(h => {
+      const deptName = departments.find(d => d.id === h.department_id)?.name || 'Inconnu';
+      counts[deptName] = (counts[deptName] || 0) + 1;
+    });
+    return Object.entries(counts)
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count);
+  }, [holders, departments]);
 
   useEffect(() => {
     loadData();
@@ -401,7 +467,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
           <h3
             style={{ marginBottom: '0.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
           >
-            <FaCalendarCheck /> Prochaines Révisions
+            <FaCalendarAlt /> Prochaines Révisions
           </h3>
           {stats.dueSoon.length === 0 ? (
             <div

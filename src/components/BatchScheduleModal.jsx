@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FaCalendarAlt, FaTimes, FaSave } from 'react-icons/fa';
 
-export default function BatchScheduleModal({ count, onConfirm, onCancel }) {
+export default function BatchScheduleModal({ count, onConfirm, onCancel, weaponMode = false }) {
   // Default to today
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -39,7 +39,7 @@ export default function BatchScheduleModal({ count, onConfirm, onCancel }) {
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '1rem' }}>
           <h3 style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <FaCalendarAlt /> Nouvelle Analyse ({count})
+            <FaCalendarAlt /> {weaponMode ? 'Nouvel Examen' : 'Nouvelle Analyse'} ({count})
           </h3>
           <button onClick={onCancel} className="btn-icon">
             <FaTimes />
@@ -51,7 +51,9 @@ export default function BatchScheduleModal({ count, onConfirm, onCancel }) {
           style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}
         >
           <div>
-            <label className="label">Date de la demande (Prélèvement)</label>
+            <label className="label">
+              {weaponMode ? 'Date de consultation' : 'Date de la demande (Prélèvement)'}
+            </label>
             <input
               type="date"
               className="input"
@@ -73,7 +75,7 @@ export default function BatchScheduleModal({ count, onConfirm, onCancel }) {
               borderLeft: '4px solid #3b82f6',
             }}
           >
-            <strong>Note :</strong> Cela créera {count} analyses "EN ATTENTE" (Vides). La date de
+            <strong>Note :</strong> Cela créera {count} {weaponMode ? 'examens' : 'analyses'} "EN ATTENTE" (Vides). La date de
             prochaine visite restera inchangée tant que le résultat n'est pas validé.
           </div>
 

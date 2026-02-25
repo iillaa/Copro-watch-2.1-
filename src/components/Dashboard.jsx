@@ -171,21 +171,19 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
           style={
             isMobile
               ? {
-                  // MOBILE STYLE: Horizontal Row
                   display: 'flex',
-                  flexDirection: 'row', // <--- CHANGED TO ROW
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'space-around', // Spreads Icon, Number, Name evenly
-                  background: 'var(--warning-light)', // (Change color for other cards!)
+                  justifyContent: 'space-around',
+                  background: 'var(--warning-light)',
                   padding: '0.5rem 0.2rem',
                   textAlign: 'center',
                   margin: 0,
-                  gap: '2px', // Small gap between items
+                  gap: '2px',
                   boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
                   border: '2px solid #000000',
                 }
               : {
-                  // DESKTOP STYLE: Your Original (Horizontal)
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
@@ -197,33 +195,24 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
           }
         >
           {isMobile ? (
-            /* MOBILE CONTENT */
             <>
-              <FaClipboardList
-                size={20}
-                color="var(--warning)"
-                style={{ marginBottom: '0.25rem' }}
-              />
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.25rem' }}>
+                <path d="M9 2h6a2 2 0 0 1 2 2v2h-10v-2a2 2 0 0 1 2-2z"></path>
+                <path d="M19 4h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-14a2 2 0 0 1-2-2v-14a2 2 0 0 1 2-2h1"></path>
+                <path d="M9 12h6"></path>
+                <path d="M9 16h6"></path>
+              </svg>
               <div
                 className="stat-card-value"
                 style={{ color: 'var(--warning)', fontSize: '1.5rem' }}
               >
                 {stats.dueSoon.length}
               </div>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  color: 'var(--warning-text)',
-                  lineHeight: 1,
-                }}
-              >
+              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: 'var(--warning-text)', lineHeight: 1 }}>
                 À faire
               </p>
             </>
           ) : (
-            /* DESKTOP CONTENT (Your Original Code) */
             <>
               <div>
                 <h3 className="stat-card-title" style={{ color: 'var(--warning-text)' }}>
@@ -237,7 +226,12 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
                 </p>
               </div>
               <div style={{ opacity: 0.8 }}>
-                <FaClipboardList size={60} color="var(--warning)" />
+                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 2h6a2 2 0 0 1 2 2v2h-10v-2a2 2 0 0 1 2-2z"></path>
+                  <path d="M19 4h1a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-14a2 2 0 0 1-2-2v-14a2 2 0 0 1 2-2h1"></path>
+                  <path d="M9 12h6"></path>
+                  <path d="M9 16h6"></path>
+                </svg>
               </div>
             </>
           )}
@@ -249,60 +243,47 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
           style={
             isMobile
               ? {
-                  // MOBILE STYLE: Horizontal Row
                   display: 'flex',
-                  flexDirection: 'row', // <--- CHANGED TO ROW
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'space-around', // Spreads Icon, Number, Name evenly
-                  background: 'var(--danger-light)', // (Change color for other cards!)
+                  justifyContent: 'space-around',
+                  background: 'var(--danger-light)',
                   padding: '0.5rem 0.2rem',
                   textAlign: 'center',
                   margin: 0,
-                  border: '2px solid #000000', // [NEW]
+                  border: '2px solid #000000',
                   boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
-                  gap: '2px', // Small gap between items
-                  // [NEW]
+                  gap: '2px',
                 }
               : {
-                  // DESKTOP STYLE
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   background: 'var(--danger-light)',
                   padding: '1.5rem',
-                  border: '2px solid #000000', // [NEW]
-                  boxShadow: '4px 4px 0px rgba(0,0,0,0.1)', // [NEW]
+                  border: '2px solid #000000',
+                  boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
                 }
           }
         >
           {isMobile ? (
-            /* MOBILE CONTENT */
             <>
-              <FaExclamationTriangle
-                size={20}
-                color="var(--danger)"
-                style={{ marginBottom: '0.25rem' }}
-              />
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.25rem' }}>
+                <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                <line x1="12" y1="9" x2="12" y2="13"></line>
+                <line x1="12" y1="17" x2="12.01" y2="17"></line>
+              </svg>
               <div
                 className="stat-card-value"
                 style={{ color: 'var(--danger)', fontSize: '1.5rem' }}
               >
                 {stats.overdue.length}
               </div>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  color: 'var(--danger-text)',
-                  lineHeight: 1,
-                }}
-              >
+              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: 'var(--danger-text)', lineHeight: 1 }}>
                 Retard
               </p>
             </>
           ) : (
-            /* DESKTOP CONTENT (Your Original Code) */
             <>
               <div>
                 <h3 className="stat-card-title" style={{ color: 'var(--danger-text)' }}>
@@ -316,7 +297,11 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
                 </p>
               </div>
               <div style={{ opacity: 0.8 }}>
-                <FaExclamationTriangle size={60} color="var(--danger)" />
+                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
+                  <line x1="12" y1="9" x2="12" y2="13"></line>
+                  <line x1="12" y1="17" x2="12.01" y2="17"></line>
+                </svg>
               </div>
             </>
           )}
@@ -328,56 +313,51 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
           style={
             isMobile
               ? {
-                  // MOBILE STYLE: Horizontal Row
                   display: 'flex',
-                  flexDirection: 'row', // <--- CHANGED TO ROW
+                  flexDirection: 'row',
                   alignItems: 'center',
-                  justifyContent: 'space-around', // Spreads Icon, Number, Name evenly
-                  background: 'var(--primary-light)', // (Change color for other cards!)
+                  justifyContent: 'space-around',
+                  background: 'var(--primary-light)',
                   padding: '0.5rem 0.2rem',
                   textAlign: 'center',
                   margin: 0,
-                  border: '2px solid #000000', // [NEW]
+                  border: '2px solid #000000',
                   boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
-                  gap: '2px', // Small gap between items
-                  // [NEW]
+                  gap: '2px',
                 }
               : {
-                  // DESKTOP STYLE
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
                   background: 'var(--primary-light)',
                   padding: '1.5rem',
-                  border: '2px solid #000000', // [NEW]
-                  boxShadow: '4px 4px 0px rgba(0,0,0,0.1)', // [NEW]
+                  border: '2px solid #000000',
+                  boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
                 }
           }
         >
           {isMobile ? (
-            /* MOBILE CONTENT */
             <>
-              <FaMicroscope size={20} color="var(--primary)" style={{ marginBottom: '0.25rem' }} />
+              {/* [FIX] Mobile Microscope SVG */}
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.25rem' }}>
+                <path d="M6 18h8"></path>
+                <path d="M3 22h18"></path>
+                <path d="M14 22a7 7 0 1 0 0-14h-1"></path>
+                <path d="M9 14h2"></path>
+                <path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"></path>
+                <path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"></path>
+              </svg>
               <div
                 className="stat-card-value"
                 style={{ color: 'var(--primary)', fontSize: '1.5rem' }}
               >
                 {stats.activePositive.length}
               </div>
-              <p
-                style={{
-                  margin: 0,
-                  fontSize: '0.7rem',
-                  fontWeight: 700,
-                  color: 'var(--primary)',
-                  lineHeight: 1,
-                }}
-              >
+              <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: 'var(--primary)', lineHeight: 1 }}>
                 Suivi
               </p>
             </>
           ) : (
-            /* DESKTOP CONTENT (Your Original Code) */
             <>
               <div>
                 <h3 className="stat-card-title" style={{ color: 'var(--primary)' }}>
@@ -389,7 +369,15 @@ export default function Dashboard({ onNavigateWorker, compactMode, forceMobile }
                 <p style={{ margin: 0, fontWeight: 600, color: 'var(--primary)' }}>Cas actifs</p>
               </div>
               <div style={{ opacity: 0.8 }}>
-                <FaMicroscope size={60} color="var(--primary)" />
+                {/* [FIX] Desktop Microscope SVG */}
+                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M6 18h8"></path>
+                  <path d="M3 22h18"></path>
+                  <path d="M14 22a7 7 0 1 0 0-14h-1"></path>
+                  <path d="M9 14h2"></path>
+                  <path d="M9 12a2 2 0 0 1-2-2V6h6v4a2 2 0 0 1-2 2Z"></path>
+                  <path d="M12 6V3a1 1 0 0 0-1-1H9a1 1 0 0 0-1 1v3"></path>
+                </svg>
               </div>
             </>
           )}

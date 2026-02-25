@@ -727,6 +727,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           count={selectedIds.size}
           onConfirm={handleBatchScheduleConfirm}
           onCancel={() => setShowScheduleModal(false)}
+          weaponMode={true}
         />
       )}
 

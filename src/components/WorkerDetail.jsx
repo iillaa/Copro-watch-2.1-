@@ -305,7 +305,7 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
             <div
               style={{ marginTop: '0.5rem', display: 'flex', gap: '10px', alignItems: 'center' }}
             >
-              {/* [NEW] VISUAL VALIDITY INDICATOR SVG */}
+              {/* [NEW] VISUAL VALIDITY INDICATOR SVG (Hollow Center Design) */}
               {worker.next_exam_due && !worker.archived && (() => {
                 const due = new Date(worker.next_exam_due);
                 const now = new Date();
@@ -317,14 +317,17 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
                 const gaugeColor = isOverdue ? '#ef4444' : percentage > 30 ? '#22c55e' : '#f59e0b';
 
                 return (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#f8fafc', padding: '4px 8px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
-                    <svg width="24" height="24" viewBox="0 0 36 36">
-                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" strokeWidth="4"/>
-                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={gaugeColor} strokeWidth="4" strokeDasharray={`${percentage}, 100`} />
+                  <div style={{ display: 'flex', alignItems: 'center' }} title={isOverdue ? 'Expiré' : `${diffDays} jours restants`}>
+                    <svg width="36" height="36" viewBox="0 0 36 36">
+                      {/* Background Ring */}
+                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" strokeWidth="3"/>
+                      {/* Colored Progress Ring */}
+                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={gaugeColor} strokeWidth="3" strokeDasharray={`${percentage}, 100`} />
+                      {/* Centered Text inside the hollow ring */}
+                      <text x="18" y="21.5" textAnchor="middle" fontSize={isOverdue ? "9" : "11"} fontWeight="800" fill={gaugeColor}>
+                        {isOverdue ? 'EXP' : diffDays}
+                      </text>
                     </svg>
-                    <span style={{ fontSize: '0.8rem', fontWeight: 700, color: gaugeColor }}>
-                      {isOverdue ? 'EXPIRÉ' : `${diffDays}J RESTANTS`}
-                    </span>
                   </div>
                 );
               })()}

@@ -27,6 +27,19 @@ export default function WaterAnalyses({ compactMode }) {
   const [modalDept, setModalDept] = useState(null);
   const [historyDept, setHistoryDept] = useState(null);
 
+  // [NEW] Mobile Detection for UI Parity
+  const checkMobile = () => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 768 || window.innerHeight < 600;
+  };
+  const [isMobile, setIsMobile] = useState(checkMobile());
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(checkMobile());
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
   // [FIX] CRITICAL: Safety check for null/undefined to prevent crash
   const loadData = async () => {
     try {
@@ -194,253 +207,240 @@ export default function WaterAnalyses({ compactMode }) {
           </div>
         </div>
 
-        {/* KPI CARDS (Enhanced Style) */}
+        {/* KPI CARDS (Standardized Parity) */}
         <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: '1.25rem',
-            marginBottom: '1.5rem',
-          }}
+          style={
+            isMobile
+              ? {
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(3, 1fr)',
+                  gap: '0.5rem',
+                  marginBottom: '1.5rem',
+                }
+              : {
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
+                  gap: '1rem',
+                  marginBottom: '1.5rem',
+                }
+          }
         >
           {/* Card 1: POTABLE */}
           <div
-            style={{
-              background: 'linear-gradient(135deg, #ffffff 0%, #f0fdf4 100%)',
-              padding: '1.5rem',
-              borderRadius: '16px',
-              border: '2px solid black',
-              boxShadow: '6px 6px 0px var(--success)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-              position: 'relative',
-              overflow: 'hidden',
-              transition: 'transform 0.2s ease',
-              cursor: 'default',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = 'translate(-2px, -2px)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = 'translate(0, 0)')}
+            className="card"
+            style={
+              isMobile
+                ? {
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-around',
+                    background: '#dcfce7',
+                    padding: '0.5rem 0.2rem',
+                    textAlign: 'center',
+                    margin: 0,
+                    gap: '2px',
+                    boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+                    border: '2px solid #000000',
+                  }
+                : {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: '#dcfce7',
+                    boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+                    border: '2px solid #000000',
+                    padding: '1.5rem',
+                  }
+            }
           >
-            <div
-              style={{
-                position: 'absolute',
-                top: '-20px',
-                right: '-20px',
-                fontSize: '5rem',
-                opacity: 0.1,
-                color: 'var(--success)',
-              }}
-            >
-              <FaTint />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', zIndex: 1 }}>
-              <div
-                style={{
-                  background: 'var(--success)',
-                  color: 'white',
-                  borderRadius: '8px',
-                  padding: '0.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <FaTint size={18} />
-              </div>
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Eau Potable
-              </div>
-            </div>
-            <div
-              style={{
-                fontSize: '2.8rem',
-                fontWeight: 900,
-                color: 'var(--success)',
-                lineHeight: 1,
-                zIndex: 1,
-              }}
-            >
-              {globalStats.potable}
-            </div>
-            <div
-              style={{
-                fontSize: '0.7rem',
-                color: '#64748b',
-                fontWeight: 600,
-                zIndex: 1,
-              }}
-            >
-              ✓ Conforme ce mois
-            </div>
+            {isMobile ? (
+              <>
+                {/* Clean Water Drop SVG */}
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.25rem' }}>
+                  <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"></path>
+                  <path d="M9 15.5l2 2 4-4"></path>
+                </svg>
+                <div style={{ color: '#166534', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                  {globalStats.potable}
+                </div>
+                <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: '#166534', lineHeight: 1 }}>
+                  Potable
+                </p>
+              </>
+            ) : (
+              <>
+                <div>
+                  <h3 className="stat-card-title" style={{ color: '#166534' }}>
+                    Eau Potable
+                  </h3>
+                  <div className="stat-card-value" style={{ color: '#166534' }}>
+                    {globalStats.potable}
+                  </div>
+                  <p style={{ margin: 0, fontWeight: 600, color: '#166534' }}>
+                    Conforme ce mois
+                  </p>
+                </div>
+                <div style={{ opacity: 0.8 }}>
+                  <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="#166534" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"></path>
+                    <path d="M9 15.5l2 2 4-4"></path>
+                  </svg>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Card 2: NON POTABLE */}
           <div
-            style={{
-              background: 'linear-gradient(135deg, #ffffff 0%, #fef2f2 100%)',
-              padding: '1.5rem',
-              borderRadius: '16px',
-              border: '2px solid black',
-              boxShadow: '6px 6px 0px var(--danger)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-              position: 'relative',
-              overflow: 'hidden',
-              transition: 'transform 0.2s ease',
-              cursor: 'default',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = 'translate(-2px, -2px)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = 'translate(0, 0)')}
+            className="card"
+            style={
+              isMobile
+                ? {
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-around',
+                    background: 'var(--danger-light)',
+                    padding: '0.5rem 0.2rem',
+                    textAlign: 'center',
+                    margin: 0,
+                    border: '2px solid #000000',
+                    boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+                    gap: '2px',
+                  }
+                : {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: 'var(--danger-light)',
+                    padding: '1.5rem',
+                    border: '2px solid #000000',
+                    boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+                  }
+            }
           >
-            <div
-              style={{
-                position: 'absolute',
-                top: '-20px',
-                right: '-20px',
-                fontSize: '5rem',
-                opacity: 0.1,
-                color: 'var(--danger)',
-              }}
-            >
-              <FaTimes />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', zIndex: 1 }}>
-              <div
-                style={{
-                  background: 'var(--danger)',
-                  color: 'white',
-                  borderRadius: '8px',
-                  padding: '0.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <FaTimes size={18} />
-              </div>
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                Non Potable
-              </div>
-            </div>
-            <div
-              style={{
-                fontSize: '2.8rem',
-                fontWeight: 900,
-                color: 'var(--danger)',
-                lineHeight: 1,
-                zIndex: 1,
-              }}
-            >
-              {globalStats.nonPotable}
-            </div>
-            <div
-              style={{
-                fontSize: '0.7rem',
-                color: '#64748b',
-                fontWeight: 600,
-                zIndex: 1,
-              }}
-            >
-              ⚠ Non conforme
-            </div>
+            {isMobile ? (
+              <>
+                {/* [NEW] Custom Bacterial Contamination Drop (Mobile) */}
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.25rem' }}>
+                  {/* Outer Water Drop */}
+                  <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"></path>
+                  {/* Central Microbe Core */}
+                  <circle cx="12" cy="15" r="1.5"></circle>
+                  {/* Microbe Spikes */}
+                  <path d="M12 11.5v2"></path>
+                  <path d="M12 16.5v2"></path>
+                  <path d="M9.5 12.5l1.5 1.5"></path>
+                  <path d="M14.5 17.5l-1.5-1.5"></path>
+                  <path d="M9.5 17.5l1.5-1.5"></path>
+                  <path d="M14.5 12.5l-1.5 1.5"></path>
+                </svg>
+                <div style={{ color: 'var(--danger)', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                  {globalStats.nonPotable}
+                </div>
+                <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: 'var(--danger-text)', lineHeight: 1 }}>
+                  Polluée
+                </p>
+              </>
+            ) : (
+              <>
+                <div>
+                  <h3 className="stat-card-title" style={{ color: 'var(--danger-text)' }}>
+                    Non Potable
+                  </h3>
+                  <div className="stat-card-value" style={{ color: 'var(--danger)' }}>
+                    {globalStats.nonPotable}
+                  </div>
+                  <p style={{ margin: 0, fontWeight: 600, color: 'var(--danger-text)' }}>
+                    Action requise
+                  </p>
+                </div>
+                <div style={{ opacity: 0.8 }}>
+                  {/* [NEW] Custom Bacterial Contamination Drop (Desktop) */}
+                  <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--danger)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"></path>
+                    <circle cx="12" cy="15" r="1.5"></circle>
+                    <path d="M12 11.5v2"></path>
+                    <path d="M12 16.5v2"></path>
+                    <path d="M9.5 12.5l1.5 1.5"></path>
+                    <path d="M14.5 17.5l-1.5-1.5"></path>
+                    <path d="M9.5 17.5l1.5-1.5"></path>
+                    <path d="M14.5 12.5l-1.5 1.5"></path>
+                  </svg>
+                </div>
+              </>
+            )}
           </div>
 
           {/* Card 3: EN ATTENTE */}
           <div
-            style={{
-              background: 'linear-gradient(135deg, #ffffff 0%, #fffbeb 100%)',
-              padding: '1.5rem',
-              borderRadius: '16px',
-              border: '2px solid black',
-              boxShadow: '6px 6px 0px #f59e0b',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '0.75rem',
-              position: 'relative',
-              overflow: 'hidden',
-              transition: 'transform 0.2s ease',
-              cursor: 'default',
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.transform = 'translate(-2px, -2px)')}
-            onMouseLeave={(e) => (e.currentTarget.style.transform = 'translate(0, 0)')}
+            className="card"
+            style={
+              isMobile
+                ? {
+                    display: 'flex',
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    justifyContent: 'space-around',
+                    background: 'var(--warning-light)',
+                    padding: '0.5rem 0.2rem',
+                    textAlign: 'center',
+                    margin: 0,
+                    border: '2px solid #000000',
+                    boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+                    gap: '2px',
+                  }
+                : {
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    background: 'var(--warning-light)',
+                    padding: '1.5rem',
+                    border: '2px solid #000000',
+                    boxShadow: '4px 4px 0px rgba(0,0,0,0.1)',
+                  }
+            }
           >
-            <div
-              style={{
-                position: 'absolute',
-                top: '-20px',
-                right: '-20px',
-                fontSize: '5rem',
-                opacity: 0.1,
-                color: '#f59e0b',
-              }}
-            >
-              <FaFlask />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', zIndex: 1 }}>
-              <div
-                style={{
-                  background: '#f59e0b',
-                  color: 'white',
-                  borderRadius: '8px',
-                  padding: '0.5rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <FaFlask size={18} />
-              </div>
-              <div
-                style={{
-                  fontSize: '0.75rem',
-                  fontWeight: 700,
-                  color: '#64748b',
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.5px',
-                }}
-              >
-                En Attente
-              </div>
-            </div>
-            <div
-              style={{
-                fontSize: '2.8rem',
-                fontWeight: 900,
-                color: '#f59e0b',
-                lineHeight: 1,
-                zIndex: 1,
-              }}
-            >
-              {globalStats.pending}
-            </div>
-            <div
-              style={{
-                fontSize: '0.7rem',
-                color: '#64748b',
-                fontWeight: 600,
-                zIndex: 1,
-              }}
-            >
-              ⏳ Résultats en cours
-            </div>
+            {isMobile ? (
+              <>
+                {/* Lab Hourglass SVG */}
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginBottom: '0.25rem' }}>
+                  <path d="M5 22h14"></path>
+                  <path d="M5 2h14"></path>
+                  <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
+                  <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+                </svg>
+                <div style={{ color: 'var(--warning)', fontSize: '1.5rem', fontWeight: 'bold' }}>
+                  {globalStats.pending}
+                </div>
+                <p style={{ margin: 0, fontSize: '0.7rem', fontWeight: 700, color: 'var(--warning-text)', lineHeight: 1 }}>
+                  En Cours
+                </p>
+              </>
+            ) : (
+              <>
+                <div>
+                  <h3 className="stat-card-title" style={{ color: 'var(--warning-text)' }}>
+                    En Attente
+                  </h3>
+                  <div className="stat-card-value" style={{ color: 'var(--warning)' }}>
+                    {globalStats.pending}
+                  </div>
+                  <p style={{ margin: 0, fontWeight: 600, color: 'var(--warning-text)' }}>
+                    Résultats labo
+                  </p>
+                </div>
+                <div style={{ opacity: 0.8 }}>
+                  <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 22h14"></path>
+                    <path d="M5 2h14"></path>
+                    <path d="M17 22v-4.172a2 2 0 0 0-.586-1.414L12 12l-4.414 4.414A2 2 0 0 0 7 17.828V22"></path>
+                    <path d="M7 2v4.172a2 2 0 0 0 .586 1.414L12 12l4.414-4.414A2 2 0 0 0 17 6.172V2"></path>
+                  </svg>
+                </div>
+              </>
+            )}
           </div>
         </div>
         {/* STYLED SEARCH BAR */}
