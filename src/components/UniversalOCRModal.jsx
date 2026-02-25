@@ -22,6 +22,7 @@ import {
   FaEye,
   FaLightbulb,
   FaTrash,
+  FaUsers, /* [FIX] Added missing icon */
 } from 'react-icons/fa';
 
 // --- ALG-FR TRANSLITERATION ENGINE (SMART DICTIONARY + PHONETIC) ---
@@ -1144,50 +1145,100 @@ export default function UniversalOCRModal({
   });
 
   const cleanCandidate = (c) => {
-    // 1. Lock in the pure raw OCR output before any modifications
+    // 1. Lock in the pure raw OCR output (NEVER OVERWRITTEN)
     c.raw_id = c.national_id;
     c.raw_name = c.full_name;
     c.raw_job = c.job_info;
 
-    // 2. Identify the base language from the raw scan
-    const isAr = /[\u0600-\u06FF]/.test(c.full_name);
-    c.isArabic = isAr;
-    c.is_viewing_ar = isAr;
+    // 2. Initialize Suggestion Flags
+    c.suggested_id = null;
+    c.suggested_name = null;
+    c.suggested_job = null;
 
-    // 3. Set the Symmetric Master Anchor
-    if (isAr) {
-      c.original_ar = c.full_name;
-      c.manual_fr = ''; // Empty until translated
-    } else {
-      c.manual_fr = c.full_name;
-      c.original_ar = ''; // Empty until translated
-    }
-
-    // 4. Global Auto-Correction (SPACE-IMMUNE)
+    // 3. Background AI Detection (Does NOT overwrite)
     try {
       const dict = JSON.parse(
         localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
       );
       if (c.national_id) {
         const key = c.national_id.replace(/\s+/g, '');
-        if (dict.national_id[key]) c.national_id = dict.national_id[key];
+        if (dict.national_id[key] && dict.national_id[key] !== c.national_id) c.suggested_id = dict.national_id[key];
       }
       if (c.job_info) {
         const key = c.job_info.replace(/\s+/g, '');
-        if (dict.job_info[key]) c.job_info = dict.job_info[key];
+        if (dict.job_info[key] && dict.job_info[key] !== c.job_info) c.suggested_job = dict.job_info[key];
       }
-
-      // Populate translation from dictionary if it exists
-      if (isAr && c.original_ar) {
-        const key = c.original_ar.replace(/\s+/g, '');
-        if (dict.full_name[key]) c.manual_fr = dict.full_name[key];
-      } else if (!isAr && c.manual_fr) {
-        const key = c.manual_fr.replace(/\s+/g, '');
-        if (dict.full_name[key]) c.original_ar = dict.full_name[key];
+      if (c.full_name) {
+        const key = c.full_name.replace(/\s+/g, '');
+        if (dict.full_name[key] && dict.full_name[key] !== c.full_name) c.suggested_name = dict.full_name[key];
       }
     } catch (e) {
       console.warn('Dictionary error', e);
     }
+
+    // 4. Identify the base language from the RAW scan
+    const isAr = /[\u0600-\u06FF]/.test(c.full_name);
+    c.isArabic = isAr;
+    c.is_viewing_ar = isAr;
+
+    // 5. Set the Symmetric Master Anchor
+    if (isAr) {
+      c.original_ar = c.full_name;
+      c.manual_fr = ''; 
+    } else {
+      c.manual_fr = c.full_name;
+      c.original_ar = ''; 
+    }
+  };
+
+  // [NEW] Apply a specific AI suggestion when the user clicks the Star
+  const applySuggestion = (id, fieldType) => {
+    setCandidates((prev) => prev.map((c) => {
+      if (c.id !== id) return c;
+      const updated = { ...c };
+      
+      if (fieldType === 'national_id' && updated.suggested_id) {
+        updated.national_id = updated.suggested_id;
+        updated.suggested_id = null;
+      } else if (fieldType === 'job_info' && updated.suggested_job) {
+        updated.job_info = updated.suggested_job;
+        updated.suggested_job = null;
+      } else if (fieldType === 'full_name' && updated.suggested_name) {
+        updated.full_name = updated.suggested_name;
+        updated.suggested_name = null;
+        
+        // Sync anchors so translation doesn't break
+        if (updated.is_viewing_ar) {
+          updated.original_ar = updated.full_name;
+          if (updated.isArabic) updated.manual_fr = '';
+        } else {
+          updated.manual_fr = updated.full_name;
+          if (!updated.isArabic) updated.original_ar = '';
+        }
+      }
+      return updated;
+    }));
+  };
+
+  // [NEW] Master button to apply ALL stars on the screen at once
+  const applyAllSuggestions = () => {
+    setCandidates((prev) => prev.map((c) => {
+      const updated = { ...c };
+      if (updated.suggested_id) { updated.national_id = updated.suggested_id; updated.suggested_id = null; }
+      if (updated.suggested_job) { updated.job_info = updated.suggested_job; updated.suggested_job = null; }
+      if (updated.suggested_name) {
+        updated.full_name = updated.suggested_name;
+        updated.suggested_name = null;
+        if (updated.is_viewing_ar) {
+          updated.original_ar = updated.full_name;
+          if (updated.isArabic) updated.manual_fr = '';
+        } else {
+          updated.manual_fr = updated.full_name;
+          if (!updated.isArabic) updated.original_ar = '';
+        }
+      }
+      return updated;
+    }));
   };
 
   const updateCandidate = (id, field, val) => {
@@ -1283,6 +1334,38 @@ export default function UniversalOCRModal({
 
   return (
     <div className="modal-overlay">
+      {/* [NEW] MAGIC STAR ANIMATION */}
+      <style>
+        {`
+          @keyframes magicPulse {
+            0% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(245, 158, 11, 0.5)); }
+            50% { transform: scale(1.2); filter: drop-shadow(0 0 8px rgba(245, 158, 11, 1)); color: #f59e0b; }
+            100% { transform: scale(1); filter: drop-shadow(0 0 2px rgba(245, 158, 11, 0.5)); }
+          }
+          .magic-star-btn {
+            animation: magicPulse 2s infinite ease-in-out;
+            color: #d97706;
+            background: none;
+            border: none;
+            cursor: pointer;
+            position: absolute;
+            right: 8px;
+            top: 50%;
+            transform: translateY(-50%);
+            z-index: 10;
+            padding: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+          }
+          .magic-star-btn:hover {
+            animation: none;
+            transform: translateY(-50%) scale(1.3);
+            color: #f59e0b;
+          }
+        `}
+      </style>
+      
       <div
         className="modal"
         style={{
@@ -1976,113 +2059,85 @@ export default function UniversalOCRModal({
         {/* TAB CONTENT: RESULTS TABLE */}
         {activeTab === 'results' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
+            {/* [NEW] MASTER AI BUTTON */}
+            {candidates.some(c => c.suggested_id || c.suggested_name || c.suggested_job) && (
+              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '10px 15px', borderRadius: '8px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#d97706', fontWeight: 'bold' }}>
+                  <FaMagic className="magic-star-btn" style={{ position: 'relative', transform: 'none', top: 0, right: 0 }} />
+                  Des corrections intelligentes sont disponibles.
+                </div>
+                <button onClick={applyAllSuggestions} className="btn btn-sm" style={{ background: '#f59e0b', color: 'white', fontWeight: 'bold', border: 'none' }}>
+                  Appliquer Tout
+                </button>
+              </div>
+            )}
+
             <div className="table-container">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                <thead
-                  style={{
-                    position: 'sticky',
-                    top: 0,
-                    background: 'white',
-                    zIndex: 10,
-                    borderBottom: '2px solid #eee',
-                  }}
-                >
+                <thead style={{ position: 'sticky', top: 0, background: 'white', zIndex: 10, borderBottom: '2px solid #eee' }}>
                   <tr style={{ color: '#64748b' }}>
-                    <th style={{ padding: '10px', textAlign: 'left' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
-                          <line x1="16" y1="2" x2="16" y2="6"></line>
-                          <line x1="8" y1="2" x2="8" y2="6"></line>
-                          <line x1="3" y1="10" x2="21" y2="10"></line>
-                        </svg>
-                        Matricule
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px', textAlign: 'left' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
-                          <circle cx="12" cy="7" r="4"></circle>
-                        </svg>
-                        Nom
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px', textAlign: 'left' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-                          <polyline points="9 22 9 12 15 12 15 22"></polyline>
-                        </svg>
-                        Service
-                      </div>
-                    </th>
-                    <th style={{ padding: '10px', textAlign: 'left' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <rect x="2" y="7" width="20" height="14" rx="2" ry="2"></rect>
-                          <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"></path>
-                        </svg>
-                        {mode === 'worker' ? 'Poste' : 'Grade'}
-                      </div>
-                    </th>
+                    <th style={{ padding: '10px', textAlign: 'left' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaList /> Matricule</div></th>
+                    <th style={{ padding: '10px', textAlign: 'left' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaUsers /> Nom</div></th>
+                    <th style={{ padding: '10px', textAlign: 'left' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaArrowsAltH /> Service</div></th>
+                    <th style={{ padding: '10px', textAlign: 'left' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaClipboardList /> {mode === 'worker' ? 'Poste' : 'Grade'}</div></th>
                     <th></th>
                   </tr>
                 </thead>
                 <tbody>
                   {candidates.map((c) => (
                     <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                      {/* MATRICULE */}
                       <td style={{ padding: '8px' }}>
-                        <input
-                          className="input"
-                          value={c.national_id}
-                          onChange={(e) => updateCandidate(c.id, 'national_id', e.target.value)}
-                          style={{ width: '80px', fontFamily: 'monospace' }}
-                        />
+                        <div style={{ position: 'relative', width: '90px' }}>
+                          <input
+                            className="input"
+                            value={c.national_id}
+                            onChange={(e) => updateCandidate(c.id, 'national_id', e.target.value)}
+                            style={{ width: '100%', fontFamily: 'monospace', paddingRight: c.suggested_id ? '25px' : '8px', borderColor: c.suggested_id ? '#fde68a' : '#cbd5e1' }}
+                          />
+                          {c.suggested_id && (
+                            <button className="magic-star-btn" onClick={() => applySuggestion(c.id, 'national_id')} title={`Correction IA : ${c.suggested_id}`}>
+                              <FaMagic />
+                            </button>
+                          )}
+                        </div>
                       </td>
-                      <td
-                        style={{
-                          padding: '8px',
-                          display: 'flex',
-                          gap: '5px',
-                          alignItems: 'center',
-                        }}
-                      >
-                        <input
-                          className="input"
-                          value={c.full_name}
-                          onChange={(e) => {
-                            const newVal = e.target.value;
-                            updateCandidate(c.id, 'full_name', newVal);
 
-                            if (c.is_viewing_ar) {
-                              // Editing Arabic text
-                              updateCandidate(c.id, 'original_ar', newVal);
-                              if (c.isArabic) {
-                                // Arabic is the SOURCE: Wipe French to force regeneration
-                                updateCandidate(c.id, 'manual_fr', '');
+                      {/* NOM ET PRÉNOM */}
+                      <td style={{ padding: '8px', display: 'flex', gap: '5px', alignItems: 'center' }}>
+                        <div style={{ position: 'relative', flex: 1 }}>
+                          <input
+                            className="input"
+                            value={c.full_name}
+                            onChange={(e) => {
+                              const newVal = e.target.value;
+                              updateCandidate(c.id, 'full_name', newVal);
+                              updateCandidate(c.id, 'suggested_name', null); // Erase star if manual edit
+                              if (c.is_viewing_ar) {
+                                updateCandidate(c.id, 'original_ar', newVal);
+                                if (c.isArabic) updateCandidate(c.id, 'manual_fr', '');
+                              } else {
+                                updateCandidate(c.id, 'manual_fr', newVal);
+                                if (!c.isArabic) updateCandidate(c.id, 'original_ar', '');
                               }
-                            } else {
-                              // Editing French text
-                              updateCandidate(c.id, 'manual_fr', newVal);
-                              if (!c.isArabic) {
-                                // French is the SOURCE: Wipe Arabic to force regeneration
-                                updateCandidate(c.id, 'original_ar', '');
-                              }
-                            }
-                          }}
-                          style={{ fontWeight: 'bold', flex: 1 }}
-                        />
-                        {/* SMART TOGGLE BUTTON - Complementary Logic */}
+                            }}
+                            style={{ fontWeight: 'bold', width: '100%', paddingRight: c.suggested_name ? '25px' : '8px', borderColor: c.suggested_name ? '#fde68a' : '#cbd5e1' }}
+                          />
+                          {c.suggested_name && (
+                            <button className="magic-star-btn" onClick={() => applySuggestion(c.id, 'full_name')} title={`Correction IA : ${c.suggested_name}`}>
+                              <FaMagic />
+                            </button>
+                          )}
+                        </div>
+
+                        {/* TRANSLATION GLOBE (Restored to its true purpose) */}
                         <button
                           onClick={() => {
                             if (c.is_viewing_ar) {
-                              // GOING TO FRENCH
                               const targetFr = c.manual_fr || transliterateArToFr(c.full_name);
                               updateCandidate(c.id, 'full_name', targetFr);
                               updateCandidate(c.id, 'is_viewing_ar', false);
                             } else {
-                              // GOING TO ARABIC
                               const targetAr = c.original_ar || transliterateFrToAr(c.full_name);
                               updateCandidate(c.id, 'full_name', targetAr);
                               updateCandidate(c.id, 'is_viewing_ar', true);
@@ -2090,43 +2145,40 @@ export default function UniversalOCRModal({
                           }}
                           className="btn btn-outline btn-sm"
                           title={c.is_viewing_ar ? 'Traduire en Français' : 'Traduire en Arabe'}
-                          style={{
-                            padding: '4px 8px',
-                            borderColor: (c.isArabic ? c.manual_fr : c.original_ar) ? '#10b981' : '#3b82f6',
-                            color: (c.isArabic ? c.manual_fr : c.original_ar) ? '#10b981' : '#3b82f6',
-                          }}
+                          style={{ padding: '4px 8px', borderColor: (c.isArabic ? c.manual_fr : c.original_ar) ? '#10b981' : '#3b82f6', color: (c.isArabic ? c.manual_fr : c.original_ar) ? '#10b981' : '#3b82f6' }}
                         >
                           <FaGlobeAfrica />
                         </button>
                       </td>
+
+                      {/* SERVICE */}
                       <td style={{ padding: '8px' }}>
-                        <select
-                          className="input"
-                          value={c.department_id}
-                          onChange={(e) => updateCandidate(c.id, 'department_id', e.target.value)}
-                        >
+                        <select className="input" value={c.department_id} onChange={(e) => updateCandidate(c.id, 'department_id', e.target.value)}>
                           <option value="">-</option>
-                          {departments.map((d) => (
-                            <option key={d.id} value={d.id}>
-                              {d.name}
-                            </option>
-                          ))}
+                          {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
                         </select>
                       </td>
+
+                      {/* POSTE */}
                       <td style={{ padding: '8px' }}>
-                        <input
-                          className="input"
-                          value={c.job_info}
-                          onChange={(e) => updateCandidate(c.id, 'job_info', e.target.value)}
-                        />
+                        <div style={{ position: 'relative' }}>
+                          <input
+                            className="input"
+                            value={c.job_info}
+                            onChange={(e) => updateCandidate(c.id, 'job_info', e.target.value)}
+                            style={{ paddingRight: c.suggested_job ? '25px' : '8px', borderColor: c.suggested_job ? '#fde68a' : '#cbd5e1' }}
+                          />
+                          {c.suggested_job && (
+                            <button className="magic-star-btn" onClick={() => applySuggestion(c.id, 'job_info')} title={`Correction IA : ${c.suggested_job}`}>
+                              <FaMagic />
+                            </button>
+                          )}
+                        </div>
                       </td>
+
+                      {/* DELETE */}
                       <td style={{ padding: '8px' }}>
-                        <button
-                          onClick={() => removeCandidate(c.id)}
-                          style={{ color: 'red', background: 'none', border: 'none' }}
-                        >
-                          <FaTimes />
-                        </button>
+                        <button onClick={() => removeCandidate(c.id)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}><FaTimes /></button>
                       </td>
                     </tr>
                   ))}
