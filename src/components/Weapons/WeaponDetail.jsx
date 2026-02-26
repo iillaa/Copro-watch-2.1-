@@ -181,7 +181,7 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
   };
 
   const renderStatusBadge = (status) => {
-    if (!status || status === 'pending') return <span className="badge">Neutre</span>;
+    if (!status || status === 'pending') return <span className="badge badge-yellow">Attente</span>;
     const configs = {
       apte: { class: 'badge-green', label: 'Apte' },
       inapte_temporaire: { class: 'badge-red', label: 'Inapte Temp.' },
@@ -244,6 +244,33 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
             <div
               style={{ marginTop: '0.5rem', display: 'flex', gap: '10px', alignItems: 'center' }}
             >
+              {/* [NEW] VISUAL VALIDITY INDICATOR SVG (Hollow Center Design) */}
+              {holder.next_review_date && !holder.archived && (() => {
+                const due = new Date(holder.next_review_date);
+                const now = new Date();
+                const diffTime = due - now;
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                const totalDays = 365; // Standard validity for weapons (1 year)
+                const percentage = Math.max(0, Math.min(100, (diffDays / totalDays) * 100));
+                
+                const gaugeColor = isOverdue ? '#ef4444' : percentage > 30 ? '#22c55e' : '#f59e0b';
+
+                return (
+                  <div style={{ display: 'flex', alignItems: 'center' }} title={isOverdue ? 'Expiré' : `${diffDays} jours restants`}>
+                    <svg width="36" height="36" viewBox="0 0 36 36">
+                      {/* Background Ring */}
+                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" strokeWidth="3"/>
+                      {/* Colored Progress Ring */}
+                      <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={gaugeColor} strokeWidth="3" strokeDasharray={`${percentage}, 100`} />
+                      {/* Centered Text inside the hollow ring */}
+                      <text x="18" y="21.5" textAnchor="middle" fontSize={isOverdue ? "9" : "11"} fontWeight="800" fill={gaugeColor}>
+                        {isOverdue ? 'EXP' : diffDays}
+                      </text>
+                    </svg>
+                  </div>
+                );
+              })()}
+
               <span
                 className={`badge ${
                   isOverdue
@@ -255,9 +282,11 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
               >
                 {holder.status === 'apte'
                   ? 'Aptitude Permanente'
+                  : holder.status === 'pending'
+                  ? 'Visite en cours (Attente Décision)'
                   : `Prochaine Visite: ${logic.formatDateDisplay(holder.next_review_date)}`}
               </span>
-              {isOverdue && (
+              {isOverdue && holder.status !== 'pending' && (
                 <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.9rem' }}>
                   ⚠️ À Revoir
                 </span>

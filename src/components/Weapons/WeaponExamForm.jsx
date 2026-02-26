@@ -58,6 +58,25 @@ export default function WeaponExamForm({ holder, existingExam, onClose, onSave }
     onSave();
   };
 
+  const handleSaveConsultation = async () => {
+    // [FIX] Preserve everything in formData, but ensure it's marked as 'pending'
+    // ONLY if it's a new exam or if it's already pending.
+    // This allows editing the consultation date without reverting a final decision.
+    const dataToSave = {
+      ...formData,
+      id: existingExam ? existingExam.id : undefined,
+      holder_id: holder.id,
+    };
+
+    // If no existing exam, we force pending. If existing, we keep what's in the form.
+    if (!existingExam && formData.final_decision === 'apte') {
+      dataToSave.final_decision = 'pending';
+    }
+
+    await db.saveWeaponExam(dataToSave);
+    onSave();
+  };
+
   // [SURGICAL UPDATE] Darker Colors & Neobrutal constants
   const getDecisionColor = () => {
     switch (formData.final_decision) {
@@ -67,6 +86,8 @@ export default function WeaponExamForm({ holder, existingExam, onClose, onSave }
         return '#b91c1c'; // Darker Red (Tailwind red-700)
       case 'inapte_definitif':
         return '#1f2937'; // Dark Gray/Black
+      case 'pending':
+        return '#d97706'; // Amber/Yellow
       default:
         return '#333333';
     }
@@ -94,7 +115,31 @@ export default function WeaponExamForm({ holder, existingExam, onClose, onSave }
         </div>
 
         <form onSubmit={handleSubmit}>
-          <div className="card" style={{ background: '#f8fafc', marginBottom: '1rem' }}>
+          <div className="card" style={{ background: '#fffbeb', marginBottom: '1.5rem', border: '2px solid #f59e0b', boxShadow: '4px 4px 0px 0px #f59e0b' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem' }}>
+               <h4 style={{ margin: 0, color: '#92400e', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                 <span style={{ fontSize: '1.2rem' }}>🩺</span> 1. Consultation Médicale
+               </h4>
+               <button 
+                type="button" 
+                className="btn" 
+                style={{ 
+                  backgroundColor: '#ffffff', 
+                  color: '#92400e', 
+                  border: '2px solid #92400e', 
+                  boxShadow: '2px 2px 0px 0px #92400e',
+                  fontSize: '0.8rem',
+                  padding: '5px 12px',
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px'
+                }}
+                onClick={handleSaveConsultation}
+               >
+                 <span>💾</span> Enregistrer Consultation
+               </button>
+            </div>
             <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
               <div style={{ flex: 1 }}>
                 <label className="label">Date Consultation (Cabinet)</label>
@@ -124,8 +169,13 @@ export default function WeaponExamForm({ holder, existingExam, onClose, onSave }
             </div>
           </div>
 
+          <div style={{ marginBottom: '1rem', textAlign: 'center', opacity: 0.5 }}>
+             <div style={{ borderBottom: '2px dashed #ccc', height: '10px', marginBottom: '-10px' }}></div>
+             <span style={{ background: '#fff', padding: '0 10px', fontSize: '0.8rem', fontWeight: 'bold' }}>PUIS</span>
+          </div>
+
           <div className="card" style={{ marginBottom: '1rem', borderLeft: '4px solid #3b82f6' }}>
-            <h4>Avis des Experts</h4>
+            <h4>2. Avis des Experts</h4>
             <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
               <div style={{ flex: 1 }}>
                 <label className="label">Mon Avis (Médecin)</label>

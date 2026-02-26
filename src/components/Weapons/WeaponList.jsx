@@ -630,14 +630,39 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                   <div className="hybrid-cell">{highlightMatch(h.job_function)}</div>{' '}
                   {/* <--- HIGHLIGHT APPLIED */}
                   <div className="hybrid-cell">
-                    <span
-                      style={{
-                        fontWeight: 600,
-                        color: isOverdue ? 'var(--danger)' : isDue ? '#d97706' : 'inherit',
-                      }}
-                    >
-                      {logic.formatDateDisplay(h.next_review_date)}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {/* [NEW] VISUAL VALIDITY INDICATOR SVG */}
+                      {h.next_review_date && !h.archived && h.status !== 'pending' && (() => {
+                        const due = new Date(h.next_review_date);
+                        const now = new Date();
+                        const diffTime = due - now;
+                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+                        const totalDays = 365; // Standard validity for weapons
+                        const percentage = Math.max(0, Math.min(100, (diffDays / totalDays) * 100));
+                        const gaugeColor = isOverdue ? '#ef4444' : percentage > 30 ? '#22c55e' : '#f59e0b';
+
+                        return (
+                          <div title={isOverdue ? 'Expiré' : `${diffDays} jours restants`}>
+                            <svg width="24" height="24" viewBox="0 0 36 36">
+                              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke="#e2e8f0" strokeWidth="4"/>
+                              <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831" fill="none" stroke={gaugeColor} strokeWidth="4" strokeDasharray={`${percentage}, 100`} />
+                              <text x="18" y="22" textAnchor="middle" fontSize={isOverdue ? "10" : "12"} fontWeight="900" fill={gaugeColor}>
+                                {isOverdue ? '!' : diffDays > 99 ? '99+' : diffDays}
+                              </text>
+                            </svg>
+                          </div>
+                        );
+                      })()}
+
+                      <span
+                        style={{
+                          fontWeight: 600,
+                          color: isOverdue ? 'var(--danger)' : isDue ? '#d97706' : 'inherit',
+                        }}
+                      >
+                        {logic.formatDateDisplay(h.next_review_date)}
+                      </span>
+                    </div>
 
                     {/* [NEW] RETARD BADGE */}
                     {!h.archived && isOverdue && (
@@ -649,19 +674,21 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                       </span>
                     )}
 
-                    {/* [FIX] Status Badge: Removed '!isOverdue' so it COEXISTS with Retard */}
-                    {h.status && h.status !== 'pending' && (
+                    {/* [FIX] Status Badge: Better handling of pending and definitif statuses */}
+                    {h.status && (
                       <span
                         className={`badge ${
                           h.status === 'apte'
                             ? 'badge-green'
                             : h.status === 'inapte_definitif'
                             ? 'badge-black'
+                            : h.status === 'pending'
+                            ? 'badge-yellow'
                             : 'badge-red'
                         }`}
                         style={{ marginLeft: '5px', fontSize: '0.7rem' }}
                       >
-                        {h.status === 'apte' ? 'Apte' : 'Inapte'}
+                        {h.status === 'apte' ? 'Apte' : h.status === 'pending' ? 'Attente' : 'Inapte'}
                       </span>
                     )}
                   </div>
