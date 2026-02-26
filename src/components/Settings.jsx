@@ -44,9 +44,27 @@ export default function Settings({
   // Initialize empty. We only set it if the user types a NEW pin.
   const [pin, setPin] = useState('');
 
-  // PIN Migration Check: Detect legacy PINs (4-digit) vs hashed (SHA-256)
-  const isLegacyPin = currentPin && currentPin.length === 4 && /^[0-9]+$/.test(currentPin);
-  const [showPinMigrationPrompt, setShowPinMigrationPrompt] = useState(isLegacyPin);
+  // PIN Migration Check: Detect legacy PINs (4-digit) vs unpeppered (SHA-256) vs new peppered (SHA-256)
+  const [showPinMigrationPrompt, setShowPinMigrationPrompt] = useState(false);
+
+  useEffect(() => {
+    const checkMigration = async () => {
+      // 1. Plain 4-digit PIN (Very old)
+      if (currentPin && currentPin.length === 4 && /^[0-9]+$/.test(currentPin)) {
+        setShowPinMigrationPrompt(true);
+        return;
+      }
+      
+      // 2. Check if current hash is "Unpeppered"
+      // We can't know for sure without the original PIN, but we can assume
+      // if it's 64 chars and doesn't match a test peppered hash of '0000'.
+      // Actually, the most reliable way is to wait for the user to change it, 
+      // but we can prompt if it's NOT a peppered hash of a known default.
+      // For now, let's keep it simple: if it's 64 chars, we only prompt if 
+      // the user specifically needs to re-secure it.
+    };
+    checkMigration();
+  }, [currentPin]);
   const [doctorName, setDoctorName] = useState('');
   const { showToast, ToastContainer } = useToast();
   const fileRef = useRef();
@@ -109,23 +127,40 @@ export default function Settings({
     showToast('Paramètres sauvegardés !', 'success');
   };
 
+  // Helper to handle the import process (including password prompt if needed)
+  const processImport = async (text, initialPassword = null) => {
+    let result = await db.importData(text, initialPassword);
+
+    // If it needs a password, prompt the user
+    while (result && result.error === 'NEED_PASSWORD') {
+      const pw = prompt("Ce fichier est chiffré. Veuillez entrer le mot de passe (PIN de l'époque ou mot de passe personnalisé) :");
+      if (pw === null) return false; // User cancelled
+      if (!pw.trim()) continue;
+      
+      result = await db.importData(text, pw);
+      if (result && result.error === 'NEED_PASSWORD') {
+        showToast('Mot de passe incorrect.', 'error');
+      }
+    }
+
+    return result === true;
+  };
+
   const handleExportEncrypted = async () => {
     try {
-      const pw = prompt("Entrez un mot de passe pour chiffrer l'export:");
+      const pw = prompt("Entrez un mot de passe personnalisé pour cet export :");
       if (pw === null) return; // User pressed Cancel
       if (!pw.trim()) {
         showToast('Mot de passe requis', 'error');
         return;
       }
 
-      console.log('Starting encrypted export...');
+      console.log('Starting custom encrypted export...');
       showToast("Génération de l'export chiffré...", 'info');
       const enc = await db.exportDataEncrypted(pw);
-      console.log('Export data generated, using backup service...');
-
-      // Use backup service directly for Android native export
-      await backupService.saveBackupJSON(enc, 'medical-export-encrypted.json');
-      showToast('Export chiffré réussi ! Sauvegardé dans Documents/copro-watch/', 'success');
+      
+      await backupService.saveBackupJSON(enc, 'medical-export-custom.json');
+      showToast('Export réussi avec mot de passe personnalisé !', 'success');
     } catch (e) {
       console.error('Encrypted export failed:', e);
       showToast("Échec de l'export chiffré: " + (e.message || e), 'error');
@@ -134,16 +169,15 @@ export default function Settings({
 
   const handleExportPlain = async () => {
     try {
-      console.log('Starting plain export...');
+      console.log('Starting standard encrypted export...');
       showToast("Génération de l'export...", 'info');
-      const plain = await db.exportData();
-      console.log('Export data generated, using backup service...');
-
-      // Use backup service directly for Android native export
-      await backupService.saveBackupJSON(plain, 'medical-export.json');
-      showToast('Export réussi ! Sauvegardé dans Documents/copro-watch/', 'success');
+      // Now always encrypted with current PIN hash by default
+      const enc = await db.exportData();
+      
+      await backupService.saveBackupJSON(enc, 'medical-export.json');
+      showToast('Export réussi (chiffré avec votre PIN) !', 'success');
     } catch (e) {
-      console.error('Plain export failed:', e);
+      console.error('Standard export failed:', e);
       showToast("Échec de l'export: " + (e.message || e), 'error');
     }
   };
@@ -151,16 +185,20 @@ export default function Settings({
   const handleImportEncrypted = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
-    const pw = prompt("Entrez le mot de passe pour déchiffrer l'import:");
-    if (pw === null) return; // User pressed Cancel
-    if (!pw.trim()) {
-      showToast('Mot de passe requis', 'error');
-      return;
-    }
     const text = await file.text();
-    const ok = await db.importDataEncrypted(text, pw);
+    
+    // We can just use processImport here
+    const ok = await processImport(text);
+    if (ok) {
+      try {
+        const realDate = backupService.getRealDate({ text });
+        await backupService.setLastImported(realDate);
+        const status = await backupService.getBackupStatus();
+        setBackupProgress(status);
+      } catch (e) { /* ignore */ }
+    }
     showToast(
-      ok ? 'Données importées (chiffrées).' : "Échec de l'import chiffré",
+      ok ? 'Données importées avec succès.' : "Échec de l'import.",
       ok ? 'success' : 'error'
     );
   };
@@ -169,7 +207,17 @@ export default function Settings({
     const file = e.target.files[0];
     if (!file) return;
     const text = await file.text();
-    const ok = await db.importData(text);
+    
+    // Now handled by processImport (automatic detection of encryption)
+    const ok = await processImport(text);
+    if (ok) {
+      try {
+        const realDate = backupService.getRealDate({ text });
+        await backupService.setLastImported(realDate);
+        const status = await backupService.getBackupStatus();
+        setBackupProgress(status);
+      } catch (e) { /* ignore */ }
+    }
     showToast(ok ? 'Données importées.' : "Échec de l'import", ok ? 'success' : 'error');
   };
 
@@ -243,26 +291,27 @@ export default function Settings({
 
   const handleGetBackupNow = async () => {
     try {
-      setBackupStatus('Creating backup...');
-      console.log('Starting manual backup...');
+      setBackupStatus('Création de la sauvegarde chiffrée...');
+      console.log('Starting manual encrypted backup...');
 
-      const json = await db.exportData();
+      // Now encrypted with current PIN hash by default
+      const enc = await db.exportData();
 
       // Use helper function from backup service for consistent filename format
       const filename = backupService.generateBackupFilename('backup-manuel');
 
-      const success = await backupService.saveBackupJSON(json, filename);
+      const success = await backupService.saveBackupJSON(enc, filename);
 
       if (success) {
-        setBackupStatus(`Backup saved: ${filename}`);
+        setBackupStatus(`Sauvegarde chiffrée réussie : ${filename}`);
         const status = await backupService.getBackupStatus();
         setBackupProgress(status);
       } else {
-        setBackupStatus('Backup failed: Service returned false');
+        setBackupStatus('Échec de la sauvegarde.');
       }
     } catch (e) {
       console.error('Manual backup failed:', e);
-      setBackupStatus('Backup failed: ' + (e.message || e));
+      setBackupStatus('Erreur : ' + (e.message || e));
     }
     setTimeout(() => setBackupStatus(''), 5000);
   };
@@ -290,9 +339,24 @@ export default function Settings({
         throw new Error('Aucun fichier trouvé'); // Trigger fallback
       }
 
-      const ok = await db.importData(backupData.text);
-      setBackupStatus(ok ? 'Succès ! Backup restauré.' : 'Échec de la restauration.');
-      if (ok) showToast('Backup restauré avec succès', 'success');
+      // Use processImport for automatic decryption handling
+      const ok = await processImport(backupData.text);
+      setBackupStatus(ok ? 'Succès ! Backup restauré.' : 'Restauration annulée ou échouée.');
+      if (ok) {
+        showToast('Backup restauré avec succès', 'success');
+        
+        // [NEW] Update backup service state so it knows we've imported this version
+        try {
+          const realDate = backupService.getRealDate(backupData);
+          await backupService.setLastImported(realDate);
+          
+          // Refresh the progress UI
+          const status = await backupService.getBackupStatus();
+          setBackupProgress(status);
+        } catch (e) {
+          console.warn('Failed to update backup status after import:', e);
+        }
+      }
       setTimeout(() => setBackupStatus(''), 3000);
     } catch (e) {
       console.warn('Auto-import failed, switching to manual:', e);

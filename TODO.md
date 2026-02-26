@@ -66,7 +66,10 @@
   - _Détail :_ Verrouillage automatique après 5 minutes d'inactivité pour protéger les données médicales.
 - [x] **Concept : Hashed PINs**
   - _État :_ ✅ Terminé (v2.1)
-  - _Détail :_ Migration vers le hachage SHA-256 pour le stockage du code PIN.
+  - _Détail :_ Migration vers le hachage SHA-256 durci avec **Pepper** secret pour empêcher le brute-force.
+- [x] **Concept : Chiffrement Obligatoire des Backups**
+  - _État :_ ✅ Terminé (v2.1)
+  - _Détail :_ Toutes les sauvegardes JSON sont désormais chiffrées par défaut avec AES-GCM.
 - [ ] **Concept : Authentification Biométrique**
   - _Idée :_ Utiliser les API natives Android.
   - _But :_ Connexion par empreinte digitale ou FaceID (remplace le PIN).

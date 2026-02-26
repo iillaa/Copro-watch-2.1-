@@ -55,28 +55,44 @@ const dbInstance = new CoproDatabase();
 
 // --- WORKER HELPER ---
 // [NEW] Wraps the Worker in a Promise so we can await it
-function stringifyInWorker(data) {
-  return new Promise((resolve, reject) => {
-    const worker = new ExportWorker();
+async function stringifyInWorker(data) {
+  try {
+    return await new Promise((resolve, reject) => {
+      const worker = new ExportWorker();
+      
+      const timeout = setTimeout(() => {
+        worker.terminate();
+        reject(new Error('Export worker timeout (30s)'));
+      }, 30000);
 
-    worker.onmessage = (e) => {
-      if (e.data.success) {
-        resolve(e.data.json);
-      } else {
-        reject(new Error(e.data.error));
-      }
-      worker.terminate(); // Kill worker after job is done to save RAM
-    };
+      worker.onmessage = (e) => {
+        clearTimeout(timeout);
+        if (e.data.success) {
+          resolve(e.data.json);
+        } else {
+          reject(new Error(e.data.error || 'Worker execution failed'));
+        }
+        worker.terminate(); // Kill worker after job is done to save RAM
+      };
 
-    worker.onerror = (err) => {
-      reject(err);
-      worker.terminate();
-    };
+      worker.onerror = (err) => {
+        clearTimeout(timeout);
+        console.error('[ExportWorker] Critical Error:', err);
+        // [FIX] ErrorEvents are not automatically readable as JSON
+        reject(new Error(err.message || 'Worker Thread Crash'));
+        worker.terminate();
+      };
 
-    // Send the massive object to the background
-    worker.postMessage({ data });
-  });
+      // Send the massive object to the background
+      worker.postMessage({ data });
+    });
+  } catch (e) {
+    console.warn('[DB] Background stringify failed, using main thread fallback...', e);
+    return JSON.stringify(data);
+  }
 }
+
+let lastExportDataStr = null;
 
 // [CRITICAL FIX] Synchronous-ish Export to prevent data loss on force close
 async function triggerBackupCheck() {
@@ -85,11 +101,21 @@ async function triggerBackupCheck() {
 
     if (triggerType) {
       console.log(`[DB] Backup due (${triggerType}). Executing export IMMEDIATELY...`);
-      // We removed requestIdleCallback. It is too dangerous on mobile because
-      // the OS kills it if the user swipes the app away.
-      // Execute immediately to guarantee data reaches the file system.
       try {
-        await backupService.performAutoExport(async () => await exportData(), triggerType);
+        await backupService.performAutoExport(async () => {
+          const dataStr = await exportDataRaw();
+          // [OPTIMIZATION] Check if data is actually different from last successful export
+          if (dataStr === lastExportDataStr) {
+            console.log('[DB] Data unchanged since last backup, skipping write.');
+            return null; // Signals skip
+          }
+          lastExportDataStr = dataStr;
+          
+          // Always encrypt with current PIN for auto-backups
+          const settings = await db.getSettings();
+          const pinHash = settings.pin || '0000';
+          return await encryptString(pinHash, dataStr);
+        }, triggerType);
       } catch (e) {
         console.warn('[DB] Background export failed', e);
       }
@@ -99,12 +125,9 @@ async function triggerBackupCheck() {
   }
 }
 
-// 4. Export Global Function (Used by UI and Backup)
-// [UPDATED] Now uses Worker to prevent UI Freeze
-async function exportData() {
-  // A. Gather Data (Must happen on Main Thread)
+// Internal raw export (plain JSON)
+async function exportDataRaw() {
   const rawData = {
-    // [NEW] Metadata allows us to trust the data, not the file system
     meta: {
       version: '1.1',
       exported_at: new Date().getTime(),
@@ -120,9 +143,22 @@ async function exportData() {
     weapon_departments: await dbInstance.weapon_departments.toArray(),
   };
 
-  // B. Stringify in Background (No UI Freeze)
-  // This replaces "return JSON.stringify(rawData)"
   return await stringifyInWorker(rawData);
+}
+
+// 4. Export Global Function (Used by UI and Backup)
+// [UPDATED] Now always returns ENCRYPTED data by default using current PIN
+async function exportData(password = null) {
+  const rawJson = await exportDataRaw();
+  
+  if (password) {
+    return await encryptString(password, rawJson);
+  }
+  
+  // Default: use current app PIN hash
+  const settings = await db.getSettings();
+  const pinHash = settings.pin || '0000';
+  return await encryptString(pinHash, rawJson);
 }
 
 // 5. The Public API
@@ -133,6 +169,8 @@ export const db = {
       console.log('Seeding database (First Run)...');
     }
   },
+
+  // ... (keeping other methods as they are) ...
 
   // --- WEAPONS (NEW) ---
   async getWeaponHolders() {
@@ -234,19 +272,11 @@ export const db = {
 
   // --- ENCRYPTION (FIXED) ---
   async exportDataEncrypted(password) {
-    const json = await exportData();
-    return await encryptString(password, json);
+    return await exportData(password);
   },
 
   async importDataEncrypted(encryptedContent, password) {
-    try {
-      const decryptedJson = await decryptString(password, encryptedContent);
-      // Calls the plain import function below
-      return await this.importData(decryptedJson);
-    } catch (e) {
-      console.error('Decryption failed', e);
-      return false;
-    }
+    return await this.importData(encryptedContent, password);
   },
 
   // --- WORKERS ---
@@ -387,9 +417,51 @@ export const db = {
   // --- IMPORT / EXPORT ---
   exportData,
 
-  async importData(jsonString) {
+  async importData(jsonString, password = null) {
+    if (!jsonString) return false;
     try {
-      const data = JSON.parse(jsonString);
+      let data;
+      try {
+        data = JSON.parse(jsonString);
+      } catch (e) {
+        console.error('Invalid JSON', e);
+        return false;
+      }
+
+      // Detection: Is this an encrypted CoproWatch payload?
+      const isEncrypted = data.method && data.data && (data.method === 'aes-gcm' || data.method === 'xor');
+
+      if (isEncrypted) {
+        let decrypted = null;
+        
+        // 1. Try provided password if any
+        if (password) {
+          try {
+            decrypted = await decryptString(password, jsonString);
+          } catch (e) {
+            console.warn('[DB] Provided password failed');
+          }
+        }
+        
+        // 2. Try current app PIN if not decrypted yet
+        if (!decrypted) {
+          const settings = await this.getSettings();
+          const pinHash = settings.pin || '0000';
+          try {
+            decrypted = await decryptString(pinHash, jsonString);
+          } catch (e) {
+            console.warn('[DB] Current PIN hash failed');
+          }
+        }
+        
+        // 3. If still not decrypted, we need a password from the user
+        if (!decrypted) {
+          return { error: 'NEED_PASSWORD', encryptedData: jsonString };
+        }
+        
+        data = JSON.parse(decrypted);
+      }
+
       await dbInstance.transaction('rw', dbInstance.tables, async () => {
         if (data.departments) await dbInstance.departments.bulkPut(data.departments);
         if (data.workplaces) await dbInstance.workplaces.bulkPut(data.workplaces);

@@ -235,27 +235,35 @@ export default function UniversalOCRModal({
   const [debugCrops, setDebugCrops] = useState([]);
   const [debugBoxes, setDebugBoxes] = useState([]);
 
+  // [NEW] Persistent Worker Refs
+  const tesseractWorkersRef = useRef([]);
+  const paddleOcrRef = useRef(null);
+  const currentLangsRef = useRef('');
+
   // NEW: SAFE COMPONENT MOUNT TRACKER (Prevents memory leaks/crashes)
   const isMounted = useRef(true);
   useEffect(() => {
     isMounted.current = true; // FIX: Forces true on remount for React 18 Strict Mode
     return () => {
       isMounted.current = false;
+      
+      // [CLEANUP] Kill workers on unmount
+      console.log('[OCR] Cleaning up workers...');
+      tesseractWorkersRef.current.forEach(w => w.terminate());
+      if (paddleOcrRef.current && paddleOcrRef.current.dispose) {
+        paddleOcrRef.current.dispose();
+      }
     };
   }, []);
 
     // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
   const getAssetUrl = (path, isDirectory = false) => {
-      const isCapacitor = (window.Capacitor && window.Capacitor.isNative) || 
-                          window.location.origin.includes('localhost');
+      const isCapacitor = window.Capacitor && window.Capacitor.isNative;
       const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
       
       // Clean leading/trailing slashes
       let cleanPath = path.replace(/^\/+|\/+$/g, '');
       
-      // [FIX] Directories need a trailing slash
-      if (isDirectory && cleanPath) cleanPath += '/';
-
       if (isCapacitor) {
         // [FIX] Use origin-based URLs and avoid accidental double slashes.
         return cleanPath ? `${window.location.origin}/${cleanPath}` : `${window.location.origin}/`;
@@ -268,32 +276,45 @@ export default function UniversalOCRModal({
 
   const resolveTesseractAssetConfig = async (langs) => {
     const tessRoot = getAssetUrl('/tesseract', true);
-    const workerPath = `${tessRoot}worker.min.js`;
-    const corePath = `${tessRoot}tesseract-core.wasm.js`;
+    const workerPath = `${tessRoot}/worker.min.js`;
+    const corePath = `${tessRoot}/tesseract-core.wasm.js`;
 
     const checkExists = async (url) => {
-      const res = await fetch(url);
-      return res.ok;
+      try {
+        const res = await fetch(url);
+        if (!res.ok) return false;
+        // [FIX] Detect if we got an HTML error page instead of binary data
+        const ct = res.headers.get('Content-Type') || '';
+        if (ct.includes('text/html')) return false;
+        return true;
+      } catch (e) {
+        return false;
+      }
     };
 
+    console.log(`[TESS_RESOLVE] Checking assets at: ${tessRoot}`);
     const requiredEngineFiles = [workerPath, corePath];
     for (const fileUrl of requiredEngineFiles) {
       if (!(await checkExists(fileUrl))) {
+        console.error(`[TESS_RESOLVE] Missing core file: ${fileUrl}`);
         throw new Error(`Missing local Tesseract file: ${fileUrl}`);
       }
     }
 
     const requiredLangs = langs.split('+').filter(Boolean);
     const hasRawTrainedData = await Promise.all(
-      requiredLangs.map((lang) => checkExists(`${tessRoot}${lang}.traineddata`)),
+      requiredLangs.map((lang) => checkExists(`${tessRoot}/${lang}.traineddata`)),
     );
 
     const useRawTrainedData = hasRawTrainedData.every(Boolean);
+    console.log(`[TESS_RESOLVE] Raw traineddata available: ${useRawTrainedData}`);
+
     if (!useRawTrainedData) {
       const hasGzTrainedData = await Promise.all(
-        requiredLangs.map((lang) => checkExists(`${tessRoot}${lang}.traineddata.gz`)),
+        requiredLangs.map((lang) => checkExists(`${tessRoot}/${lang}.traineddata.gz`)),
       );
       if (!hasGzTrainedData.every(Boolean)) {
+        console.error(`[TESS_RESOLVE] Missing .gz data for: ${requiredLangs.join(', ')}`);
         throw new Error(
           `Missing local language data for ${requiredLangs.join(', ')} in ${tessRoot}`,
         );
@@ -332,17 +353,17 @@ export default function UniversalOCRModal({
       // [ROBUST] Explicit mapping prevents bad URL resolution (ex: https://localhost//...)
       // and lets ORT load JS loader chunks from /assets while keeping wasm fallbacks at root.
       ort.env.wasm.wasmPaths = {
-        'ort-wasm-simd-threaded.mjs': `${assetsBase}ort-wasm-simd-threaded.mjs`,
-        'ort-wasm-simd-threaded.jsep.mjs': `${assetsBase}ort-wasm-simd-threaded.jsep.mjs`,
-        'ort-wasm-simd-threaded.asyncify.mjs': `${assetsBase}ort-wasm-simd-threaded.asyncify.mjs`,
-        'ort-wasm-simd-threaded.jspi.mjs': `${assetsBase}ort-wasm-simd-threaded.jspi.mjs`,
-        'ort-wasm-simd-threaded.wasm': `${assetsBase}ort-wasm-simd-threaded.wasm`,
-        'ort-wasm-simd-threaded.jsep.wasm': `${assetsBase}ort-wasm-simd-threaded.jsep.wasm`,
-        'ort-wasm-simd-threaded.asyncify.wasm': `${assetsBase}ort-wasm-simd-threaded.asyncify.wasm`,
-        'ort-wasm-simd-threaded.jspi.wasm': `${assetsBase}ort-wasm-simd-threaded.jspi.wasm`,
+        'ort-wasm-simd-threaded.mjs': `${assetsBase}/ort-wasm-simd-threaded.mjs`,
+        'ort-wasm-simd-threaded.jsep.mjs': `${assetsBase}/ort-wasm-simd-threaded.jsep.mjs`,
+        'ort-wasm-simd-threaded.asyncify.mjs': `${assetsBase}/ort-wasm-simd-threaded.asyncify.mjs`,
+        'ort-wasm-simd-threaded.jspi.mjs': `${assetsBase}/ort-wasm-simd-threaded.jspi.mjs`,
+        'ort-wasm-simd-threaded.wasm': `${assetsBase}/ort-wasm-simd-threaded.wasm`,
+        'ort-wasm-simd-threaded.jsep.wasm': `${assetsBase}/ort-wasm-simd-threaded.jsep.wasm`,
+        'ort-wasm-simd-threaded.asyncify.wasm': `${assetsBase}/ort-wasm-simd-threaded.asyncify.wasm`,
+        'ort-wasm-simd-threaded.jspi.wasm': `${assetsBase}/ort-wasm-simd-threaded.jspi.wasm`,
         // non-SIMD fallback binaries kept at root
-        'ort-wasm.wasm': `${rootBase}ort-wasm.wasm`,
-        'ort-wasm-simd.wasm': `${rootBase}ort-wasm-simd.wasm`,
+        'ort-wasm.wasm': `${rootBase}/ort-wasm.wasm`,
+        'ort-wasm-simd.wasm': `${rootBase}/ort-wasm-simd.wasm`,
       };
 
       if (isFileProtocol) {
@@ -517,19 +538,31 @@ export default function UniversalOCRModal({
     binarize = true,
     customScale = 4
   ) => {
+    // [OPTIMIZATION] Reuse a temporary canvas if possible or at least ensure clean allocation
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d');
-    const scale = customScale; // Use the parameter, not a hardcoded 4
+    const ctx = canvas.getContext('2d', { alpha: false }); // Disable alpha for better performance
+    const scale = customScale;
 
-    const targetW = (rect.width + paddingX * 2) * scale;
-    const targetH = (rect.height + paddingY * 2) * scale;
+    const targetW = Math.floor((rect.width + paddingX * 2) * scale);
+    const targetH = Math.floor((rect.height + paddingY * 2) * scale);
+    
+    // Safety check for invalid dimensions
+    if (targetW <= 0 || targetH <= 0) return null;
+    
     canvas.width = targetW;
     canvas.height = targetH;
 
+    // Fast clear
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetW, targetH);
+    
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
+
+    if (binarize) {
+      // [FIX] Apply filters BEFORE drawing for maximum hardware acceleration
+      ctx.filter = 'contrast(200%) grayscale(100%)';
+    }
 
     ctx.drawImage(
       imgElement,
@@ -543,19 +576,8 @@ export default function UniversalOCRModal({
       rect.height * scale
     );
 
-    const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-    const data = imageData.data;
-
-    if (binarize) {
-      // [FIX] Hardware Acceleration: Use Canvas filters for binarization
-      ctx.filter = 'contrast(200%) grayscale(100%)'; // Apply filter directly to context
-      ctx.drawImage(canvas, 0, 0); // Redraw image onto itself with filter
-      ctx.filter = 'none'; // Reset filter to avoid affecting subsequent draws
-    }
-    // For Paddle (!binarize), do absolutely nothing. Return the raw, natural image.
-    // Removed the manual pixel loop as it's replaced by canvas filter.
-
-    // ctx.putImageData(imageData, 0, 0); // No longer needed after using ctx.drawImage with filter
+    // Reset filter for safety
+    if (binarize) ctx.filter = 'none';
 
     return canvas.toDataURL('image/png');
   };
@@ -629,7 +651,6 @@ export default function UniversalOCRModal({
     }
   }, [debugMode, image, hLines, vLines, debugBoxes]);
 
-  // ========== MODE 1: TESSERACT PARALLEL (SAFE) ==========
   const runTesseractOCR = async () => {
     if (!image || !imageRef.current) return;
     setIsProcessing(true);
@@ -640,61 +661,52 @@ export default function UniversalOCRModal({
     setProgress(0);
     setStatusText('Tesseract (Parallel Workers)...');
 
-    let workers = [];
+    let currentWorkers = tesseractWorkersRef.current;
+
     try {
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
-      // [FIX] Dynamic worker allocation based on hardware for stability
       const hardwareCores = window.navigator.hardwareConcurrency || 1;
       const numWorkers = Math.min(2, Math.max(1, hardwareCores - 1));
 
-      if (isMounted.current) addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
+      // [REUSE LOGIC]
+      const needsNewWorkers = currentWorkers.length !== numWorkers || currentLangsRef.current !== langs; 
 
-      // [CRITICAL FIX] Use a try-catch inside the loop to prevent total crash on network error
-      for (let i = 0; i < numWorkers; i++) {
-        try {
-          if (isMounted.current) addLog('[TESSERACT] Resolving local engine assets...');
-
-          const tessConfig = await resolveTesseractAssetConfig(langs);
-          addLog(`[OK] Worker: ${tessConfig.workerPath}`);
-          addLog(`[OK] Core: ${tessConfig.corePath}`);
-          addLog(`[OK] Lang path: ${tessConfig.langPath} (gzip=${tessConfig.gzip})`);
-          
-          if (!window.Tesseract) throw new Error('Global Tesseract not found.');
-
-          const w = await window.Tesseract.createWorker(
-            langs,
-            window.Tesseract.OEM?.DEFAULT,
-            {
-            workerPath: tessConfig.workerPath,
-            corePath: tessConfig.corePath,
-            langPath: tessConfig.langPath,
-            workerBlob: false,
-            gzip: tessConfig.gzip,
-            cacheMethod: 'none',
-            logger: (m) => {
-              addLog(`[TESSERACT_WORKER] ${m.status}: ${m.progress ? Math.round(m.progress * 100) + '%' : ''}`);
-              if (m.status === 'initializing api') setProgress(10);
-              if (m.status === 'loading language' || m.status === 'loading traineddata') {
-                setProgress(Math.round(m.progress * 100));
-              }
-            },
-          },
-          );
-
-          // Compatibility: Tesseract.js v5/v6 uses loadLanguage/initialize,
-          // while newer versions can auto-initialize via createWorker(...langs...)
-          if (typeof w.loadLanguage === 'function') await w.loadLanguage(langs);
-          if (typeof w.initialize === 'function') await w.initialize(langs);
-          
-          workers.push(w);
-        } catch (e) {
-          console.error('[TESSERACT] Worker init failed:', e);
-          const detail = e?.message || e?.toString?.() || JSON.stringify(e);
-          const errorMsg = `[TESSERACT ERROR] Impossible de charger le moteur (Vérifiez que les fichiers .traineddata sont dans /public/tesseract/). Detail: ${detail}`;
-          addLog(errorMsg);
-          setErrorMessage(errorMsg);
-          throw new Error('Moteur OCR indisponible. Erreur de chargement des ressources locales.');
+      if (needsNewWorkers) {
+        addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
+        // Cleanup old ones first
+        currentWorkers.forEach(w => w.terminate());
+        currentWorkers = [];
+        currentLangsRef.current = langs;
+        
+        for (let i = 0; i < numWorkers; i++) {
+          try {
+            const tessConfig = await resolveTesseractAssetConfig(langs);
+            const w = await window.Tesseract.createWorker(langs, window.Tesseract.OEM?.DEFAULT || 3, {
+              workerPath: tessConfig.workerPath,
+              corePath: tessConfig.corePath,
+              langPath: tessConfig.langPath,
+              workerBlob: true,
+              gzip: tessConfig.gzip,
+              cacheMethod: 'none',
+              logger: (m) => {
+                const prog = m.progress ? Math.round(m.progress * 100) : 0;
+                if (isMounted.current) {
+                  addLog(`[TESS_W${i}] ${m.status}: ${prog}%`);
+                }
+                if (m.status.includes('loading') || m.status.includes('init')) {
+                   setProgress(prev => Math.min(99, prev + 1)); 
+                }
+              },
+            });
+            currentWorkers.push(w);
+          } catch (err) {
+            console.error('[TESSERACT] Worker init failed:', err);
+            throw new Error('Moteur OCR indisponible. Erreur de chargement des ressources locales.');
+          }
         }
+        tesseractWorkersRef.current = currentWorkers;
+      } else {
+        addLog('[TESSERACT] Reusing existing workers...');
       }
 
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
@@ -731,7 +743,7 @@ export default function UniversalOCRModal({
                 preserve_interword_spaces: '1',
                 tessedit_char_whitelist: '',
               };
-        await Promise.all(workers.map((w) => w.setParameters(params)));
+        await Promise.all(currentWorkers.map((w) => w.setParameters(params)));
 
         const promises = [];
         for (let r = 0; r < numRows; r++) {
@@ -762,7 +774,7 @@ export default function UniversalOCRModal({
 
             const {
               data: { text, confidence },
-            } = await workers[workerIndex].recognize(cellUrl);
+            } = await currentWorkers[workerIndex].recognize(cellUrl);
             let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
             if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) cleanText = '';
 
@@ -796,7 +808,6 @@ export default function UniversalOCRModal({
         console.error(e);
       }
     } finally {
-      for (const w of workers) await w.terminate();
       if (isMounted.current) setIsProcessing(false);
     }
   };
@@ -817,16 +828,23 @@ export default function UniversalOCRModal({
     setProgress(0);
     setStatusText('Paddle AI (Cellular Mode)...');
 
-    let ocr = null;
     try {
-      const modelsUrl = getModelsUrl();
-      ocr = await Ocr.create({
-        models: {
-          detectionPath: `${modelsUrl}det.onnx`,
-          recognitionPath: `${modelsUrl}rec_ara.onnx`,
-          dictionaryPath: `${modelsUrl}keys_ara.txt`,
-        },
-      });
+      // [REUSE LOGIC]
+      if (!paddleOcrRef.current) {
+        const modelsUrl = getModelsUrl();
+        paddleOcrRef.current = await Ocr.create({
+          models: {
+            detectionPath: `${modelsUrl}/det.onnx`,
+            recognitionPath: `${modelsUrl}/rec_ara.onnx`,
+            dictionaryPath: `${modelsUrl}/keys_ara.txt`,
+          },
+        });
+        addLog('[PADDLE] Engine initialized.');
+      } else {
+        addLog('[PADDLE] Reusing existing engine.');
+      }
+      
+      const ocr = paddleOcrRef.current;
 
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
@@ -919,7 +937,6 @@ export default function UniversalOCRModal({
     } catch (e) {
       if (isMounted.current) addLog(`[CRASH] ${e.message}`);
     } finally {
-      if (ocr && ocr.dispose) await ocr.dispose();
       if (isMounted.current) setIsProcessing(false);
     }
   };
@@ -934,67 +951,59 @@ export default function UniversalOCRModal({
     setProgress(0);
     setStatusText('Hybrid Mode (Smart Cellular)...');
 
-    let tesseractWorkers = [];
-    let paddleOcr = null;
+    let currentWorkers = tesseractWorkersRef.current;
+    let currentPaddleOcr = paddleOcrRef.current;
+
     try {
       if (isMounted.current) addLog('[HYBRID] Starting Engines...');
       const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
-      
-      // [FIX] Dynamic worker allocation based on hardware for stability
       const hardwareCores = window.navigator.hardwareConcurrency || 1;
       const numTesseractWorkers = Math.min(2, Math.max(1, hardwareCores - 1));
 
-      // [FIX] Safe init for Hybrid mode with local assets
-      try {
+      // 1. Init Tesseract if needed
+      if (currentWorkers.length !== numTesseractWorkers || currentLangsRef.current !== langs) {
         const tessConfig = await resolveTesseractAssetConfig(langs);
-        console.log('[HYBRID_TESSERACT_INIT] using local packaged assets');
-        
-        const tessOptions = {
-          workerPath: tessConfig.workerPath,
-          corePath: tessConfig.corePath,
-          langPath: tessConfig.langPath,
-          workerBlob: false,
-          gzip: tessConfig.gzip,
-          cacheMethod: 'none',
-        };
-        
-        if (!window.Tesseract) throw new Error('Global Tesseract not found.');
-
-        // [FIX] Modern API Init
-        const worker1 = await window.Tesseract.createWorker(
-          langs,
-          window.Tesseract.OEM?.DEFAULT,
-          tessOptions,
-        );
-        if (typeof worker1.loadLanguage === 'function') await worker1.loadLanguage(langs);
-        if (typeof worker1.initialize === 'function') await worker1.initialize(langs);
-        
-        let worker2;
-        if (numTesseractWorkers === 2) {
-          worker2 = await window.Tesseract.createWorker(
-            langs,
-            window.Tesseract.OEM?.DEFAULT,
-            tessOptions,
-          );
-          if (typeof worker2.loadLanguage === 'function') await worker2.loadLanguage(langs);
-          if (typeof worker2.initialize === 'function') await worker2.initialize(langs);
+        addLog(`[HYBRID] Initializing Tesseract workers (${langs})...`);
+        currentWorkers.forEach(w => w.terminate());
+        currentWorkers = [];
+        currentLangsRef.current = langs;
+        for (let i = 0; i < numTesseractWorkers; i++) {
+          const w = await window.Tesseract.createWorker(langs, window.Tesseract.OEM?.DEFAULT || 3, {
+            workerPath: tessConfig.workerPath,
+            corePath: tessConfig.corePath,
+            langPath: tessConfig.langPath,
+            workerBlob: true,
+            gzip: tessConfig.gzip,
+            cacheMethod: 'none',
+            logger: (m) => {
+              if (isMounted.current) {
+                const prog = m.progress ? Math.round(m.progress * 100) : 0;
+                addLog(`[HYBRID_TESS_W${i}] ${m.status}: ${prog}%`);
+              }
+            },
+          });
+          currentWorkers.push(w);
         }
-        
-        tesseractWorkers = worker2 ? [worker1, worker2] : [worker1];
-      } catch (e) {
-        const errorMsg = 'Moteur Tesseract indisponible (Requis pour Hybrid).';
-        setErrorMessage(errorMsg);
-        throw new Error(errorMsg);
+        tesseractWorkersRef.current = currentWorkers;
+      } else {
+        addLog('[HYBRID] Reusing Tesseract workers.');
       }
 
-      const modelsUrl = getModelsUrl();
-      paddleOcr = await Ocr.create({
-        models: {
-          detectionPath: `${modelsUrl}det.onnx`,
-          recognitionPath: `${modelsUrl}rec_ara.onnx`,
-          dictionaryPath: `${modelsUrl}keys_ara.txt`,
-        },
-      });
+      // 2. Init Paddle if needed
+      if (!currentPaddleOcr) {
+        const modelsUrl = getModelsUrl();
+        currentPaddleOcr = await Ocr.create({
+          models: {
+            detectionPath: `${modelsUrl}/det.onnx`,
+            recognitionPath: `${modelsUrl}/rec_ara.onnx`,
+            dictionaryPath: `${modelsUrl}/keys_ara.txt`,
+          },
+        });
+        paddleOcrRef.current = currentPaddleOcr;
+        addLog('[HYBRID] Paddle engine initialized.');
+      } else {
+        addLog('[HYBRID] Reusing Paddle engine.');
+      }
 
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
@@ -1027,10 +1036,10 @@ export default function UniversalOCRModal({
             tessedit_char_whitelist:
               '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. ',
           };
-          await Promise.all(tesseractWorkers.map((w) => w.setParameters(params)));
+          await Promise.all(currentWorkers.map((w) => w.setParameters(params)));
           const promises = [];
           for (let r = 0; r < numRows; r++) {
-            const worker = tesseractWorkers[r % numTesseractWorkers];
+            const worker = currentWorkers[r % numTesseractWorkers];
             const task = async () => {
               if (!isMounted.current) return;
               const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
@@ -1067,7 +1076,7 @@ export default function UniversalOCRModal({
             };
             const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
 
-            const results = await paddleOcr.detect(cellUrl);
+            const results = await currentPaddleOcr.detect(cellUrl);
             if (!isMounted.current) break;
             let text = results
               .map((b) => b.text)
@@ -1100,8 +1109,6 @@ export default function UniversalOCRModal({
     } catch (e) {
       if (isMounted.current) addLog(`[CRASH] ${e.message}`);
     } finally {
-      for (const w of tesseractWorkers) await w.terminate();
-      if (paddleOcr && paddleOcr.dispose) await paddleOcr.dispose();
       if (isMounted.current) setIsProcessing(false);
     }
   };
@@ -1161,15 +1168,15 @@ export default function UniversalOCRModal({
         localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
       );
       if (c.national_id) {
-        const key = c.national_id.replace(/\s+/g, '');
+        const key = c.national_id.replace(/\s+/g, '').toLowerCase();
         if (dict.national_id[key] && dict.national_id[key] !== c.national_id) c.suggested_id = dict.national_id[key];
       }
       if (c.job_info) {
-        const key = c.job_info.replace(/\s+/g, '');
+        const key = c.job_info.replace(/\s+/g, '').toLowerCase();
         if (dict.job_info[key] && dict.job_info[key] !== c.job_info) c.suggested_job = dict.job_info[key];
       }
       if (c.full_name) {
-        const key = c.full_name.replace(/\s+/g, '');
+        const key = c.full_name.replace(/\s+/g, '').toLowerCase();
         if (dict.full_name[key] && dict.full_name[key] !== c.full_name) c.suggested_name = dict.full_name[key];
       }
     } catch (e) {
@@ -1304,6 +1311,33 @@ export default function UniversalOCRModal({
     a.href = url;
     a.download = `Copro_Dictionary_${new Date().toISOString().split('T')[0]}.json`;
     a.click();
+  };
+
+  const applyDefaultDictionary = async () => {
+    if (!confirm('Voulez-vous charger le dictionnaire Algérien par défaut ? (Ceci fusionnera avec vos corrections existantes)')) return;
+    
+    try {
+      const response = await fetch(getAssetUrl('algerian_dictionary.json'));
+      if (!response.ok) throw new Error('Impossible de charger le fichier dictionnaire.');
+      
+      const imported = await response.json();
+      const existing = JSON.parse(
+        localStorage.getItem('ocr_smart_dict') ||
+          '{"national_id":{},"full_name":{},"job_info":{}}'
+      );
+
+      // Merge
+      existing.national_id = { ...existing.national_id, ...(imported.national_id || {}) };
+      existing.full_name = { ...existing.full_name, ...(imported.full_name || {}) };
+      existing.job_info = { ...existing.job_info, ...(imported.job_info || {}) };
+
+      localStorage.setItem('ocr_smart_dict', JSON.stringify(existing));
+      addLog('[DICT] Dictionnaire Algérien par défaut appliqué.');
+      alert('Dictionnaire Algérien chargé avec succès ! (' + Object.keys(imported.full_name).length + ' entrées)');
+    } catch (err) {
+      console.error('Apply default dict failed:', err);
+      alert('Erreur lors du chargement du dictionnaire par défaut.');
+    }
   };
 
   const importDictionary = (e) => {
@@ -2316,6 +2350,18 @@ export default function UniversalOCRModal({
               >
                 <FaSave /> Mémoire IA (Dictionaire)
               </h3>
+              <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '15px' }}>
+                L'IA apprend de vos corrections. Chargez le dictionnaire complet (250+ noms) ou transférez votre mémoire.
+              </p>
+              
+              <button
+                onClick={applyDefaultDictionary}
+                className="btn btn-success"
+                style={{ width: '100%', marginBottom: '10px', background: '#059669' }}
+              >
+                <FaGlobeAfrica /> Appliquer Defaults Algériens
+              </button>
+
               <div style={{ display: 'flex', gap: '10px', marginBottom: '20px' }}>
                 <button
                   onClick={exportDictionary}

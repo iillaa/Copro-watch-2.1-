@@ -26,14 +26,15 @@ Une application web autonome (Single Page Application) conçue pour la gestion d
 - **Actions de Masse** : Planification, résultat et impression groupés pour plusieurs travailleurs.
 - **Analyses d'Eau** : Module dédié pour le suivi de la qualité de l'eau (Chlore, pH, Bactério) avec historique complet.
 
-### 🛡️ Sécurité & Sauvegarde
+### 🛡️ Sécurité & Sauvegarde "Hardened" (v2.1)
 
-L'application dispose d'un système de sauvegarde "Fail-Safe" pour éviter toute perte de données :
+L'application dispose d'un système de sauvegarde robuste et hautement sécurisé :
 
-- **Sauvegarde Automatique** : Un fichier `backup-auto.json` est généré/mis à jour automatiquement toutes les **10 modifications** (paramétrable).
-- **Sauvegarde Manuelle** : Un fichier `backup-manuel.json` distinct est créé lorsque vous cliquez sur "Sauvegarder" dans les paramètres.
-- **Restauration Intelligente** : Lors de l'importation d'un dossier de sauvegarde, l'application compare les dates des fichiers Auto et Manuel et charge automatiquement **le plus récent** pour éviter d'écraser des données récentes avec une vieille sauvegarde.
-- **Verrouillage PIN** : Protection par code à 4 chiffres pour accéder à l'application.
+- **Chiffrement Obligatoire** : Depuis la version 2.1, **TOUTES** les sauvegardes (auto et manuelles) et les exports JSON sont chiffrés par défaut avec l'algorithme **AES-GCM (256-bit)** via la WebCrypto API.
+- **Protection "PIN + Pepper"** : Pour protéger votre code PIN à 4 chiffres contre les attaques par force brute, l'application utilise une technique de "Key Stretching" en mélangeant votre PIN avec un "Pepper" secret interne avant le chiffrement.
+- **Sauvegarde Automatique** : Un fichier `backup-auto-XXX.json` (chiffré) est généré/mis à jour automatiquement toutes les **10 modifications** (paramétrable).
+- **Restauration Intelligente** : L'application détecte automatiquement si un fichier est chiffré. Elle tente de le déchiffrer avec votre PIN actuel (chargement transparent) ou vous demande un mot de passe si nécessaire.
+- **Verrouillage PIN & Auto-Lock** : Protection par code PIN et verrouillage automatique de la session après 5 minutes d'inactivité.
 
 ---
 

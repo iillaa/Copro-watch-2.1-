@@ -142,16 +142,31 @@ _Note : Ce module a été initialement forké du module de gestion des travaille
 
 ---
 
+## 🔐 SÉCURITÉ & CRYPTOGRAPHIE
+
+### 1. Protection des Données (AES-GCM)
+**Je veux modifier :** La force du chiffrement, le "Pepper" secret, ou la logique de dérivation de clé.
+- 📂 **Fichier :** [`src/services/crypto.js`](src/services/crypto.js)
+- **Rôle :** Gère le chiffrement des exports. Utilise un **Internal Pepper** pour durcir les PINs à 4 chiffres.
+
+### 2. Authentification & Migration
+**Je veux modifier :** La validation du PIN, ou la migration des anciens PINs (non-peppered) vers le nouveau format.
+- 📂 **Fichier :** [`src/App.jsx`](src/App.jsx) (Fonction `checkPin`)
+- **Rôle :** Gère la double validation (nouveau hash vs ancien hash) pour éviter de bloquer les utilisateurs lors des mises à jour.
+
+---
+
 ## ⚙️ NOYAU & DONNÉES
 
 ### Base de Données
-
 **Je veux modifier :** La structure des données, ajouter une table, ou changer comment les données sont sauvegardées.
-
 - 📂 **Fichier :** [`src/services/db.js`](src/services/db.js)
-- **Tech :** Utilise `Dexie.js` (IndexedDB).
+- **Tech :** Utilise `Dexie.js` (IndexedDB). Intègre le **chiffrement obligatoire** des exports.
 
-### Logique Métier
+### Cycle de Vie & Singleton
+**Je veux modifier :** Les écouteurs d'événements Capacitor (Mise en pause de l'application) ou le verrouillage de sauvegarde concurrent.
+- 📂 **Fichier :** [`src/App.jsx`](src/App.jsx) (Effect `setupLifecycle`)
+- **Rôle :** Implémente un pattern **Singleton** pour garantir qu'un seul écouteur de sauvegarde automatique est actif sur Android.
 
 **Je veux modifier :** Le calcul des dates d'échéance (ex: changer 6 mois en 1 an), les couleurs des statuts, ou le formatage des dates.
 

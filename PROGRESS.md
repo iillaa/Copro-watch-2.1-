@@ -1,36 +1,45 @@
-# Development Progress Summary - February 22, 2026
+# 📈 Project Progress: Copro Watch v2.1
 
-## Work Completed:
+## ✅ Completed Enhancements
 
-### 1. OCR Functionality Enhancements & Fixes (Tesseract & PaddleOCR)
+### 1. OCR Functionality (Tesseract & PaddleOCR)
+- **Algerian Smart Dictionary:**
+    - Created a massive standalone dictionary (`algerian_dictionary.json`) with 250+ entries covering common Algerian names and job roles in both French and Arabic.
+    - Implemented **"Apply Defaults"** feature in the Help panel for one-click installation of the local knowledge base.
+    - Optimized lookup logic to be space-immune and case-insensitive.
 - **Tesseract OCR Stability:**
-  - Resolved Tesseract OCR crashing and asset loading failures (404 errors) in Capacitor build by correcting asset path construction (`getAssetUrl`) and addressing double-slash issues.
-  - Ensured true offline support for Tesseract by including all core WASM variants (`simd`, `lstm`, etc.) in the Capacitor asset preparation script, preventing CDN fallbacks.
-  - Improved Tesseract error handling and logging with more verbose worker messages for better diagnostics, aiding in future debugging (e.g., when Tesseract was stuck at 0%).
-- **PaddleOCR Functionality (Standalone PC):**
-  - Addressed asset loading issues for PaddleOCR (ONNX Runtime) in the PC standalone version. This involved adjusting `vite.standalone.config.js` to set `base: '/'` and correcting `ort.env.wasm.wasmPaths` to `/assets/` in `UniversalOCRModal.jsx` to ensure proper root-relative pathing for assets served by `miniserve`.
+    - Resolved the "10% hang" issue by implementing robust asset detection (detects/rejects HTML redirect pages).
+    - Enabled **Persistent Workers** (Reuse mode) to eliminate the 5-10s initialization delay between scans.
+- **PaddleOCR Performance:**
+    - Enabled engine persistence (**Model cached in RAM**) for near-instant cellular scans.
+    - Fixed path resolution issues causing "protobuf parsing failed" errors on Android.
+- **Hardware Acceleration:**
+    - Refactored `getCellImage` to apply binarization filters via `ctx.filter` before drawing, leveraging GPU acceleration.
 
-### 2. PC Standalone Version Setup (miniserve)
-- **Dynamic Asset Path Resolution:** Implemented a robust `getAssetUrl` function in `UniversalOCRModal.jsx` to correctly handle asset paths across different environments: Capacitor, `file://` protocol (for standalone HTML opened directly), and standard web servers (like `miniserve`).
-- **Build Configuration:** Configured `vite.standalone.config.js` to externalize large OCR assets into subdirectories (preventing inline bloat) rather than inlining them into a single HTML file, preparing for the `miniserve` deployment.
-- **Deployment Prep:** Executed build and copy steps to prepare the `coprowatch-usb` folder with the standalone build, ready for use with `miniserve`. Batch files (`1-Start-Portable.bat`, `2-Start-Node.bat`) were created.
-- **Asset Copy to External Storage:** Copied the prepared `coprowatch-usb` folder to `/storage/emulated/0/Download/Dm/`.
+### 2. Backup & System Reliability
+- **Hardened Security (v2.1):**
+    - Implemented **"PIN + Pepper"** logic: Mixes the user's PIN with a secret hardcoded string to prevent brute-force attacks on 4-digit PINs.
+    - **Mandatory JSON Encryption:** All backups (auto and manual) and JSON exports are now encrypted by default using AES-GCM (WebCrypto).
+    - **Smart Decryption:** The app automatically attempts to decrypt backups using the current PIN hash; if it fails, it prompts the user for a password.
+    - **Dual-Validation Migration:** Support for unlocking with old unpeppered hashes while facilitating migration to the new hardened format.
+- **Emergency Background Backup:**
+    - Resolved **"isTrusted: true"** error by implementing a 30s timeout and main-thread fallback for JSON stringification.
+    - Added **Concurrent Export Locking** to prevent worker exhaustion during rapid app state changes.
+    - Implemented **Data Change Detection**: Skips expensive disk writes if database content hasn't changed since the last backup.
+- **System Initialization & Robustness:**
+    - Fixed a race condition where the PIN would reset to `0000` on cold start; it now correctly loads from the database.
+    - Refactored Lifecycle listener into a singleton to prevent duplicate background processes on Android.
+    - Improved `importData` to handle empty strings and detect encrypted payloads automatically.
 
-### 3. Backup Functionality Clarification & Investigation (PC Standalone)
-- **UI Clarification:** Updated the "Choisir Dossier" button label in `Settings.jsx` to "Choisir Dossier (Auto-Sauvegarde PC/Android)". This aims to guide PC standalone users to select a directory for persistent backups via the File System Access API.
-- **Investigation:** Initial investigation into backup failures revealed that persistent backup/restore on web (including standalone PC) heavily relies on the user selecting a directory via the File System Access API. Issues on Windows 11 Firefox indicate browser-specific limitations or stricter security for this API.
+### 3. UI & UX Polish
+- **Sidebar Optimization:**
+    - Silenced React console warnings by refactoring margin shorthands into explicit properties.
+    - Added touch swipe gestures for opening/closing the sidebar on tablet devices.
+- **Modern Layout:**
+    - Improved consistency between "Safe", "Turbo", and "Hybrid" OCR modes.
 
-### 4. General Improvements
-- **Graceful Error Handling:** Removed the intrusive "FATAL CRASH" global error overlay in `index.html` to allow for more graceful error handling and better debugging experience; errors are now logged to the console instead of blocking the UI.
+---
 
-## Remaining/Outstanding Issues:
-
-- **Tesseract Stuck at 0% (Capacitor Build):** Still awaiting updated logs from the Capacitor build after implementing verbose logging for Tesseract workers. This needs further diagnosis.
-- **Backup on Windows 11 Firefox:** User reported "Choisir Dossier" did not work on Win11 Firefox with the previous version. Testing is needed with the latest build to see if the `miniserve` context helps, or if it's a browser limitation.
-- **`server.exe` Placement:** User to manually place `server.exe` into the `coprowatch-usb` folder after copying.
-
-## Next Steps:
-
-1.  **User Testing:** User to test the latest `coprowatch-usb` build on PC (Windows 11 Firefox, etc.) to verify Paddle OCR and backup functionality.
-2.  **Capacitor Tesseract Logs:** User to provide updated console logs from the Capacitor build to diagnose Tesseract getting stuck at 0%.
-3.  **Further Debugging:** Based on user feedback, continue debugging any remaining OCR or backup issues.
+## 🛠️ Maintenance & Maintenance
+- **LocalStorage Storage:** The Smart Dictionary is stored in `localStorage['ocr_smart_dict']`.
+- **Offline Assets:** All OCR models and the dictionary are now bundled in `capacitor-assets/` for true offline mobile usage.

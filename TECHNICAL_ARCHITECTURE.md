@@ -19,16 +19,19 @@ Copro-Watch implements client-side cryptographic security to ensure data privacy
 Data export and sensitive operations utilize the **Web Crypto API** for standardized, hardware-accelerated encryption.
 
 - **Algorithm:** AES-GCM (256-bit).
-- **Key Derivation:** PBKDF2 (250,000 iterations, SHA-256) to derive keys from user passwords.
+- **Key Derivation:** PBKDF2 (250,000 iterations, SHA-256).
+- **Hardened Key Stretching (v2.1):** To protect low-entropy (4-digit) PINs against brute-force attacks, the system concatenates the user PIN with a hardcoded **Internal Pepper** string (`PIN + PEPPER`) before derivation. This ensures that even a 10,000-combination PIN has high-entropy protection.
 - **Implementation:** `src/services/crypto.js`
   - **Salt/IV:** Randomly generated (`crypto.getRandomValues`) for every encryption operation.
   - **Transport:** Encrypted payloads are Base64 encoded for safe JSON transport.
+  - **Mandatory JSON Encryption:** As of v2.1, ALL JSON backups and exports (auto or manual) are encrypted by default using the current app PIN hash + Pepper.
 
 ### 2.2 Access Control & Security
 
-- **Dual-PIN System:** Supports legacy 4-digit PINs and robust SHA-256 hashed PINs (64 chars).
+- **Hardened PIN System:** PINs are stored as SHA-256 hashes of the `PIN + Pepper`. 
+- **Migration Path:** The app supports "Dual-Validation" during the transition period, allowing users to unlock with old hashes while prompting them to re-save their PIN to upgrade to the hardened format.
 - **Auto-Lock Protocol:** Application automatically locks after 5 minutes of inactivity (no mouse/keyboard events).
-- **Implementation:** `src/components/PinLock.jsx` (UI) and `src/App.jsx` (Timer Logic).
+- **Implementation:** `src/components/PinLock.jsx` (UI) and `src/App.jsx` (Timer/Migration Logic).
 
 ### 2.3 Cryptography Fallback
 

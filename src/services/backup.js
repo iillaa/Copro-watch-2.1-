@@ -497,10 +497,24 @@ async function runRetentionPolicy() {
   }
 }
 
+let isExporting = false;
+
 // [UPDATED] Export now takes a specific filename based on type
 export async function performAutoExport(getJsonCallback, type = 'COUNTER') {
+  if (isExporting) {
+    console.warn('[Backup] Export already in progress, skipping concurrent request.');
+    return false;
+  }
+  
   try {
+    isExporting = true;
     const json = await getJsonCallback();
+    
+    // [NEW] Skip if callback returns null (logic in db.js)
+    if (json === null) {
+      await resetCounter();
+      return true;
+    }
 
     // Generate unique filename with timestamp (like manual backup)
     const prefix = type === 'TIME' ? 'backup-time' : 'backup-counter';
@@ -522,9 +536,12 @@ export async function performAutoExport(getJsonCallback, type = 'COUNTER') {
       return false;
     }
   } catch (e) {
-    console.error('[Backup] Auto export error:', e);
+    const errorMsg = e instanceof Error ? e.message : JSON.stringify(e);
+    console.error('[Backup] Auto export error:', errorMsg);
     // DO NOT reset counter on error - user should know there's a problem
     return false;
+  } finally {
+    isExporting = false;
   }
 }
 
@@ -570,11 +587,15 @@ export async function checkAndAutoImport(dbInstance) {
     const realDate = getRealDate(backup);
     if (realDate > lastImported + 1000) {
       console.log(`[Backup] Newer backup found (${backup.name}). Importing...`);
-      const ok = await dbInstance.importData(backup.text);
-      if (ok) {
+      const result = await dbInstance.importData(backup.text);
+      
+      if (result === true) {
         lastImported = realDate;
         await saveMeta();
         return { imported: true, source: backup.name };
+      } else if (result && result.error === 'NEED_PASSWORD') {
+        console.log('[Backup] Auto-import requires a password.');
+        return { imported: false, reason: 'NEED_PASSWORD', encryptedData: result.encryptedData, source: backup.name };
       }
     }
     return { imported: false, reason: 'not_newer' };
@@ -657,6 +678,13 @@ export function getTimeThreshold() {
   return timeThreshold;
 }
 
+export async function setLastImported(date) {
+  lastImported = date;
+  await saveMeta();
+}
+
+export { getRealDate };
+
 export default {
   init,
   chooseDirectory,
@@ -680,4 +708,6 @@ export default {
   isDirectoryAvailable,
   getCurrentStorageInfo,
   generateBackupFilename,
+  setLastImported,
+  getRealDate,
 };

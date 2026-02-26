@@ -20,8 +20,8 @@ Here is the detailed `CODEMAP.md` file. Save this in your project root. It cover
 ## 🏗️ Core Architecture
 
 - **Offline-First:** No backend. All data lives in `IndexedDB` via `Dexie.js`.
-- **Security:** Client-side AES-GCM encryption for exports. App is PIN-locked.
-- **Persistence:** "Fail-Safe" backup system (Auto + Manual) saving to `Documents/copro-watch` on Android.
+- **Security:** Client-side AES-GCM encryption for exports. App is PIN-locked with hardened **"PIN + Pepper"** logic to prevent brute-force attacks.
+- **Persistence:** "Fail-Safe" backup system (Auto + Manual) saving to `Documents/copro-watch` on Android. All JSON backups are encrypted by default.
 - **UI Design:** Neobrutalism (High contrast, thick borders, flat colors).
 
 ---
@@ -68,22 +68,25 @@ This is the brain of the application.
   - **Wrapper:** `Dexie`.
   - **Tables:** `workers`, `departments`, `workplaces`, `exams`, `water_analyses`, `water_departments`, `weapon_holders`, `weapon_exams`.
   - **Features:** Handles migration from old `localforage` data automatically.
+  - **Security:** Implements **Mandatory JSON Encryption** for all exports. Handles PIN-based decryption on import.
   - **Triggers:** Calls `backup.registerChange()` on every save/delete.
 
 - **`backup.js`** (The Safety Net)
 
   - **Auto-Backup:** Tracks a "dirty counter". Triggers export after **10 changes**.
-  - **Smart Import:** When loading, compares `backup-auto.json` vs `backup-manuel.json` dates and picks the newest.
+  - **Smart Import:** Detects encryption and automatically decrypts backups if the PIN matches.
   - **Android:** Uses `Capacitor Filesystem` to write directly to `Documents/copro-watch`.
   - **Web:** Uses File System Access API or falls back to Blob download.
 
 - **`crypto.js`** (The Vault)
 
   - **Algorithm:** AES-GCM (256-bit).
-  - **Key Derivation:** PBKDF2 (250k iterations) from user password.
+  - **Hardened Logic:** Concatenates PIN with a secret **Internal Pepper** string to prevent brute-force on 4-digit PINs.
+  - **Key Derivation:** PBKDF2 (250k iterations).
   - **Usage:** Encrypts exports (`.json`) so they can be safely transported.
 
 - **`logic.js`** (The Doctor)
+
 
   - **Rules:**
     - Standard Exam Interval: **6 Months**.

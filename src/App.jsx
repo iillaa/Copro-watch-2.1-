@@ -143,7 +143,33 @@ function App() {
       console.log('[App] Initializing backup service...');
       await backupService.init(db); // [FIXED]
       try {
-        await backupService.checkAndAutoImport(db);
+        const importResult = await backupService.checkAndAutoImport(db);
+        
+        // Handle case where auto-import found a backup but it needs a different password
+        if (importResult && importResult.reason === 'NEED_PASSWORD') {
+          console.log('[App] Auto-import requires a password');
+          let result = importResult;
+          while (result && (result.error === 'NEED_PASSWORD' || result.reason === 'NEED_PASSWORD')) {
+            const pw = prompt(`Une sauvegarde plus récente (${importResult.source}) a été trouvée mais elle est protégée par un autre PIN. Entrez le PIN ou mot de passe :`);
+            if (pw === null) break; // User cancelled
+            if (!pw.trim()) continue;
+            
+            const ok = await db.importData(importResult.encryptedData, pw);
+            if (ok === true) {
+              console.log('[App] Auto-import successful after manual password entry');
+              // [NEW] Tell backup service we've imported this file
+              try {
+                const realDate = backupService.getRealDate({ text: importResult.encryptedData });
+                await backupService.setLastImported(realDate);
+              } catch (e) {
+                console.warn('Failed to update lastImported:', e);
+              }
+              break;
+            } else {
+              result = ok; // Could be error object again
+            }
+          }
+        }
         console.log('[App] Auto-import check completed');
       } catch (e) {
         console.warn('Auto-import check failed:', e);
@@ -153,9 +179,6 @@ function App() {
       const settings = await db.getSettings();
       if (settings.pin) {
         setPin(settings.pin);
-      } else {
-        // Migration: If no PIN in DB, use default "0011" hashed
-        setPin('0000');
       }
 
       // 4. Load Departments for OCR Modal
@@ -219,18 +242,37 @@ function App() {
     setView('weapon-detail');
   };
 
-  // Helper to validate PIN (Supports both Old Plain "0011" and New Hashed PINs)
+  // Helper to validate PIN (Supports Old Plain, Old Hashed, and New Peppered Hashed PINs)
   const checkPin = async (inputPin) => {
     // 1. If stored PIN is 4 digits, it's an OLD plain PIN
     if (pin.length === 4) {
       return inputPin === pin;
     }
-    // 2. If stored PIN is long (64 chars), it's a NEW hashed PIN
-    if (pin.length === 64) {
-      const inputHash = await hashString(inputPin);
-      return inputHash === pin;
+
+    // 2. Try validation with NEW Peppered Logic (New hashString includes pepper)
+    const inputHashNew = await hashString(inputPin);
+    if (inputHashNew === pin) return true;
+
+    // 3. FALLBACK: Try validation with OLD Unpeppered Logic (for migration)
+    // We recreate the old logic manually here since hashString is now peppered
+    try {
+      const { Capacitor } = await import('@capacitor/core');
+      const cryptoAPI = window.crypto || window.msCrypto;
+      if (cryptoAPI && cryptoAPI.subtle) {
+        const msgBuffer = new TextEncoder().encode(inputPin);
+        const hashBuffer = await cryptoAPI.subtle.digest('SHA-256', msgBuffer);
+        const hashArray = Array.from(new Uint8Array(hashBuffer));
+        const inputHashOld = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+        
+        if (inputHashOld === pin) {
+          console.log('[App] Old unpeppered PIN detected. User should migrate.');
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn('[App] Fallback PIN validation failed');
     }
-    // Fallback
+
     return false;
   };
 
@@ -365,23 +407,33 @@ function App() {
         {/* 2. THE NAVIGATION LINKS */}
         <nav style={{ 
           padding: isSidebarOpen ? '1.5rem 1rem' : '1.5rem 0',
-          display: 'flex', flexDirection: 'column', gap: isSidebarOpen ? '0.25rem' : '0.5rem', 
+          display: 'flex', flexDirection: 'column', 
+          gap: isSidebarOpen ? '0.25rem' : '0.5rem', 
           flex: 1, 
           minHeight: 0,
           overflowY: 'auto', 
           overflowX: 'hidden',
+          alignItems: isSidebarOpen ? 'stretch' : 'center',
           justifyContent: 'flex-start'
         }}>
           
           {(() => {
             const getBtnStyle = (isActive) => ({
-              display: 'flex', alignItems: 'center', justifyContent: isSidebarOpen ? 'flex-start' : 'center',
-              padding: isSidebarOpen ? '0.75rem 1rem' : '0.5rem', 
-              borderRadius: '10px', background: isActive ? 'var(--primary-light)' : 'transparent',
-              color: isActive ? 'var(--primary)' : '#64748b', border: 'none', cursor: 'pointer', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: isSidebarOpen ? 'flex-start' : 'center',
+              padding: isSidebarOpen ? '0.75rem 1rem' : '0', 
+              borderRadius: '10px', 
+              background: isActive ? 'var(--primary-light)' : 'transparent',
+              color: isActive ? 'var(--primary)' : '#64748b', 
+              border: 'none', 
+              cursor: 'pointer', 
               width: isSidebarOpen ? '100%' : '46px', 
               height: isSidebarOpen ? 'auto' : '46px',
-              margin: isSidebarOpen ? '0 0 0.5rem 0' : '0 auto 0.75rem auto', 
+              marginTop: 0,
+              marginBottom: 0,
+              marginLeft: 0,
+              marginRight: 0,
               transition: 'background 0.2s, color 0.2s',
               flexShrink: 0
             });
@@ -426,7 +478,7 @@ function App() {
                 <button 
                   className={`nav-item ${view === 'settings' ? 'active' : ''}`} 
                   onClick={() => setView('settings')} 
-                  style={{...getBtnStyle(view === 'settings'), marginTop: 'auto', marginBottom: isSidebarOpen ? '0.5rem' : '0'}} 
+                  style={{...getBtnStyle(view === 'settings'), marginTop: 'auto'}} 
                   title="Paramètres"
                 >
                   <div className="nav-icon" style={{ display: 'flex' }}><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg></div>

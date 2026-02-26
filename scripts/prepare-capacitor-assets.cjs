@@ -39,6 +39,7 @@ const filesToCopy = [
   'app-icon.svg',
   'manifest.json',
   'vite.svg',
+  'algerian_dictionary.json',
 ];
 
 async function prepareCapacitorAssets() {

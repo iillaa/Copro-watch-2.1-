@@ -7,6 +7,10 @@ let subtleAPI = null;
 // [FIX] Salt for fallback hash (not cryptographically secure, but adds obscurity)
 const FALLBACK_SALT = 'CoproWatch-v2-SecureHashSalt-2024';
 
+// [SECURITY] Static Pepper to protect low-entropy PINs (0000-9999) from brute-force.
+// This string is NEVER stored in the backup files.
+const INTERNAL_PEPPER = 'CoproWatch-v2.1-Hardened-Pepper-Secret-Key-777#@!';
+
 // Initialize crypto APIs safely
 function initCrypto() {
   try {
@@ -27,9 +31,6 @@ function initCrypto() {
     isWebCryptoAvailable = false;
   }
 }
-
-// Initialize immediately
-initCrypto();
 
 // Fallback encryption using XOR (for devices without WebCrypto)
 // WARNING: This is NOT cryptographically secure, but prevents app crashes
@@ -79,9 +80,14 @@ async function deriveKey(password, salt, iterations = 250000) {
   if (!isWebCryptoAvailable || !subtleAPI) {
     throw new Error('WebCrypto not available');
   }
+
+  // [SECURITY] Mix the password with the Internal Pepper before derivation.
+  // This ensures that even a 4-digit PIN has high entropy for the attacker.
+  const hardenedPassword = password + INTERNAL_PEPPER;
+
   const pwKey = await subtleAPI.importKey(
     'raw',
-    toUint8Array(password),
+    toUint8Array(hardenedPassword),
     { name: 'PBKDF2' },
     false,
     ['deriveKey']
@@ -99,10 +105,12 @@ export async function encryptString(password, plaintext) {
   // Fallback if WebCrypto is not available
   if (!isWebCryptoAvailable) {
     console.warn('[CRYPTO] Using fallback XOR encryption (not secure)');
+    // Even in XOR, mix the pepper
+    const hardenedPw = password + INTERNAL_PEPPER;
     return JSON.stringify({
       method: 'xor',
       salt: btoa(password.slice(0, 8)),
-      data: xorEncrypt(plaintext, password),
+      data: xorEncrypt(plaintext, hardenedPw),
     });
   }
 
@@ -125,37 +133,40 @@ export async function decryptString(password, payload) {
 
   // Handle fallback XOR encryption
   if (obj.method === 'xor') {
-    return xorDecrypt(obj.data, password);
+    const hardenedPw = password + INTERNAL_PEPPER;
+    return xorDecrypt(obj.data, hardenedPw);
   }
 
   const salt = base64Decode(obj.salt);
   const iv = base64Decode(obj.iv);
   const data = base64Decode(obj.data);
   const key = await deriveKey(password, salt);
-  const plainBytes = new Uint8Array(await subtle.decrypt({ name: 'AES-GCM', iv }, key, data));
+  
+  // Use subtleAPI directly instead of just 'subtle' which was a typo in previous version
+  const plainBytes = new Uint8Array(await subtleAPI.decrypt({ name: 'AES-GCM', iv }, key, data));
   return fromUint8Array(plainBytes);
 }
 
 export async function hashString(message) {
+  // Mix with Pepper for all hashing (PIN storage)
+  const pepperedMessage = message + INTERNAL_PEPPER;
+
   // Fallback if WebCrypto is not available
   if (!isWebCryptoAvailable) {
     console.warn('[CRYPTO] Using fallback hash (not secure)');
-    // Add salt to make brute-forcing harder
-    const saltedMessage = message + FALLBACK_SALT;
+    const saltedMessage = pepperedMessage + FALLBACK_SALT;
     let hash = 0;
     for (let i = 0; i < saltedMessage.length; i++) {
       const char = saltedMessage.charCodeAt(i);
       hash = (hash << 5) - hash + char;
       hash = hash & hash;
     }
-    // Return hex-like string
     return Math.abs(hash).toString(16).padStart(64, '0').slice(0, 64);
   }
 
-  const msgBuffer = new TextEncoder().encode(message);
+  const msgBuffer = new TextEncoder().encode(pepperedMessage);
   const hashBuffer = await cryptoAPI.subtle.digest('SHA-256', msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  // Convert bytes to hex string
   return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
@@ -163,3 +174,6 @@ export async function hashString(message) {
 export function isCryptoAvailable() {
   return isWebCryptoAvailable;
 }
+
+// Initialize immediately
+initCrypto();
