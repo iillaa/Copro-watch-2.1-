@@ -49,7 +49,7 @@ export default function WaterAnalysisPanel({
         result_date: savedRecord.result_date || '',
         result: savedRecord.result || 'pending',
         notes: savedRecord.notes || '',
-        department_id: department.id,
+        structure_id: department.id,
       });
     } else {
       resetForm();
@@ -58,7 +58,7 @@ export default function WaterAnalysisPanel({
 
   const resetForm = () => {
     setFormData({
-      department_id: department.id,
+      structure_id: department.id,
       request_date: new Date().toISOString().split('T')[0],
       sample_date: '',
       result_date: '',
@@ -69,7 +69,7 @@ export default function WaterAnalysisPanel({
 
   // 4. HANDLERS
   const handleSave = async (step) => {
-    let dataToSave = { ...formData, department_id: department.id };
+    let dataToSave = { ...formData, structure_id: department.id };
     const today = new Date().toISOString().split('T')[0];
 
     // [FIX] Allow blank dates (Deleted auto-fill logic)
@@ -106,7 +106,7 @@ export default function WaterAnalysisPanel({
   const handleStartRetest = () => {
     setIsCreatingRetest(true);
     setFormData({
-      department_id: department.id,
+      structure_id: department.id,
       request_date: new Date().toISOString().split('T')[0],
       sample_date: '',
       result_date: '',

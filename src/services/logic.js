@@ -156,6 +156,42 @@ export const logic = {
   },
 
   // --- WEAPON LOGIC ---
+  recalculateWeaponHolderStatus(exams) {
+    if (!exams || exams.length === 0) {
+      return {
+        status: 'pending',
+        next_review_date: '',
+      };
+    }
+
+    // Sort by Commission Date (Verdict) or Exam Date, descending (Newest first)
+    const sortedExams = [...exams].sort((a, b) => {
+      const dateA = new Date(a.commission_date || a.exam_date || 0);
+      const dateB = new Date(b.commission_date || b.exam_date || 0);
+      return dateB - dateA;
+    });
+
+    const latestExam = sortedExams[0];
+
+    // Status is always from the chronologically latest exam
+    const status = latestExam.final_decision || 'pending';
+    
+    // Date calculation logic
+    let nextDate = '';
+    if (status === 'inapte_temporaire') {
+      nextDate = latestExam.next_review_date || '';
+    } else if (status === 'apte' || status === 'inapte_definitif') {
+      nextDate = ''; // Permanent states
+    } else {
+      nextDate = latestExam.next_review_date || '';
+    }
+
+    return {
+      status,
+      next_review_date: nextDate,
+    };
+  },
+
   isWeaponDueSoon(nextReviewDateStr) {
     const nextDate = safeDate(nextReviewDateStr);
     if (!nextDate) return false;

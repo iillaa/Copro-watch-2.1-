@@ -16,7 +16,8 @@ export default function WaterAnalysisForm({
   const { showToast, ToastContainer } = useToast();
   const isInitialized = useRef(false);
   const [formData, setFormData] = useState({
-    department_id: department?.id || analysis?.department_id || analysis?.structure_id,
+    department_id: analysis?.department_id || null,
+    structure_id: department?.id || analysis?.structure_id || analysis?.department_id,
     request_date: new Date().toISOString().split('T')[0], // Default Request to Today
     sample_date: '',
     result_date: '',
@@ -31,7 +32,8 @@ export default function WaterAnalysisForm({
     if (analysisToEdit) {
       setFormData({
         id: analysisToEdit.id,
-        department_id: analysisToEdit.department_id || analysisToEdit.structure_id,
+        department_id: analysisToEdit.department_id || '',
+        structure_id: analysisToEdit.structure_id || analysisToEdit.department_id || '',
         request_date: analysisToEdit.request_date || '',
         sample_date: analysisToEdit.sample_date || '',
         result_date: analysisToEdit.result_date || '',
@@ -50,14 +52,14 @@ export default function WaterAnalysisForm({
       } else if (type === 'launch') {
         setFormData((prev) => ({
           ...prev,
-          department_id: department?.id || workplace?.id,
+          structure_id: department?.id || workplace?.id,
           request_date: new Date().toISOString().split('T')[0],
           sample_date: new Date().toISOString().split('T')[0],
         }));
       } else if (type === 'result') {
         setFormData((prev) => ({
           ...prev,
-          department_id: analysis?.department_id || analysis?.structure_id,
+          structure_id: analysis?.structure_id || analysis?.department_id,
           request_date: analysis?.request_date || '',
           sample_date: analysis?.sample_date,
           result_date: new Date().toISOString().split('T')[0],
@@ -65,7 +67,7 @@ export default function WaterAnalysisForm({
       } else if (type === 'retest') {
         setFormData((prev) => ({
           ...prev,
-          department_id: department?.id || workplace?.id,
+          structure_id: department?.id || workplace?.id,
           request_date: new Date().toISOString().split('T')[0],
           sample_date: '',
         }));
@@ -83,8 +85,8 @@ export default function WaterAnalysisForm({
   };
 
   const validateForm = () => {
-    if (!formData.department_id) {
-      showToast('Veuillez sélectionner un service.', 'error');
+    if (!formData.department_id && !formData.structure_id) {
+      showToast('Veuillez sélectionner un service ou un point d\'eau.', 'error');
       return false;
     }
 

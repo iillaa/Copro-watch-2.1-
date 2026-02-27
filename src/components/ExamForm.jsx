@@ -82,25 +82,11 @@ export default function ExamForm({
 
     await db.saveExam({ ...newExamData, worker_id: worker.id });
 
-    // 2. Recalcul du statut avec la nouvelle logique (date de décision)
-    const allExams = await db.getExams();
-    const workerExams = allExams.filter((e) => e.worker_id === worker.id);
-    const statusUpdate = logic.recalculateWorkerStatus(workerExams);
-
-    await db.saveWorker({ ...worker, ...statusUpdate });
-
     onSave();
   };
 
   const saveWithoutDecision = async () => {
     await db.saveExam({ ...formData, worker_id: worker.id });
-
-    // Recalcul simple
-    const allExams = await db.getExams();
-    const workerExams = allExams.filter((e) => e.worker_id === worker.id);
-    const statusUpdate = logic.recalculateWorkerStatus(workerExams);
-
-    await db.saveWorker({ ...worker, ...statusUpdate });
 
     onSave();
   };

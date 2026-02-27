@@ -244,19 +244,29 @@ function App() {
 
   // Helper to validate PIN (Supports Old Plain, Old Hashed, and New Peppered Hashed PINs)
   const checkPin = async (inputPin) => {
+    // Load current settings to get the extension
+    const settings = await db.getSettings();
+    const ext = settings.backup_password_extension || '';
+
     // 1. If stored PIN is 4 digits, it's an OLD plain PIN
     if (pin.length === 4) {
       return inputPin === pin;
     }
 
-    // 2. Try validation with NEW Peppered Logic (New hashString includes pepper)
-    const inputHashNew = await hashString(inputPin);
+    // 2. Try validation with NEW Logic (Uses the dynamic extension)
+    const inputHashNew = await hashString(inputPin, ext);
     if (inputHashNew === pin) return true;
 
-    // 3. FALLBACK: Try validation with OLD Unpeppered Logic (for migration)
-    // We recreate the old logic manually here since hashString is now peppered
+    // 3. FALLBACK: Try validation with OLD Hardcoded Pepper (for migration)
+    const OLD_PEPPER = 'CoproWatch-v2.1-Hardened-Pepper-Secret-Key-777#@!';
+    const inputHashOldPepper = await hashString(inputPin, OLD_PEPPER);
+    if (inputHashOldPepper === pin) {
+      console.log('[App] Old peppered PIN detected. Migration to dynamic extension is seamless.');
+      return true;
+    }
+
+    // 4. FALLBACK: Try validation with OLD Unpeppered Logic (v2.0)
     try {
-      const { Capacitor } = await import('@capacitor/core');
       const cryptoAPI = window.crypto || window.msCrypto;
       if (cryptoAPI && cryptoAPI.subtle) {
         const msgBuffer = new TextEncoder().encode(inputPin);

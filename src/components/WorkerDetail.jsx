@@ -119,17 +119,10 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
       try {
         const idsToDelete = Array.from(selectedIds);
 
-        // 1. Delete Exams
+        // 1. Delete Exams (recalculation happens in db.deleteExam)
         await Promise.all(idsToDelete.map((id) => db.deleteExam(id)));
 
-        // 2. SYNC: Recalculate based on what's left
-        const remainingExams = await db.getExamsByWorker(worker.id);
-        const newStatus = logic.recalculateWorkerStatus(remainingExams);
-
-        // 3. Save Update
-        await db.saveWorker({ ...worker, ...newStatus });
-
-        // 4. Reload
+        // 2. Reload
         setSelectedIds(new Set());
         loadData();
 
@@ -155,23 +148,10 @@ export default function WorkerDetail({ workerId, onBack, compactMode }) {
     if (!window.confirm('Êtes-vous sûr de vouloir supprimer cet examen ?')) return;
 
     try {
-      // 1. Delete the exam
+      // 1. Delete the exam (recalculation happens in db.deleteExam)
       await db.deleteExam(examId);
 
-      // 2. Fetch remaining exams to recalculate
-      const remainingExams = await db.getExamsByWorker(worker.id);
-
-      // 3. Recalculate status using the Logic Brain
-      const newStatus = logic.recalculateWorkerStatus(remainingExams);
-
-      // 4. Update the worker in DB
-      const updatedWorker = {
-        ...worker,
-        ...newStatus,
-      };
-      await db.saveWorker(updatedWorker);
-
-      // 5. Reload UI
+      // 2. Reload UI
       loadData();
     } catch (e) {
       console.error('Erreur sync:', e);

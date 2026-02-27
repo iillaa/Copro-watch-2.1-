@@ -4,6 +4,7 @@ import { logic } from '../../services/logic';
 import { format, addMonths } from 'date-fns';
 
 export default function WeaponExamForm({ holder, existingExam, onClose, onSave }) {
+  const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     exam_date: format(new Date(), 'yyyy-MM-dd'), // Consultation medicale
     commission_date: format(new Date(), 'yyyy-MM-dd'), // Date de décision
@@ -50,31 +51,49 @@ export default function WeaponExamForm({ holder, existingExam, onClose, onSave }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    await db.saveWeaponExam({
-      ...formData,
-      id: existingExam ? existingExam.id : undefined,
-      holder_id: holder.id,
-    });
-    onSave();
+    if (loading) return;
+    try {
+      setLoading(true);
+      await db.saveWeaponExam({
+        ...formData,
+        id: existingExam ? existingExam.id : undefined,
+        holder_id: holder.id,
+      });
+      onSave();
+    } catch (err) {
+      console.error('Failed to save exam:', err);
+      alert('Erreur lors de la sauvegarde: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSaveConsultation = async () => {
-    // [FIX] Preserve everything in formData, but ensure it's marked as 'pending'
-    // ONLY if it's a new exam or if it's already pending.
-    // This allows editing the consultation date without reverting a final decision.
-    const dataToSave = {
-      ...formData,
-      id: existingExam ? existingExam.id : undefined,
-      holder_id: holder.id,
-    };
+    if (loading) return;
+    try {
+      setLoading(true);
+      // [FIX] Preserve everything in formData, but ensure it's marked as 'pending'
+      // ONLY if it's a new exam or if it's already pending.
+      // This allows editing the consultation date without reverting a final decision.
+      const dataToSave = {
+        ...formData,
+        id: existingExam ? existingExam.id : undefined,
+        holder_id: holder.id,
+      };
 
-    // If no existing exam, we force pending. If existing, we keep what's in the form.
-    if (!existingExam && formData.final_decision === 'apte') {
-      dataToSave.final_decision = 'pending';
+      // If no existing exam, we force pending. If existing, we keep what's in the form.
+      if (!existingExam && formData.final_decision === 'apte') {
+        dataToSave.final_decision = 'pending';
+      }
+
+      await db.saveWeaponExam(dataToSave);
+      onSave();
+    } catch (err) {
+      console.error('Failed to save consultation:', err);
+      alert('Erreur lors de la sauvegarde: ' + err.message);
+    } finally {
+      setLoading(false);
     }
-
-    await db.saveWeaponExam(dataToSave);
-    onSave();
   };
 
   // [SURGICAL UPDATE] Darker Colors & Neobrutal constants

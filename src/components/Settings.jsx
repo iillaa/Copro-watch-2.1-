@@ -66,6 +66,7 @@ export default function Settings({
     checkMigration();
   }, [currentPin]);
   const [doctorName, setDoctorName] = useState('');
+  const [backupPasswordExtension, setBackupPasswordExtension] = useState('');
   const { showToast, ToastContainer } = useToast();
   const fileRef = useRef();
 
@@ -108,14 +109,18 @@ export default function Settings({
         showToast('Le PIN doit être composé de 4 chiffres.', 'error');
         return;
       }
-      // Hash the NEW pin
-      pinToSave = await hashString(pin);
+      // Hash the NEW pin with the new extension
+      console.log('[SETTINGS] Saving new PIN, extension being used:', backupPasswordExtension);
+      pinToSave = await hashString(pin, backupPasswordExtension);
+      console.log('[SETTINGS] New PIN hash (length):', pinToSave.length);
     }
 
     // 3. Save everything
+    console.log('[SETTINGS] Saving settings - pinToSave length:', pinToSave?.length, 'extension:', backupPasswordExtension);
     await db.saveSettings({
       pin: pinToSave,
       doctor_name: doctorName,
+      backup_password_extension: backupPasswordExtension,
     });
 
     // 4. Update App State
@@ -132,14 +137,18 @@ export default function Settings({
     let result = await db.importData(text, initialPassword);
 
     // If it needs a password, prompt the user
-    while (result && result.error === 'NEED_PASSWORD') {
-      const pw = prompt("Ce fichier est chiffré. Veuillez entrer le mot de passe (PIN de l'époque ou mot de passe personnalisé) :");
+    while (result && (result.error === 'NEED_PASSWORD' || result.error === 'NEED_COMBINED_CODE')) {
+      const promptMsg = result.error === 'NEED_COMBINED_CODE' 
+        ? "Code Combiné de Sécurité Requis (PIN + Extension) :"
+        : "Ce fichier est chiffré. Veuillez entrer le mot de passe (PIN ou mot de passe personnalisé) :";
+        
+      const pw = prompt(promptMsg);
       if (pw === null) return false; // User cancelled
       if (!pw.trim()) continue;
       
       result = await db.importData(text, pw);
-      if (result && result.error === 'NEED_PASSWORD') {
-        showToast('Mot de passe incorrect.', 'error');
+      if (result && (result.error === 'NEED_PASSWORD' || result.error === 'NEED_COMBINED_CODE')) {
+        showToast('Code de sécurité incorrect.', 'error');
       }
     }
 
@@ -159,7 +168,8 @@ export default function Settings({
       showToast("Génération de l'export chiffré...", 'info');
       const enc = await db.exportDataEncrypted(pw);
       
-      await backupService.saveBackupJSON(enc, 'medical-export-custom.json');
+      const filename = backupService.generateBackupFilename('medical-export-custom');
+      await backupService.saveBackupJSON(enc, filename);
       showToast('Export réussi avec mot de passe personnalisé !', 'success');
     } catch (e) {
       console.error('Encrypted export failed:', e);
@@ -174,7 +184,8 @@ export default function Settings({
       // Now always encrypted with current PIN hash by default
       const enc = await db.exportData();
       
-      await backupService.saveBackupJSON(enc, 'medical-export.json');
+      const filename = backupService.generateBackupFilename('medical-export');
+      await backupService.saveBackupJSON(enc, filename);
       showToast('Export réussi (chiffré avec votre PIN) !', 'success');
     } catch (e) {
       console.error('Standard export failed:', e);
@@ -240,12 +251,13 @@ export default function Settings({
       }
     })();
 
-    // Load Doctor Name
-    const loadDoctorName = async () => {
+    // Load Doctor Name and Encryption Extension
+    const loadSettings = async () => {
       const s = await db.getSettings();
       if (s.doctor_name) setDoctorName(s.doctor_name);
+      if (s.backup_password_extension) setBackupPasswordExtension(s.backup_password_extension);
     };
-    loadDoctorName();
+    loadSettings();
 
     // Load departments
     loadDepartments();
@@ -649,9 +661,14 @@ export default function Settings({
 
     try {
       const result = await db.cleanupOrphans();
-      alert(
-        `Nettoyage Terminé ! 🧹\n\nSupprimé :\n- ${result.exams} examens fantômes\n- ${result.water} analyses d'eau orphelines`
-      );
+      let msg = `Nettoyage Terminé ! 🧹\n\nSupprimé :\n`;
+      msg += `- ${result.exams} examens médicaux fantômes\n`;
+      msg += `- ${result.workers} agents fantômes (sans service)\n`;
+      msg += `- ${result.water} analyses d'eau orphelines\n`;
+      msg += `- ${result.weaponExams} examens d'armes fantômes\n`;
+      msg += `- ${result.weaponHolders} porteurs d'armes fantômes`;
+      
+      alert(msg);
       window.location.reload();
     } catch (e) {
       alert('Erreur: ' + e.message);
@@ -862,6 +879,28 @@ export default function Settings({
                   textAlign: 'center',
                 }}
               />
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
+                Clé d'Extension de Sauvegarde (Ajoutée au PIN)
+              </label>
+              <input
+                type="text"
+                placeholder="Ex: MySecretPepper"
+                value={backupPasswordExtension}
+                onChange={(e) => setBackupPasswordExtension(e.target.value)}
+                className="input"
+                style={{
+                  padding: '0.5rem',
+                  borderRadius: '4px',
+                  border: '1px solid var(--border-color)',
+                  width: '100%',
+                }}
+              />
+              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Cette clé renforce le chiffrement de vos sauvegardes. Ne la perdez pas !
+              </p>
             </div>
 
             <button className="btn btn-primary" onClick={handleSave} style={{ width: '100%' }}>

@@ -99,21 +99,8 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
         await Promise.all(idsToDelete.map((id) => db.deleteWeaponExam(id)));
 
         const remaining = await db.getWeaponExamsByHolder(holder.id);
-        if (remaining.length > 0) {
-          remaining.sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
-          const last = remaining[0];
-          await db.saveWeaponHolder({
-            ...holder,
-            status: last.final_decision,
-            next_review_date: last.next_review_date,
-          });
-        } else {
-          await db.saveWeaponHolder({
-            ...holder,
-            status: 'pending',
-            next_review_date: '',
-          });
-        }
+        const statusUpdate = logic.recalculateWeaponHolderStatus(remaining);
+        await db.saveWeaponHolder({ ...holder, ...statusUpdate });
 
         setSelectedIds(new Set());
         loadData();
@@ -140,21 +127,8 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
     await db.deleteWeaponExam(examId);
 
     const remaining = await db.getWeaponExamsByHolder(holder.id);
-    if (remaining.length > 0) {
-      remaining.sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
-      const last = remaining[0];
-      await db.saveWeaponHolder({
-        ...holder,
-        status: last.final_decision,
-        next_review_date: last.next_review_date,
-      });
-    } else {
-      await db.saveWeaponHolder({
-        ...holder,
-        status: 'pending',
-        next_review_date: '',
-      });
-    }
+    const statusUpdate = logic.recalculateWeaponHolderStatus(remaining);
+    await db.saveWeaponHolder({ ...holder, ...statusUpdate });
     loadData();
   };
 
@@ -181,7 +155,7 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
   };
 
   const renderStatusBadge = (status) => {
-    if (!status || status === 'pending') return <span className="badge badge-yellow">Attente</span>;
+    if (!status || status === 'pending') return <span className="badge badge-yellow">En Attente</span>;
     const configs = {
       apte: { class: 'badge-green', label: 'Apte' },
       inapte_temporaire: { class: 'badge-red', label: 'Inapte Temp.' },
@@ -235,7 +209,7 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
               )}
             </h2>
             <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
-              <strong>Service RH:</strong> {deptName} • <strong>Poste:</strong>{' '}
+              <strong>Service:</strong> {deptName} • <strong>Poste:</strong>{' '}
               {holder.job_function}
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
@@ -277,13 +251,17 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
                     ? 'badge-red'
                     : holder.status === 'apte'
                     ? 'badge-green'
+                    : holder.status === 'inapte_definitif'
+                    ? 'badge-black'
                     : 'badge-yellow'
                 }`}
               >
                 {holder.status === 'apte'
                   ? 'Aptitude Permanente'
+                  : holder.status === 'inapte_definitif'
+                  ? 'Inaptitude Définitive'
                   : holder.status === 'pending'
-                  ? 'Visite en cours (Attente Décision)'
+                  ? 'Visite en cours'
                   : `Prochaine Visite: ${logic.formatDateDisplay(holder.next_review_date)}`}
               </span>
               {isOverdue && holder.status !== 'pending' && (

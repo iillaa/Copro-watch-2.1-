@@ -7,10 +7,6 @@ let subtleAPI = null;
 // [FIX] Salt for fallback hash (not cryptographically secure, but adds obscurity)
 const FALLBACK_SALT = 'CoproWatch-v2-SecureHashSalt-2024';
 
-// [SECURITY] Static Pepper to protect low-entropy PINs (0000-9999) from brute-force.
-// This string is NEVER stored in the backup files.
-const INTERNAL_PEPPER = 'CoproWatch-v2.1-Hardened-Pepper-Secret-Key-777#@!';
-
 // Initialize crypto APIs safely
 function initCrypto() {
   try {
@@ -34,19 +30,21 @@ function initCrypto() {
 
 // Fallback encryption using XOR (for devices without WebCrypto)
 // WARNING: This is NOT cryptographically secure, but prevents app crashes
-function xorEncrypt(text, password) {
+function xorEncrypt(text, password, extension = '') {
   let result = '';
+  const hardenedPw = password + extension;
   for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(text.charCodeAt(i) ^ password.charCodeAt(i % password.length));
+    result += String.fromCharCode(text.charCodeAt(i) ^ hardenedPw.charCodeAt(i % hardenedPw.length));
   }
   return btoa(result);
 }
 
-function xorDecrypt(encoded, password) {
+function xorDecrypt(encoded, password, extension = '') {
   const text = atob(encoded);
   let result = '';
+  const hardenedPw = password + extension;
   for (let i = 0; i < text.length; i++) {
-    result += String.fromCharCode(text.charCodeAt(i) ^ password.charCodeAt(i % password.length));
+    result += String.fromCharCode(text.charCodeAt(i) ^ hardenedPw.charCodeAt(i % hardenedPw.length));
   }
   return result;
 }
@@ -76,14 +74,14 @@ function base64Decode(str) {
   return bytes;
 }
 
-async function deriveKey(password, salt, iterations = 250000) {
+async function deriveKey(password, salt, extension = '', iterations = 250000) {
   if (!isWebCryptoAvailable || !subtleAPI) {
     throw new Error('WebCrypto not available');
   }
 
-  // [SECURITY] Mix the password with the Internal Pepper before derivation.
+  // [SECURITY] Mix the password with the custom extension before derivation.
   // This ensures that even a 4-digit PIN has high entropy for the attacker.
-  const hardenedPassword = password + INTERNAL_PEPPER;
+  const hardenedPassword = password + extension;
 
   const pwKey = await subtleAPI.importKey(
     'raw',
@@ -101,25 +99,27 @@ async function deriveKey(password, salt, iterations = 250000) {
   );
 }
 
-export async function encryptString(password, plaintext) {
+export async function encryptString(password, plaintext, extension = '') {
+  console.log('[CRYPTO ENCRYPT] password length:', password?.length, 'extension length:', extension?.length);
+  
   // Fallback if WebCrypto is not available
   if (!isWebCryptoAvailable) {
     console.warn('[CRYPTO] Using fallback XOR encryption (not secure)');
-    // Even in XOR, mix the pepper
-    const hardenedPw = password + INTERNAL_PEPPER;
     return JSON.stringify({
       method: 'xor',
       salt: btoa(password.slice(0, 8)),
-      data: xorEncrypt(plaintext, hardenedPw),
+      data: xorEncrypt(plaintext, password, extension),
     });
   }
 
   const salt = cryptoAPI.getRandomValues(new Uint8Array(16));
   const iv = cryptoAPI.getRandomValues(new Uint8Array(12));
-  const key = await deriveKey(password, salt);
+  console.log('[CRYPTO ENCRYPT] Deriving key with password + extension');
+  const key = await deriveKey(password, salt, extension);
   const cipherBytes = new Uint8Array(
     await subtleAPI.encrypt({ name: 'AES-GCM', iv }, key, toUint8Array(plaintext))
   );
+  console.log('[CRYPTO ENCRYPT] Encryption successful');
   return JSON.stringify({
     method: 'aes-gcm',
     salt: base64Encode(salt),
@@ -128,32 +128,35 @@ export async function encryptString(password, plaintext) {
   });
 }
 
-export async function decryptString(password, payload) {
+export async function decryptString(password, payload, extension = '') {
+  console.log('[CRYPTO DECRYPT] password length:', password?.length, 'extension length:', extension?.length);
   const obj = typeof payload === 'string' ? JSON.parse(payload) : payload;
 
   // Handle fallback XOR encryption
   if (obj.method === 'xor') {
-    const hardenedPw = password + INTERNAL_PEPPER;
-    return xorDecrypt(obj.data, hardenedPw);
+    return xorDecrypt(obj.data, password, extension);
   }
 
   const salt = base64Decode(obj.salt);
   const iv = base64Decode(obj.iv);
   const data = base64Decode(obj.data);
-  const key = await deriveKey(password, salt);
+  console.log('[CRYPTO DECRYPT] Deriving key for decryption');
+  const key = await deriveKey(password, salt, extension);
   
   // Use subtleAPI directly instead of just 'subtle' which was a typo in previous version
   const plainBytes = new Uint8Array(await subtleAPI.decrypt({ name: 'AES-GCM', iv }, key, data));
+  console.log('[CRYPTO DECRYPT] Decryption successful');
   return fromUint8Array(plainBytes);
 }
 
-export async function hashString(message) {
-  // Mix with Pepper for all hashing (PIN storage)
-  const pepperedMessage = message + INTERNAL_PEPPER;
+export async function hashString(message, extension = '') {
+  // Mix with extension for hashing
+  const pepperedMessage = message + extension;
+  console.log('[HASH] Hashing message (length:', message?.length, ') with extension (length:', extension?.length, ')');
 
   // Fallback if WebCrypto is not available
   if (!isWebCryptoAvailable) {
-    console.warn('[CRYPTO] Using fallback hash (not secure)');
+    console.warn('[HASH] Using fallback hash (not secure)');
     const saltedMessage = pepperedMessage + FALLBACK_SALT;
     let hash = 0;
     for (let i = 0; i < saltedMessage.length; i++) {
@@ -167,7 +170,9 @@ export async function hashString(message) {
   const msgBuffer = new TextEncoder().encode(pepperedMessage);
   const hashBuffer = await cryptoAPI.subtle.digest('SHA-256', msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  const result = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
+  console.log('[HASH] Hash result length:', result.length);
+  return result;
 }
 
 // Export availability check for other modules

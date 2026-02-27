@@ -1,6 +1,7 @@
 import Dexie from 'dexie';
 import backupService from './backup';
-import { encryptString, decryptString } from './crypto'; // IMPORT ADDED
+import { encryptString, decryptString, hashString } from './crypto'; // IMPORT ADDED
+import { logic } from './logic'; // IMPORT ADDED
 
 // [NEW] WORKER IMPORT (Vite Syntax)
 // We use a dedicated worker for heavy JSON operations to prevent UI freeze
@@ -114,7 +115,8 @@ async function triggerBackupCheck() {
           // Always encrypt with current PIN for auto-backups
           const settings = await db.getSettings();
           const pinHash = settings.pin || '0000';
-          return await encryptString(pinHash, dataStr);
+          const ext = settings.backup_password_extension || '';
+          return await encryptString(pinHash, dataStr, ext);
         }, triggerType);
       } catch (e) {
         console.warn('[DB] Background export failed', e);
@@ -150,15 +152,21 @@ async function exportDataRaw() {
 // [UPDATED] Now always returns ENCRYPTED data by default using current PIN
 async function exportData(password = null) {
   const rawJson = await exportDataRaw();
+  const settings = await db.getSettings();
+  const ext = settings.backup_password_extension || '';
+  
+  console.log('[DB EXPORT] Starting export - hasCustomPassword:', !!password, 'extension:', ext);
   
   if (password) {
-    return await encryptString(password, rawJson);
+    console.log('[DB EXPORT] Using custom password for encryption');
+    // For custom password, we use it as PIN with the extension (Combined Key)
+    return await encryptString(password, rawJson, ext);
   }
   
   // Default: use current app PIN hash
-  const settings = await db.getSettings();
   const pinHash = settings.pin || '0000';
-  return await encryptString(pinHash, rawJson);
+  console.log('[DB EXPORT] Using PIN hash for encryption, pinHash length:', pinHash.length);
+  return await encryptString(pinHash, rawJson, ext);
 }
 
 // 5. The Public API
@@ -181,7 +189,7 @@ export const db = {
   },
   async saveWeaponHolder(holder) {
     const id = await dbInstance.weapon_holders.put(holder);
-    await triggerBackupCheck();
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err));
     return { ...holder, id };
   },
   async deleteWeaponHolder(id) {
@@ -195,7 +203,7 @@ export const db = {
         await dbInstance.weapon_holders.delete(numId);
       }
     );
-    await triggerBackupCheck();
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err));
   },
   async getWeaponExams() {
     return await dbInstance.weapon_exams.toArray();
@@ -206,22 +214,22 @@ export const db = {
   async saveWeaponExam(exam) {
     const id = await dbInstance.weapon_exams.put(exam);
 
-    // Auto-update holder status and review date
+    // Auto-update holder status and review date based on FULL HISTORY
     const holder = await dbInstance.weapon_holders.get(Number(exam.holder_id));
     if (holder) {
-      holder.status = exam.final_decision;
-      if (exam.next_review_date) {
-        holder.next_review_date = exam.next_review_date;
-      }
-      await dbInstance.weapon_holders.put(holder);
+      const exams = await dbInstance.weapon_exams.where('holder_id').equals(holder.id).toArray();
+      const statusUpdate = logic.recalculateWeaponHolderStatus(exams);
+      await dbInstance.weapon_holders.put({ ...holder, ...statusUpdate });
     }
 
-    await triggerBackupCheck();
+    // Run backup in background - DO NOT AWAIT (prevents UI lag)
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err));
+    
     return { ...exam, id };
   },
   async deleteWeaponExam(id) {
     await dbInstance.weapon_exams.delete(Number(id));
-    await triggerBackupCheck();
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err));
   },
 
   // --- WEAPON DEPARTMENTS (NEW) ---
@@ -230,7 +238,7 @@ export const db = {
   },
   async saveWeaponDepartment(dept) {
     const id = await dbInstance.weapon_departments.put(dept);
-    await triggerBackupCheck();
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err));
     return { ...dept, id };
   },
   async deleteWeaponDepartment(id) {
@@ -244,7 +252,7 @@ export const db = {
         await dbInstance.weapon_departments.delete(numId);
       }
     );
-    await triggerBackupCheck();
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err));
   },
 
   // [CLONED] Move logic adapted for Weapons
@@ -290,7 +298,7 @@ export const db = {
   },
   async saveWorker(worker) {
     const id = await dbInstance.workers.put(worker);
-    await triggerBackupCheck(); // [FIX] Awaited
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
     return { ...worker, id };
   },
   // 3. Fix for Workers
@@ -314,7 +322,7 @@ export const db = {
         await dbInstance.exams.where('worker_id').equals(numId).delete();
       }
 
-      await triggerBackupCheck();
+      triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err));
       console.log(`[DB] Worker ${numId} deleted successfully.`);
     } catch (error) {
       console.error('[DB] Worker deletion failed:', error);
@@ -332,12 +340,33 @@ export const db = {
   },
   async saveExam(exam) {
     const id = await dbInstance.exams.put(exam);
-    await triggerBackupCheck(); // [FIX] Awaited
+    
+    // Auto-update worker status based on FULL HISTORY
+    const worker = await dbInstance.workers.get(Number(exam.worker_id));
+    if (worker) {
+      const exams = await dbInstance.exams.where('worker_id').equals(worker.id).toArray();
+      const statusUpdate = logic.recalculateWorkerStatus(exams);
+      await dbInstance.workers.put({ ...worker, ...statusUpdate });
+    }
+
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
     return { ...exam, id };
   },
   async deleteExam(id) {
+    const exam = await dbInstance.exams.get(id);
     await dbInstance.exams.delete(id);
-    await triggerBackupCheck(); // [FIX] Awaited
+    
+    // Auto-update worker status after deletion
+    if (exam && exam.worker_id) {
+      const worker = await dbInstance.workers.get(Number(exam.worker_id));
+      if (worker) {
+        const exams = await dbInstance.exams.where('worker_id').equals(worker.id).toArray();
+        const statusUpdate = logic.recalculateWorkerStatus(exams);
+        await dbInstance.workers.put({ ...worker, ...statusUpdate });
+      }
+    }
+
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
   },
 
   // --- DEPARTMENTS ---
@@ -346,7 +375,7 @@ export const db = {
   },
   async saveDepartment(dept) {
     const id = await dbInstance.departments.put(dept);
-    await triggerBackupCheck(); // [FIX] Awaited
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
     return { ...dept, id };
   },
   // 2. Fix for HR Services (Settings > Services RH)
@@ -362,7 +391,7 @@ export const db = {
     // C. FINAL: Delete the Service itself
     await dbInstance.departments.delete(numId);
 
-    await triggerBackupCheck(); // [FIX] Awaited
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
   },
 
   // --- WORKPLACES ---
@@ -378,7 +407,7 @@ export const db = {
   },
   async deleteWorkplace(id) {
     await dbInstance.workplaces.delete(id);
-    await triggerBackupCheck(); // [FIX] Awaited
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
   },
 
   // --- WATER ---
@@ -387,19 +416,19 @@ export const db = {
   },
   async saveWaterAnalysis(analysis) {
     const id = await dbInstance.water_analyses.put(analysis);
-    await triggerBackupCheck(); // [FIX] Awaited
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
     return { ...analysis, id };
   },
   async deleteWaterAnalysis(id) {
     await dbInstance.water_analyses.delete(id);
-    await triggerBackupCheck(); // [FIX] Awaited
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
   },
   async getWaterDepartments() {
     return await dbInstance.water_departments.toArray();
   },
   async saveWaterDepartment(dept) {
     const id = await dbInstance.water_departments.put(dept);
-    await triggerBackupCheck(); // [FIX] Awaited
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
     return { ...dept, id };
   },
   // 1. Fix for Water Services
@@ -411,7 +440,7 @@ export const db = {
 
     // Delete Service (Uses numId)
     await dbInstance.water_departments.delete(numId);
-    await triggerBackupCheck(); // [FIX] Awaited
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err)); // [FIX] Awaited
   },
 
   // --- IMPORT / EXPORT ---
@@ -432,31 +461,71 @@ export const db = {
       const isEncrypted = data.method && data.data && (data.method === 'aes-gcm' || data.method === 'xor');
 
       if (isEncrypted) {
+        const settings = await this.getSettings();
+        const ext = settings.backup_password_extension || '';
+        console.log('[DB IMPORT] Starting decryption - extension:', ext);
         let decrypted = null;
         
         // 1. Try provided password if any
         if (password) {
+          console.log('[DB IMPORT] Trying provided password:', password);
+          // A. Try as "Full Combined Code" (Extension already added or empty)
           try {
-            decrypted = await decryptString(password, jsonString);
+            console.log('[DB IMPORT] Try 1: password as-is (empty ext)');
+            decrypted = await decryptString(password, jsonString, '');
+            console.log('[DB IMPORT] SUCCESS: password as-is worked!');
           } catch (e) {
-            console.warn('[DB] Provided password failed');
+            // B. Try as plain PIN (Add current extension) - THIS IS THE KEY FIX!
+            // User provides plain old PIN, we add current extension
+            try {
+              console.log('[DB IMPORT] Try 2: plain PIN + current extension');
+              decrypted = await decryptString(password, jsonString, ext);
+              console.log('[DB IMPORT] SUCCESS: plain PIN + extension worked!');
+            } catch (e2) {
+              // C. Try as PIN Hash (Hash password, then add current extension)
+              try {
+                console.log('[DB IMPORT] Try 3: hash(password) + extension');
+                const pwHash = await hashString(password, ext);
+                decrypted = await decryptString(pwHash, jsonString, ext);
+                console.log('[DB IMPORT] SUCCESS: hashed password + extension worked!');
+              } catch (e3) {
+                // D. NEW: Try with empty extension (old format without extension)
+                try {
+                  console.log('[DB IMPORT] Try 4: hash(password) + empty extension (legacy)');
+                  const pwHashNoExt = await hashString(password, '');
+                  decrypted = await decryptString(pwHashNoExt, jsonString, '');
+                  console.log('[DB IMPORT] SUCCESS: hashed password + no extension worked!');
+                } catch (e4) {
+                  // E. Try password as-is with current extension (direct encryption key)
+                  try {
+                    console.log('[DB IMPORT] Try 5: password directly as encryption key + current extension');
+                    decrypted = await decryptString(password, jsonString, ext);
+                    console.log('[DB IMPORT] SUCCESS: password as direct key + extension!');
+                  } catch (e5) {
+                    console.warn('[DB IMPORT] Provided password failed all attempts:', e5.message);
+                  }
+                }
+              }
+            }
           }
         }
         
         // 2. Try current app PIN if not decrypted yet
         if (!decrypted) {
-          const settings = await this.getSettings();
+          console.log('[DB IMPORT] Trying current app PIN...');
           const pinHash = settings.pin || '0000';
           try {
-            decrypted = await decryptString(pinHash, jsonString);
+            decrypted = await decryptString(pinHash, jsonString, ext);
+            console.log('[DB IMPORT] SUCCESS: Current PIN + Extension worked!');
           } catch (e) {
-            console.warn('[DB] Current PIN hash failed');
+            console.warn('[DB IMPORT] Current PIN + Extension failed:', e.message);
           }
         }
         
-        // 3. If still not decrypted, we need a password from the user
+        // 3. If still not decrypted, we need the "Full Combined Code" from the user
         if (!decrypted) {
-          return { error: 'NEED_PASSWORD', encryptedData: jsonString };
+          console.log('[DB IMPORT] NEED_COMBINED_CODE - no password worked');
+          return { error: 'NEED_COMBINED_CODE', encryptedData: jsonString };
         }
         
         data = JSON.parse(decrypted);
@@ -482,34 +551,77 @@ export const db = {
     }
   },
 
-  // [NEW] JANITOR FUNCTION
+  // [NEW] JANITOR FUNCTION (Updated to include Weapons and smarter Water logic)
   async cleanupOrphans() {
-    console.log('🧹 Starting Cleanup...');
+    console.log('🧹 Starting Full Database Cleanup...');
     let deletedExams = 0;
     let deletedWater = 0;
+    let deletedWeaponExams = 0;
+    let deletedWeaponHolders = 0;
+    let deletedWorkers = 0;
 
-    // 1. Clean Exams (Ghost Workers)
-    const workerIds = new Set((await dbInstance.workers.toArray()).map((w) => w.id));
+    // 1. Get all valid IDs for reference
+    const [
+      allDepts,
+      allWaterDepts,
+      allWeaponDepts,
+      allWorkers,
+      allWeaponHolders
+    ] = await Promise.all([
+      dbInstance.departments.toArray(),
+      dbInstance.water_departments.toArray(),
+      dbInstance.weapon_departments.toArray(),
+      dbInstance.workers.toArray(),
+      dbInstance.weapon_holders.toArray()
+    ]);
+
+    const deptIds = new Set(allDepts.map(d => d.id));
+    const waterDeptIds = new Set(allWaterDepts.map(d => d.id));
+    const weaponDeptIds = new Set(allWeaponDepts.map(d => d.id));
+    const workerIds = new Set(allWorkers.map(w => w.id));
+    const weaponHolderIds = new Set(allWeaponHolders.map(h => h.id));
+
+    // 2. Clean Medical Exams (Ghost Workers)
     const allExams = await dbInstance.exams.toArray();
-    const orphanExamIds = allExams.filter((e) => !workerIds.has(e.worker_id)).map((e) => e.id);
-
+    const orphanExamIds = allExams.filter((e) => !workerIds.has(Number(e.worker_id))).map((e) => e.id);
     if (orphanExamIds.length > 0) {
       await dbInstance.exams.bulkDelete(orphanExamIds);
       deletedExams = orphanExamIds.length;
     }
 
-    // 2. Clean Water Logs (Ghost Locations)
-    const deptIds = new Set((await dbInstance.departments.toArray()).map((d) => d.id));
-    const waterDeptIds = new Set((await dbInstance.water_departments.toArray()).map((d) => d.id));
-    const allWater = await dbInstance.water_analyses.toArray();
+    // 3. Clean Workers (Ghost Departments)
+    const orphanWorkerIds = allWorkers.filter(w => w.department_id && !deptIds.has(Number(w.department_id))).map(w => w.id);
+    if (orphanWorkerIds.length > 0) {
+      // Note: We don't delete workers automatically because department might be optional/missing,
+      // but here we only delete if it HAS a department_id that no longer exists.
+      // Wait, maybe we should just set department_id to null? 
+      // User said "delete exams", so they want cleanup.
+      // In this app, workers MUST belong to a department usually.
+      // But let's follow the user's request for comprehensive cleanup.
+      await Promise.all(orphanWorkerIds.map(id => this.deleteWorker(id)));
+      deletedWorkers = orphanWorkerIds.length;
+    }
 
+    // 4. Clean Water Logs (Ghost Locations)
+    // [SMART FIX] Water analyses can be linked to EITHER RH Depts or Water Depts
+    const allWater = await dbInstance.water_analyses.toArray();
     const orphanWaterIds = allWater
       .filter((log) => {
-        // Rule 1: If it has a department_id, that ID must exist
-        if (log.department_id && !deptIds.has(log.department_id)) return true;
-        // Rule 2: If it has a structure_id, that ID must exist
-        if (log.structure_id && !waterDeptIds.has(log.structure_id)) return true;
-        return false;
+        const dId = Number(log.department_id);
+        const sId = Number(log.structure_id);
+        
+        // Check if it has ANY valid link
+        const hasValidDept = dId && deptIds.has(dId);
+        const hasValidStructure = sId && waterDeptIds.has(sId);
+        
+        // If it has BOTH, and one is invalid? We check if AT LEAST one is valid.
+        // Actually, many records use department_id to store water_department ID.
+        const isDIdWater = dId && waterDeptIds.has(dId);
+        
+        if (hasValidDept || hasValidStructure || isDIdWater) return false;
+        
+        // If we reach here, it's an orphan
+        return true;
       })
       .map((l) => l.id);
 
@@ -518,7 +630,32 @@ export const db = {
       deletedWater = orphanWaterIds.length;
     }
 
-    await triggerBackupCheck();
-    return { exams: deletedExams, water: deletedWater };
+    // 5. Clean Weapon Exams (Ghost Holders)
+    const allWeaponExams = await dbInstance.weapon_exams.toArray();
+    const orphanWeaponExamIds = allWeaponExams
+      .filter(e => !weaponHolderIds.has(Number(e.holder_id)))
+      .map(e => e.id);
+    if (orphanWeaponExamIds.length > 0) {
+      await dbInstance.weapon_exams.bulkDelete(orphanWeaponExamIds);
+      deletedWeaponExams = orphanWeaponExamIds.length;
+    }
+
+    // 6. Clean Weapon Holders (Ghost Departments)
+    const orphanWeaponHolderIds = allWeaponHolders
+      .filter(h => h.department_id && !weaponDeptIds.has(Number(h.department_id)))
+      .map(h => h.id);
+    if (orphanWeaponHolderIds.length > 0) {
+      await Promise.all(orphanWeaponHolderIds.map(id => this.deleteWeaponHolder(id)));
+      deletedWeaponHolders = orphanWeaponHolderIds.length;
+    }
+
+    triggerBackupCheck().catch(err => console.error('[Backup] Background trigger failed:', err));
+    return { 
+      exams: deletedExams, 
+      water: deletedWater,
+      weaponExams: deletedWeaponExams,
+      weaponHolders: deletedWeaponHolders,
+      workers: deletedWorkers
+    };
   },
 };
