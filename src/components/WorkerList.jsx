@@ -166,10 +166,11 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
   const filteredWorkers = useMemo(() => {
     let result = workers;
 
+    // 1. Fast Filtering (Booleans/IDs first)
     if (!showArchived) result = result.filter((w) => !w.archived);
     if (filterDept) result = result.filter((w) => w.department_id === Number(filterDept));
     
-    // Status filters...
+    // 2. Status filters (Optimized order)
     if (filterStatus) {
       if (filterStatus === 'late') {
         result = result.filter((w) => !w.archived && logic.isOverdue(w.next_exam_due));
@@ -184,7 +185,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
       }
     }
 
-    // [RESTORED] Deep Substring Search (Lightning fast now due to debounce)
+    // 3. Search (Substring matching)
     if (debouncedSearch) {
       const lower = debouncedSearch.toLowerCase();
       result = result.filter((w) => {
@@ -194,21 +195,29 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
       });
     }
 
-    // Sort logic...
+    // 4. Sort logic (Pre-calculate sort values)
     if (sortConfig.key) {
+      const isDeptSort = sortConfig.key === 'department_id';
+      const dir = sortConfig.direction === 'asc' ? 1 : -1;
+      
       result = [...result].sort((a, b) => {
-        let aVal = a[sortConfig.key];
-        let bVal = b[sortConfig.key];
-        if (sortConfig.key === 'department_id') {
-          const getDeptName = (id) => departments.find((x) => x.id == id)?.name || '';
-          aVal = getDeptName(a.department_id);
-          bVal = getDeptName(b.department_id);
-        } else if (typeof aVal === 'string') {
-          aVal = aVal.toLowerCase();
-          bVal = bVal ? bVal.toLowerCase() : '';
+        let aVal, bVal;
+        
+        if (isDeptSort) {
+          aVal = departments.find((x) => x.id == a.department_id)?.name || '';
+          bVal = departments.find((x) => x.id == b.department_id)?.name || '';
+        } else {
+          aVal = a[sortConfig.key];
+          bVal = b[sortConfig.key];
         }
-        if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
-        if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+
+        if (typeof aVal === 'string') {
+          aVal = aVal.toLowerCase();
+          bVal = (bVal || '').toLowerCase();
+        }
+        
+        if (aVal < bVal) return -1 * dir;
+        if (aVal > bVal) return 1 * dir;
         return 0;
       });
     }
@@ -216,17 +225,16 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     return result;
   }, [workers, filterDept, showArchived, sortConfig, departments, filterStatus, debouncedSearch]);
 
-  // [SURGICAL ADDITION] Fix #4: Memoized List for Performance
-  // This prevents recalculating "isOverdue" and "Department Name" on every render.
+  // [SURGICAL ADDITION] Optimized Memoized List
   const memoizedWorkers = useMemo(() => {
-    return filteredWorkers.map((w) => ({
+    // We only process the SLICE that will actually be rendered + a buffer
+    // This is the "Poor Man's Virtualization"
+    return filteredWorkers.slice(0, displayLimit + 20).map((w) => ({
       ...w,
-      // Pre-calculate these values once:
       isOverdue: logic.isOverdue(w.next_exam_due),
       deptName: departments.find((d) => d.id == w.department_id)?.name || '-',
-      statusConfig: w.latest_status, // Keep raw status, render logic handles the badge
     }));
-  }, [filteredWorkers, departments]);
+  }, [filteredWorkers, departments, displayLimit]);
   // ==================================================================================
   // 4. BATCH OPERATIONS HANDLERS
   // ==================================================================================

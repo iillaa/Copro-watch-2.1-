@@ -12,32 +12,39 @@
 
 ## 2. Security Architecture
 
-Copro-Watch implements client-side cryptographic security to ensure data privacy without a backend.
+Copro-Watch implements a dual-layer cryptographic security model to ensure both rapid application access and robust data privacy.
 
-### 2.1 Encryption Strategy
+### 2.1 The Split-Key Security Model (v2.1.1+)
 
-Data export and sensitive operations utilize the **Web Crypto API** for standardized, hardware-accelerated encryption.
+As of version 2.1.1, the application separates the **Access Key** from the **Encryption Key**. This architectural decision ensures that user interface interactions (like logging in) are completely decoupled from data persistence operations (backups).
 
-- **Algorithm:** AES-GCM (256-bit).
-- **Key Derivation:** PBKDF2 (250,000 iterations, SHA-256).
-- **Hardened Key Stretching (v2.1):** To protect low-entropy (4-digit) PINs against brute-force attacks, the system concatenates the user PIN with a hardcoded **Internal Pepper** string (`PIN + PEPPER`) before derivation. This ensures that even a 10,000-combination PIN has high-entropy protection.
-- **Implementation:** `src/services/crypto.js`
-  - **Salt/IV:** Randomly generated (`crypto.getRandomValues`) for every encryption operation.
-  - **Transport:** Encrypted payloads are Base64 encoded for safe JSON transport.
-  - **Mandatory JSON Encryption:** As of v2.1, ALL JSON backups and exports (auto or manual) are encrypted by default using the current app PIN hash + Pepper.
+#### 2.1.1 Layer 1: Application Access (PIN)
+- **Purpose:** Quick unlocking of the UI.
+- **Mechanism:** A 4-digit numeric PIN.
+- **Hashing:** To protect against brute-force attacks, the PIN is concatenated with a fixed **Internal Secret Pepper** and hashed using SHA-256 before storage.
+- **Independence:** Changing the PIN has zero impact on existing backups, preventing lockout scenarios during restoration.
 
-### 2.2 Access Control & Security
+#### 2.1.2 Layer 2: Data Encryption (Backup Password)
+- **Purpose:** Protecting medical data in exported JSON files.
+- **Mechanism:** A standalone, 8+ character alphanumeric password stored in local settings.
+- **Algorithm:** AES-GCM (256-bit) via Web Crypto API.
+- **Key Derivation:** PBKDF2 (250,000 iterations, SHA-256) derived directly from the Backup Password.
+- **Seamless Flow:** The application automatically uses the stored Backup Password for background auto-backups and initial import attempts, providing a "Zero-Prompt" experience for the primary user.
 
-- **Hardened PIN System:** PINs are stored as SHA-256 hashes of the `PIN + Pepper`. 
-- **Migration Path:** The app supports "Dual-Validation" during the transition period, allowing users to unlock with old hashes while prompting them to re-save their PIN to upgrade to the hardened format.
+### 2.2 Migration & Fallbacks
+
+- **Migration Path:** The app supports "Legacy Detection" for 4-digit plain PINs, prompting users to upgrade to the secure hashed format upon login.
+- **Dual-Password Import:** The `importData` logic is designed to be "Smart":
+    1. It first tries the **Stored Backup Password**.
+    2. If that fails, it tries the **Default Password** (eight zeros).
+    3. Finally, it prompts the user for a manual password entry.
 - **Auto-Lock Protocol:** Application automatically locks after 5 minutes of inactivity (no mouse/keyboard events).
-- **Implementation:** `src/components/PinLock.jsx` (UI) and `src/App.jsx` (Timer/Migration Logic).
 
-### 2.3 Cryptography Fallback
+### 2.3 Cryptography Fallback (Legacy Devices)
 
 - **Primary:** WebCrypto API (AES-GCM / SHA-256).
-- **Fallback:** Custom bitwise XOR/Hash implementation for legacy WebViews.
-  - **Security Note:** Uses a hardcoded salt (`CoproWatch-v2...`) to prevent rainbow table attacks, though less secure than SHA-256. Intended for crash prevention on Android < 7.
+- **Fallback:** Custom bitwise XOR/Hash implementation for legacy Android WebViews (< Android 7).
+  - **Security Note:** Uses a hardcoded salt to prevent basic rainbow table attacks while maintaining application stability on older hardware.
 
 ## 3. Data Integrity & Automated Backups
 

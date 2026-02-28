@@ -99,14 +99,23 @@ const transliterateArToFr = (text) => {
     ه: 'h',
     و: 'ou',
     ي: 'i',
-    ' ': ' ',
-    '-': '-',
-    '.': '.',
   };
-  let lat = processedText
-    .split('')
-    .map((char) => map[char] || char)
-    .join('');
+
+  // Helper to check if a char is Arabic (\u0600-\u06FF)
+  const isArabicChar = (char) => /[\u0600-\u06FF]/.test(char);
+
+  let lat = '';
+  // NEW: Process string character by character to detect script switches
+  for (let i = 0; i < processedText.length; i++) {
+    const char = processedText[i];
+    if (isArabicChar(char)) {
+      lat += map[char] || char;
+    } else {
+      // Latin, digit or space - keep as is
+      lat += char;
+    }
+  }
+
   lat = lat
     .replace(/oua/g, 'wa')
     .replace(/ouou/g, 'ou')
@@ -243,10 +252,15 @@ export default function UniversalOCRModal({
   // NEW: SAFE COMPONENT MOUNT TRACKER (Prevents memory leaks/crashes)
   const isMounted = useRef(true);
   useEffect(() => {
-    isMounted.current = true; // FIX: Forces true on remount for React 18 Strict Mode
+    isMounted.current = true;
     return () => {
       isMounted.current = false;
       
+      // [CLEANUP] Revoke Blob URL if exists
+      if (image && image.startsWith('blob:')) {
+        URL.revokeObjectURL(image);
+      }
+
       // [CLEANUP] Kill workers on unmount
       console.log('[OCR] Cleaning up workers...');
       tesseractWorkersRef.current.forEach(w => w.terminate());
@@ -507,21 +521,29 @@ export default function UniversalOCRModal({
           ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
 
-          const cleanUrl = canvas.toDataURL('image/jpeg', 0.95);
+          canvas.toBlob((blob) => {
+            if (!blob) return;
+            const blobUrl = URL.createObjectURL(blob);
+            
+            // Clean up old Blob URL if exists
+            if (image && image.startsWith('blob:')) {
+              URL.revokeObjectURL(image);
+            }
 
-          setImage(cleanUrl);
-          setImgDimensions({ width, height });
-          setCandidates([]);
-          setHLines([]);
-          setErrorMessage(null);
+            setImage(blobUrl);
+            setImgDimensions({ width, height });
+            setCandidates([]);
+            setHLines([]);
+            setErrorMessage(null);
 
-          // MEMORY MANAGEMENT: Aggressively dump old base64 images
-          setDebugCrops([]);
-          setDebugBoxes([]);
+            // MEMORY MANAGEMENT: Aggressively dump old images
+            setDebugCrops([]);
+            setDebugBoxes([]);
 
-          setActiveTab('scan');
-          setLogs([]); // Reset logs
-          addLog(`[LOAD] Image chargée. Dimensions: ${width}x${height}px`);
+            setActiveTab('scan');
+            setLogs([]); // Reset logs
+            addLog(`[LOAD] Image chargée (Blob). Dimensions: ${width}x${height}px`);
+          }, 'image/jpeg', 0.95);
         };
         img.src = event.target.result;
       };
