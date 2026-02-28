@@ -24,14 +24,12 @@ import {
   FaUserPlus,
   FaCheckSquare,
   FaFileExcel,
-  FaFileDownload,
-  FaFileUpload,
   FaHistory,
   FaStethoscope,
   FaBalanceScale,
   FaPrint,
-  FaArchive, // [NEW]
-  FaExchangeAlt, // [NEW]
+  FaArchive,
+  FaExchangeAlt,
   FaCamera,
 } from 'react-icons/fa';
 
@@ -388,22 +386,6 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           >
             <FaCheckSquare />
           </button>
-          <button
-            className="btn btn-outline"
-            title="Backup JSON"
-            onClick={handleExport}
-            style={{ padding: '0.8rem 1rem' }}
-          >
-            <FaFileDownload />
-          </button>
-          <label
-            className="btn btn-outline"
-            title="Import JSON"
-            style={{ padding: '0.8rem 1rem', cursor: 'pointer' }}
-          >
-            <FaFileUpload />
-            <input type="file" onChange={handleImport} style={{ display: 'none' }} accept=".json" />
-          </label>
 
           {/* [NEW] SCAN BUTTON - PASTE HERE */}
           <button

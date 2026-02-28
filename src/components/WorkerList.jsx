@@ -16,16 +16,14 @@ import UniversalOCRModal from './UniversalOCRModal'; // [NEW] Import
 import {
   FaPlus,
   FaSearch,
-  FaFileDownload,
-  FaFileUpload,
-  FaFileExcel, // [NEW]
+  FaFileExcel,
   FaEdit,
   FaTrash,
   FaSort,
   FaSortUp,
   FaSortDown,
   FaUserPlus,
-  FaCheckSquare, // [NEW] Icon for Toggle
+  FaCheckSquare,
   FaCamera,
 } from 'react-icons/fa';
 
@@ -697,25 +695,10 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
             className="btn btn-outline"
             onClick={handleExcelExport}
             title="Générer un rapport Excel officiel"
-            style={{ borderColor: '#107C41', color: '#107C41' }} /* [FIX] Excel Green */
+            style={{ borderColor: '#107C41', color: '#107C41' }}
           >
             <FaFileExcel /> <span className="hide-mobile">Excel</span>
           </button>
-
-          {/* [UPDATED] BACKUP BUTTON (For Safety - JSON) */}
-          <button
-            className="btn btn-outline"
-            onClick={handleExport}
-            title="Sauvegarder toute la base (JSON)"
-          >
-            <FaFileDownload /> <span className="hide-mobile">Backup</span>
-          </button>
-
-          {/* IMPORT BUTTON */}
-          <label className="btn btn-outline" style={{ cursor: 'pointer' }}>
-            <FaFileUpload /> <span className="hide-mobile">Import</span>
-            <input type="file" onChange={handleImport} style={{ display: 'none' }} accept=".json" />
-          </label>
 
           {/* NEW WORKER BUTTON */}
           <button

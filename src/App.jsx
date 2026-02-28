@@ -242,47 +242,18 @@ function App() {
     setView('weapon-detail');
   };
 
-  // Helper to validate PIN (Supports Old Plain, Old Hashed, and New Peppered Hashed PINs)
+  // Helper to validate PIN (Supports Old Plain, and New Secure Hashed PINs)
   const checkPin = async (inputPin) => {
-    // Load current settings to get the extension
-    const settings = await db.getSettings();
-    const ext = settings.backup_password_extension || '';
-
-    // 1. If stored PIN is 4 digits, it's an OLD plain PIN
+    // 1. If stored PIN is 4 digits, it's an OLD plain PIN (pre-hashing update)
     if (pin.length === 4) {
       return inputPin === pin;
     }
 
-    // 2. Try validation with NEW Logic (Uses the dynamic extension)
-    const inputHashNew = await hashString(inputPin, ext);
-    if (inputHashNew === pin) return true;
+    // 2. Validation with current Hashing logic (uses internal pepper in crypto.js)
+    const inputHash = await hashString(inputPin);
+    if (inputHash === pin) return true;
 
-    // 3. FALLBACK: Try validation with OLD Hardcoded Pepper (for migration)
-    const OLD_PEPPER = 'CoproWatch-v2.1-Hardened-Pepper-Secret-Key-777#@!';
-    const inputHashOldPepper = await hashString(inputPin, OLD_PEPPER);
-    if (inputHashOldPepper === pin) {
-      console.log('[App] Old peppered PIN detected. Migration to dynamic extension is seamless.');
-      return true;
-    }
-
-    // 4. FALLBACK: Try validation with OLD Unpeppered Logic (v2.0)
-    try {
-      const cryptoAPI = window.crypto || window.msCrypto;
-      if (cryptoAPI && cryptoAPI.subtle) {
-        const msgBuffer = new TextEncoder().encode(inputPin);
-        const hashBuffer = await cryptoAPI.subtle.digest('SHA-256', msgBuffer);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const inputHashOld = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-        
-        if (inputHashOld === pin) {
-          console.log('[App] Old unpeppered PIN detected. User should migrate.');
-          return true;
-        }
-      }
-    } catch (e) {
-      console.warn('[App] Fallback PIN validation failed');
-    }
-
+    // PIN is invalid
     return false;
   };
 
@@ -522,7 +493,7 @@ function App() {
           {view === 'workers' && (
             <WorkerList
               onNavigateWorker={navigateToWorker}
-              compactMode={compactMode} // <--- [NEW] Pass Prop
+              compactMode={compactMode}
             />
           )}
           {view === 'worker-detail' && selectedWorkerId && (
@@ -547,7 +518,10 @@ function App() {
             />
           )}
           {view === 'weapons-list' && (
-            <WeaponList onNavigateWeaponHolder={navigateToWeaponHolder} compactMode={compactMode} />
+            <WeaponList 
+              onNavigateWeaponHolder={navigateToWeaponHolder} 
+              compactMode={compactMode} 
+            />
           )}
           {view === 'weapon-detail' && selectedWeaponHolderId && (
             <WeaponDetail

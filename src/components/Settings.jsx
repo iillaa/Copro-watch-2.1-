@@ -49,24 +49,18 @@ export default function Settings({
 
   useEffect(() => {
     const checkMigration = async () => {
-      // 1. Plain 4-digit PIN (Very old)
-      if (currentPin && currentPin.length === 4 && /^[0-9]+$/.test(currentPin)) {
+      const s = await db.getSettings();
+      const isDefaultPin = currentPin && currentPin.length === 4 && /^[0-9]+$/.test(currentPin);
+      const isDefaultBackupPw = !s.backup_password || s.backup_password === '00000000';
+
+      if (isDefaultPin || isDefaultBackupPw) {
         setShowPinMigrationPrompt(true);
-        return;
       }
-      
-      // 2. Check if current hash is "Unpeppered"
-      // We can't know for sure without the original PIN, but we can assume
-      // if it's 64 chars and doesn't match a test peppered hash of '0000'.
-      // Actually, the most reliable way is to wait for the user to change it, 
-      // but we can prompt if it's NOT a peppered hash of a known default.
-      // For now, let's keep it simple: if it's 64 chars, we only prompt if 
-      // the user specifically needs to re-secure it.
     };
     checkMigration();
   }, [currentPin]);
   const [doctorName, setDoctorName] = useState('');
-  const [backupPasswordExtension, setBackupPasswordExtension] = useState('');
+  const [backupPassword, setBackupPassword] = useState('');
   const { showToast, ToastContainer } = useToast();
   const fileRef = useRef();
 
@@ -99,56 +93,46 @@ export default function Settings({
   const [newWeaponDepartmentName, setNewWeaponDepartmentName] = useState('');
   const [weaponDepartmentsLoading, setWeaponDepartmentsLoading] = useState(false);
 
-  const handleSave = async () => {
-    // 1. Logic: If pin is empty, we KEEP the old one.
-    let pinToSave = currentPin;
-
-    // 2. Only if user TYPED something, we validate and update
+  const handleSavePin = async () => {
     if (pin.length > 0) {
       if (pin.length !== 4 || isNaN(pin)) {
         showToast('Le PIN doit être composé de 4 chiffres.', 'error');
         return;
       }
-      // Hash the NEW pin with the new extension
-      console.log('[SETTINGS] Saving new PIN, extension being used:', backupPasswordExtension);
-      pinToSave = await hashString(pin, backupPasswordExtension);
-      console.log('[SETTINGS] New PIN hash (length):', pinToSave.length);
-    }
-
-    // 3. Save everything
-    console.log('[SETTINGS] Saving settings - pinToSave length:', pinToSave?.length, 'extension:', backupPasswordExtension);
-    await db.saveSettings({
-      pin: pinToSave,
-      doctor_name: doctorName,
-      backup_password_extension: backupPasswordExtension,
-    });
-
-    // 4. Update App State
-    if (pin.length > 0) {
+      const pinToSave = await hashString(pin);
+      await db.saveSettings({ pin: pinToSave });
       onPinChange(pinToSave);
-      setPin(''); // Clear the field for security
+      setPin('');
+      showToast('Code PIN mis à jour !', 'success');
+    } else {
+      showToast('Veuillez entrer un nouveau code PIN.', 'error');
     }
-
-    showToast('Paramètres sauvegardés !', 'success');
   };
 
-  // Helper to handle the import process (including password prompt if needed)
+  const handleSaveSecurity = async () => {
+    if (backupPassword.length > 0 && backupPassword.length < 8) {
+      showToast('Le mot de passe de sauvegarde doit faire au moins 8 caractères.', 'error');
+      return;
+    }
+
+    await db.saveSettings({
+      doctor_name: doctorName,
+      backup_password: backupPassword,
+    });
+
+    showToast('Paramètres de sécurité sauvegardés !', 'success');
+  };
+
+  // Helper to handle the import process
   const processImport = async (text, initialPassword = null) => {
     let result = await db.importData(text, initialPassword);
 
-    // If it needs a password, prompt the user
-    while (result && (result.error === 'NEED_PASSWORD' || result.error === 'NEED_COMBINED_CODE')) {
-      const promptMsg = result.error === 'NEED_COMBINED_CODE' 
-        ? "Code Combiné de Sécurité Requis (PIN + Extension) :"
-        : "Ce fichier est chiffré. Veuillez entrer le mot de passe (PIN ou mot de passe personnalisé) :";
-        
-      const pw = prompt(promptMsg);
-      if (pw === null) return false; // User cancelled
-      if (!pw.trim()) continue;
-      
+    while (result && result.error === 'NEED_PASSWORD') {
+      const pw = prompt("Entrez le mot de passe de sauvegarde :");
+      if (pw === null) return false;
       result = await db.importData(text, pw);
-      if (result && (result.error === 'NEED_PASSWORD' || result.error === 'NEED_COMBINED_CODE')) {
-        showToast('Code de sécurité incorrect.', 'error');
+      if (result && result.error === 'NEED_PASSWORD') {
+        showToast('Mot de passe incorrect.', 'error');
       }
     }
 
@@ -251,11 +235,11 @@ export default function Settings({
       }
     })();
 
-    // Load Doctor Name and Encryption Extension
+    // Load Doctor Name and Backup Password
     const loadSettings = async () => {
       const s = await db.getSettings();
       if (s.doctor_name) setDoctorName(s.doctor_name);
-      if (s.backup_password_extension) setBackupPasswordExtension(s.backup_password_extension);
+      if (s.backup_password) setBackupPassword(s.backup_password);
     };
     loadSettings();
 
@@ -831,7 +815,7 @@ export default function Settings({
               />
             </div>
 
-            {/* PIN Code */}
+            {/* PIN & Backup Password Migration Check */}
             {showPinMigrationPrompt && (
               <div
                 style={{
@@ -846,15 +830,15 @@ export default function Settings({
                   🔐 Mise à jour de sécurité requise
                 </div>
                 <p style={{ margin: '0 0 0.75rem 0', fontSize: '0.9rem', color: '#78350f' }}>
-                  Votre code PIN utilise l'ancien format vulnérable. Pour protéger les données
-                  médicales, veuillez saisir un nouveau code PIN ci-dessous.
+                  Pour protéger vos données médicales, veuillez définir un **Code PIN** unique
+                  et un **Mot de Passe de Sauvegarde** (8+ caractères) personnalisé ci-dessous.
                 </p>
                 <button
                   className="btn btn-sm"
                   onClick={() => setShowPinMigrationPrompt(false)}
                   style={{ background: '#f59e0b', color: 'white', border: 'none' }}
                 >
-                  Compris, je vais changer mon PIN
+                  Compris, je vais les mettre à jour
                 </button>
               </div>
             )}
@@ -877,40 +861,45 @@ export default function Settings({
                   fontSize: '1.5rem',
                   letterSpacing: '0.5rem',
                   textAlign: 'center',
+                  marginBottom: '0.5rem'
                 }}
               />
+              <button className="btn btn-outline" onClick={handleSavePin} style={{ width: '100%' }}>
+                Mettre à jour le code PIN
+              </button>
             </div>
 
             <div style={{ marginBottom: '1.5rem' }}>
               <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '500' }}>
-                Clé d'Extension de Sauvegarde (Ajoutée au PIN)
+                Mot de Passe de Sauvegarde (8+ caractères)
               </label>
               <input
-                type="text"
-                placeholder="Ex: MySecretPepper"
-                value={backupPasswordExtension}
-                onChange={(e) => setBackupPasswordExtension(e.target.value)}
+                type="password"
+                placeholder="Ex: MonCodeSecret2024"
+                value={backupPassword}
+                onChange={(e) => setBackupPassword(e.target.value)}
                 className="input"
                 style={{
                   padding: '0.5rem',
                   borderRadius: '4px',
                   border: '1px solid var(--border-color)',
                   width: '100%',
+                  marginBottom: '0.5rem'
                 }}
               />
-              <p style={{ margin: '0.5rem 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Cette clé renforce le chiffrement de vos sauvegardes. Ne la perdez pas !
+              <p style={{ margin: '0.5rem 0 1rem 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Ce mot de passe est utilisé pour chiffrer vos exports. Ne le perdez pas !
               </p>
+              <button className="btn btn-primary" onClick={handleSaveSecurity} style={{ width: '100%' }}>
+                <FaSave /> Enregistrer Profil & Sauvegarde
+              </button>
             </div>
-
-            <button className="btn btn-primary" onClick={handleSave} style={{ width: '100%' }}>
-              <FaSave /> Enregistrer les modifications
-            </button>
           </div>
         </div>
       )}
 
       {/* ======================= TAB 2: ORGANIZATION ======================= */}
+
       {activeTab === 'organization' && (
         <div
           style={{
@@ -1387,7 +1376,7 @@ export default function Settings({
                   Android Native
                 </h4>
                 <button className="btn btn-outline" onClick={handleChooseBackupDir}>
-                  📁 Choisir Dossier (Auto-Sauvegarde PC/Android)
+                  📁 Choisir Dossier (Auto-Sauvegarde)
                 </button>
                 <button className="btn btn-outline" onClick={handleGetBackupNow}>
                   💾 Sauvegarder Maintenant

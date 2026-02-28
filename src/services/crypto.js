@@ -74,18 +74,17 @@ function base64Decode(str) {
   return bytes;
 }
 
-async function deriveKey(password, salt, extension = '', iterations = 250000) {
+async function deriveKey(password, salt, iterations = 250000) {
   if (!isWebCryptoAvailable || !subtleAPI) {
     throw new Error('WebCrypto not available');
   }
 
-  // [SECURITY] Mix the password with the custom extension before derivation.
-  // This ensures that even a 4-digit PIN has high entropy for the attacker.
-  const hardenedPassword = password + extension;
-
+  // [REFINED] Simple, direct key derivation using the provided password
+  console.log(`[CRYPTO] deriveKey - password length: ${password?.length}`);
+  
   const pwKey = await subtleAPI.importKey(
     'raw',
-    toUint8Array(hardenedPassword),
+    toUint8Array(password),
     { name: 'PBKDF2' },
     false,
     ['deriveKey']
@@ -99,8 +98,8 @@ async function deriveKey(password, salt, extension = '', iterations = 250000) {
   );
 }
 
-export async function encryptString(password, plaintext, extension = '') {
-  console.log('[CRYPTO ENCRYPT] password length:', password?.length, 'extension length:', extension?.length);
+export async function encryptString(password, plaintext) {
+  console.log('[CRYPTO ENCRYPT] Starting encryption...');
   
   // Fallback if WebCrypto is not available
   if (!isWebCryptoAvailable) {
@@ -108,18 +107,17 @@ export async function encryptString(password, plaintext, extension = '') {
     return JSON.stringify({
       method: 'xor',
       salt: btoa(password.slice(0, 8)),
-      data: xorEncrypt(plaintext, password, extension),
+      data: xorEncrypt(plaintext, password),
     });
   }
 
   const salt = cryptoAPI.getRandomValues(new Uint8Array(16));
   const iv = cryptoAPI.getRandomValues(new Uint8Array(12));
-  console.log('[CRYPTO ENCRYPT] Deriving key with password + extension');
-  const key = await deriveKey(password, salt, extension);
+  const key = await deriveKey(password, salt);
   const cipherBytes = new Uint8Array(
     await subtleAPI.encrypt({ name: 'AES-GCM', iv }, key, toUint8Array(plaintext))
   );
-  console.log('[CRYPTO ENCRYPT] Encryption successful');
+  console.log('[CRYPTO ENCRYPT] Success');
   return JSON.stringify({
     method: 'aes-gcm',
     salt: base64Encode(salt),
@@ -128,35 +126,32 @@ export async function encryptString(password, plaintext, extension = '') {
   });
 }
 
-export async function decryptString(password, payload, extension = '') {
-  console.log('[CRYPTO DECRYPT] password length:', password?.length, 'extension length:', extension?.length);
+export async function decryptString(password, payload) {
+  console.log('[CRYPTO DECRYPT] Starting decryption...');
   const obj = typeof payload === 'string' ? JSON.parse(payload) : payload;
 
   // Handle fallback XOR encryption
   if (obj.method === 'xor') {
-    return xorDecrypt(obj.data, password, extension);
+    return xorDecrypt(obj.data, password);
   }
 
   const salt = base64Decode(obj.salt);
   const iv = base64Decode(obj.iv);
   const data = base64Decode(obj.data);
-  console.log('[CRYPTO DECRYPT] Deriving key for decryption');
-  const key = await deriveKey(password, salt, extension);
+  const key = await deriveKey(password, salt);
   
-  // Use subtleAPI directly instead of just 'subtle' which was a typo in previous version
   const plainBytes = new Uint8Array(await subtleAPI.decrypt({ name: 'AES-GCM', iv }, key, data));
-  console.log('[CRYPTO DECRYPT] Decryption successful');
+  console.log('[CRYPTO DECRYPT] Success');
   return fromUint8Array(plainBytes);
 }
 
-export async function hashString(message, extension = '') {
-  // Mix with extension for hashing
-  const pepperedMessage = message + extension;
-  console.log('[HASH] Hashing message (length:', message?.length, ') with extension (length:', extension?.length, ')');
+export async function hashString(message) {
+  // [REFINED] Fixed internal pepper for PIN hashing only
+  const INTERNAL_PEPPER = 'CoproWatch-v2.1-Security-Pepper-777';
+  const pepperedMessage = message + INTERNAL_PEPPER;
 
   // Fallback if WebCrypto is not available
   if (!isWebCryptoAvailable) {
-    console.warn('[HASH] Using fallback hash (not secure)');
     const saltedMessage = pepperedMessage + FALLBACK_SALT;
     let hash = 0;
     for (let i = 0; i < saltedMessage.length; i++) {
@@ -170,9 +165,7 @@ export async function hashString(message, extension = '') {
   const msgBuffer = new TextEncoder().encode(pepperedMessage);
   const hashBuffer = await cryptoAPI.subtle.digest('SHA-256', msgBuffer);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  const result = hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
-  console.log('[HASH] Hash result length:', result.length);
-  return result;
+  return hashArray.map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
 // Export availability check for other modules
