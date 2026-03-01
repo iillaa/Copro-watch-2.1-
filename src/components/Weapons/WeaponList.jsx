@@ -268,27 +268,38 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
     await Promise.all(
       Array.from(selectedIds).map(async (id) => {
         const exams = await db.getWeaponExamsByHolder(id);
-        exams.sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
+        if (!exams || exams.length === 0) return; // [FIX] Skip if no exam present
 
-        const lastExam = exams[0] || { holder_id: id, exam_date: today };
+        // Sort by date descending
+        const sorted = [...exams].sort((a, b) => new Date(b.exam_date) - new Date(a.exam_date));
 
-        const decision = payload.decision; // 'apte', 'inapte_temporaire', etc.
+        // [FIX] Find the most recent 'pending' exam, or fallback to the latest one
+        const targetExam = sorted.find((e) => e.final_decision === 'pending') || sorted[0];
+
+        const decision = payload.decision; // 'apte', 'inapte_temporaire', 'inapte_definitif'
+        const isApte = decision === 'apte';
+        const commissionDate = payload.date || today;
         let nextDate = '';
-        if (decision === 'apte') {
-          const d = new Date(payload.date || today);
-          d.setFullYear(d.getFullYear() + 1);
-          nextDate = d.toISOString().split('T')[0];
-        } else if (decision === 'inapte_temporaire') {
-          const d = new Date(payload.date || today);
+
+        if (decision === 'inapte_temporaire') {
+          const d = new Date(commissionDate);
+          // In weapon mode, retestDays from modal is actually months
           d.setMonth(d.getMonth() + (parseInt(payload.retestDays) || 3));
           nextDate = d.toISOString().split('T')[0];
         }
 
         await db.saveWeaponExam({
-          ...lastExam,
-          exam_date: payload.date || lastExam.exam_date,
+          // [FIX] Derive expert opinions from the final commission decision
+          medical_aptitude: isApte ? 'apte' : 'inapte',
+          psych_advice: isApte ? 'favorable' : 'reserve',
+          chief_advice: isApte ? 'favorable' : 'defavorable',
+          visit_reason: 'Périodique',
+          ...targetExam,
+          commission_date: commissionDate,
           final_decision: decision,
           next_review_date: nextDate,
+          inaptitude_duration: decision === 'inapte_temporaire' ? String(payload.retestDays) : '0',
+          // [FIX] Do NOT overwrite exam_date. Keep the one from targetExam (Consultation date).
         });
       })
     );
@@ -763,9 +774,11 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           mode="weapon" // <--- Crucial: Sets the target database
           departments={departments}
           onClose={() => setShowOCRModal(false)}
-          onImportSuccess={(count) => {
+          onImportSuccess={(count, skipped) => {
             loadData();
-            showToast(`${count} agents importés !`, 'success');
+            let msg = `${count} agents importés !`;
+            if (skipped > 0) msg += ` (${skipped} doublons ignorés)`;
+            showToast(msg, 'success');
           }}
         />
       )}

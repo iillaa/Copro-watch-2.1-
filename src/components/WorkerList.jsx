@@ -1093,9 +1093,11 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
           mode="worker" // <--- Tells it to save to Worker DB
           departments={departments}
           onClose={() => setShowOCRModal(false)}
-          onImportSuccess={(count) => {
+          onImportSuccess={(count, skipped) => {
             loadData();
-            showToast(`${count} travailleurs importés !`, 'success');
+            let msg = `${count} travailleurs importés !`;
+            if (skipped > 0) msg += ` (${skipped} doublons ignorés)`;
+            showToast(msg, 'success');
           }}
         />
       )}

@@ -22,7 +22,7 @@ import {
   FaEye,
   FaLightbulb,
   FaTrash,
-  FaUsers, /* [FIX] Added missing icon */
+  FaUsers /* [FIX] Added missing icon */,
 } from 'react-icons/fa';
 
 // --- ALG-FR TRANSLITERATION ENGINE (SMART DICTIONARY + PHONETIC) ---
@@ -257,7 +257,7 @@ export default function UniversalOCRModal({
     isMounted.current = true;
     return () => {
       isMounted.current = false;
-      
+
       // [CLEANUP] Revoke Blob URL if exists
       if (image && image.startsWith('blob:')) {
         URL.revokeObjectURL(image);
@@ -265,31 +265,32 @@ export default function UniversalOCRModal({
 
       // [CLEANUP] Kill workers on unmount
       console.log('[OCR] Cleaning up workers...');
-      tesseractWorkersRef.current.forEach(w => w.terminate());
-      tesseractFraWorkersRef.current.forEach(w => w.terminate());
+      tesseractWorkersRef.current.forEach((w) => w.terminate());
+      tesseractFraWorkersRef.current.forEach((w) => w.terminate());
       if (paddleOcrRef.current && paddleOcrRef.current.dispose) {
         paddleOcrRef.current.dispose();
       }
     };
   }, []);
 
-    // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
+  // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
   const getAssetUrl = (path, isDirectory = false) => {
-      const isCapacitor = window.Capacitor && window.Capacitor.isNative;
-      const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
-      
-      // Clean leading/trailing slashes
-      let cleanPath = path.replace(/^\/+|\/+$/g, '');
-      
-      if (isCapacitor) {
-        // [FIX] Use origin-based URLs and avoid accidental double slashes.
-        return cleanPath ? `${window.location.origin}/${cleanPath}` : `${window.location.origin}/`;
-      } else if (isFileProtocol) {
-        return cleanPath ? `./${cleanPath}` : './';
-      } else {
-        return cleanPath ? `/${cleanPath}` : '/';
-      }
-    };
+    const isCapacitor = window.Capacitor && window.Capacitor.isNative;
+    const isFileProtocol =
+      window.location.protocol === 'file:' || window.location.origin === 'null';
+
+    // Clean leading/trailing slashes
+    let cleanPath = path.replace(/^\/+|\/+$/g, '');
+
+    if (isCapacitor) {
+      // [FIX] Use origin-based URLs and avoid accidental double slashes.
+      return cleanPath ? `${window.location.origin}/${cleanPath}` : `${window.location.origin}/`;
+    } else if (isFileProtocol) {
+      return cleanPath ? `./${cleanPath}` : './';
+    } else {
+      return cleanPath ? `/${cleanPath}` : '/';
+    }
+  };
 
   const resolveTesseractAssetConfig = async (langs) => {
     const tessRoot = getAssetUrl('/tesseract', true);
@@ -320,7 +321,7 @@ export default function UniversalOCRModal({
 
     const requiredLangs = langs.split('+').filter(Boolean);
     const hasRawTrainedData = await Promise.all(
-      requiredLangs.map((lang) => checkExists(`${tessRoot}/${lang}.traineddata`)),
+      requiredLangs.map((lang) => checkExists(`${tessRoot}/${lang}.traineddata`))
     );
 
     const useRawTrainedData = hasRawTrainedData.every(Boolean);
@@ -328,12 +329,12 @@ export default function UniversalOCRModal({
 
     if (!useRawTrainedData) {
       const hasGzTrainedData = await Promise.all(
-        requiredLangs.map((lang) => checkExists(`${tessRoot}/${lang}.traineddata.gz`)),
+        requiredLangs.map((lang) => checkExists(`${tessRoot}/${lang}.traineddata.gz`))
       );
       if (!hasGzTrainedData.every(Boolean)) {
         console.error(`[TESS_RESOLVE] Missing .gz data for: ${requiredLangs.join(', ')}`);
         throw new Error(
-          `Missing local language data for ${requiredLangs.join(', ')} in ${tessRoot}`,
+          `Missing local language data for ${requiredLangs.join(', ')} in ${tessRoot}`
         );
       }
     }
@@ -345,25 +346,26 @@ export default function UniversalOCRModal({
       gzip: !useRawTrainedData,
     };
   };
-    
-    // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
+
+  // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
   useEffect(() => {
-    console.log("Initializing OCR Engine in Sandbox...");
+    console.log('Initializing OCR Engine in Sandbox...');
     const isProd = import.meta.env.PROD;
-    
+
     // 1. Thread & Worker Rules
-    ort.env.wasm.proxy = false; 
+    ort.env.wasm.proxy = false;
     ort.env.wasm.numThreads = 1;
     // [COMPAT] Disable SIMD to support older desktop CPUs/browsers in standalone mode
     // (prevents: "WebAssembly SIMD is not supported in the current environment")
     ort.env.wasm.simd = false;
-    
+
     // 2. Suppress ONNX Runtime CPU vendor warning (harmless but noisy)
     ort.env.wasm.logging = { warning: () => {} };
 
     // 2. Path Rules
     if (isProd) {
-      const isFileProtocol = window.location.protocol === 'file:' || window.location.origin === 'null';
+      const isFileProtocol =
+        window.location.protocol === 'file:' || window.location.origin === 'null';
       const assetsBase = getAssetUrl('/assets', true);
       const rootBase = getAssetUrl('/', true);
 
@@ -398,21 +400,21 @@ export default function UniversalOCRModal({
 
     // THE KILL SWITCH
     return () => {
-      console.log("Modal closed: Executing Memory Kill Switch...");
-      
+      console.log('Modal closed: Executing Memory Kill Switch...');
+
       // Destroy ONNX Runtime
       if (window.ort) {
         window.ort.env.wasm.numThreads = 0;
         window.ort = null;
       }
-      
+
       // Destroy OpenCV Global
       if (window.cv) {
         window.cv = null;
       }
-      
+
       // Force Garbage Collection hint (browser decides when to actually clear it)
-      console.log("OCR RAM flagged for deletion.");
+      console.log('OCR RAM flagged for deletion.');
     };
   }, []);
 
@@ -469,6 +471,14 @@ export default function UniversalOCRModal({
     'job_info',
   ]);
 
+  // [NEW] Load workplaces for matching
+  const [workplaces, setWorkplaces] = useState([]);
+  useEffect(() => {
+    if (mode === 'worker') {
+      db.getWorkplaces().then(setWorkplaces);
+    }
+  }, [mode]);
+
   // NEW: Track which engine handles which column in Hybrid Mode
   const [colEngines, setColEngines] = useState([
     'tesseract', // Default for Col 1
@@ -489,6 +499,7 @@ export default function UniversalOCRModal({
     { val: 'national_id', label: 'Matricule' },
     { val: 'full_name', label: 'Nom & Prénom' },
     { val: 'department_id', label: 'Service' },
+    { val: 'workplace_id', label: 'Lieu de travail' }, // [NEW] Added Lieu de travail
     { val: 'job_info', label: mode === 'worker' ? 'Poste' : 'Grade' },
     { val: 'ignore', label: 'Ignorer' },
   ];
@@ -524,29 +535,33 @@ export default function UniversalOCRModal({
           ctx.fillRect(0, 0, width, height);
           ctx.drawImage(img, 0, 0, width, height);
 
-          canvas.toBlob((blob) => {
-            if (!blob) return;
-            const blobUrl = URL.createObjectURL(blob);
-            
-            // Clean up old Blob URL if exists
-            if (image && image.startsWith('blob:')) {
-              URL.revokeObjectURL(image);
-            }
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) return;
+              const blobUrl = URL.createObjectURL(blob);
 
-            setImage(blobUrl);
-            setImgDimensions({ width, height });
-            setCandidates([]);
-            setHLines([]);
-            setErrorMessage(null);
+              // Clean up old Blob URL if exists
+              if (image && image.startsWith('blob:')) {
+                URL.revokeObjectURL(image);
+              }
 
-            // MEMORY MANAGEMENT: Aggressively dump old images
-            setDebugCrops([]);
-            setDebugBoxes([]);
+              setImage(blobUrl);
+              setImgDimensions({ width, height });
+              setCandidates([]);
+              setHLines([]);
+              setErrorMessage(null);
 
-            setActiveTab('scan');
-            setLogs([]); // Reset logs
-            addLog(`[LOAD] Image chargée (Blob). Dimensions: ${width}x${height}px`);
-          }, 'image/jpeg', 0.95);
+              // MEMORY MANAGEMENT: Aggressively dump old images
+              setDebugCrops([]);
+              setDebugBoxes([]);
+
+              setActiveTab('scan');
+              setLogs([]); // Reset logs
+              addLog(`[LOAD] Image chargée (Blob). Dimensions: ${width}x${height}px`);
+            },
+            'image/jpeg',
+            0.95
+          );
         };
         img.src = event.target.result;
       };
@@ -573,22 +588,22 @@ export default function UniversalOCRModal({
     const bX = bufferX;
     const bY = bufferY;
 
-    const sourceX = Math.max(0, rect.x - bX); 
+    const sourceX = Math.max(0, rect.x - bX);
     const sourceY = Math.max(0, rect.y - bY);
-    const sourceW = rect.width + (bX * 2);
-    const sourceH = rect.height + (bY * 2);
+    const sourceW = rect.width + bX * 2;
+    const sourceH = rect.height + bY * 2;
 
     const targetW = Math.floor((sourceW + paddingX * 2) * scale);
     const targetH = Math.floor((sourceH + paddingY * 2) * scale);
-    
+
     if (targetW <= 0 || targetH <= 0) return null;
-    
+
     canvas.width = targetW;
     canvas.height = targetH;
 
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetW, targetH);
-    
+
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'medium';
 
@@ -618,16 +633,16 @@ export default function UniversalOCRModal({
     const canvas = canvasRef.current;
     if (!canvas || !imageRef.current || !imageRef.current.naturalWidth) return;
     const ctx = canvas.getContext('2d');
-    
+
     const displayW = canvas.offsetWidth;
     const displayH = canvas.offsetHeight;
-    
+
     // Only resize the buffer if it actually changed (prevents memory spikes)
     if (canvas.width !== displayW || canvas.height !== displayH) {
       canvas.width = displayW;
       canvas.height = displayH;
     }
-    
+
     const naturalW = imageRef.current.naturalWidth;
     const naturalH = imageRef.current.naturalHeight;
     const scaleX = canvas.width / naturalW;
@@ -663,7 +678,7 @@ export default function UniversalOCRModal({
       debugBoxes.forEach((box) => {
         const conf = typeof box.confidence === 'number' ? box.confidence : 100;
         const isAligned = typeof box.isAligned !== 'undefined' ? box.isAligned : true;
-        
+
         let color = '#22c55e'; // Green (>85% + Aligned)
         let fill = 'rgba(34, 197, 94, 0.15)';
         ctx.setLineDash([]); // Reset dash
@@ -694,13 +709,17 @@ export default function UniversalOCRModal({
           ctx.closePath();
           ctx.fill();
           ctx.stroke();
-          
+
           // Small text label for confidence
           if (debugMode) {
-             ctx.setLineDash([]);
-             ctx.fillStyle = color;
-             ctx.font = '10px sans-serif';
-             ctx.fillText(`${Math.round(conf)}%`, box.box[0][0] * scaleX, (box.box[0][1] * scaleY) - 2);
+            ctx.setLineDash([]);
+            ctx.fillStyle = color;
+            ctx.font = '10px sans-serif';
+            ctx.fillText(
+              `${Math.round(conf)}%`,
+              box.box[0][0] * scaleX,
+              box.box[0][1] * scaleY - 2
+            );
           }
         }
       });
@@ -737,26 +756,33 @@ export default function UniversalOCRModal({
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
 
       // [SMART LANG] Main pool for Names (Arabic/French)
-      const needsArabic = isRTL && colMapping.some((field, idx) => 
-        (field === 'full_name' || field === 'job_info')
-      );
+      const needsArabic =
+        isRTL && colMapping.some((field, idx) => field === 'full_name' || field === 'job_info');
       const mainLangs = needsArabic ? 'ara+fra' : 'fra';
-      
+
       const hardwareCores = window.navigator.hardwareConcurrency || 1;
       const numWorkers = Math.min(2, Math.max(1, hardwareCores - 1));
 
       // 1. Initialize Main Pool
       if (currentWorkers.length !== numWorkers || currentLangsRef.current !== mainLangs) {
         addLog(`[TESSERACT] Initializing Main Pool (${mainLangs})...`);
-        currentWorkers.forEach(w => w.terminate());
+        currentWorkers.forEach((w) => w.terminate());
         currentWorkers = [];
         currentLangsRef.current = mainLangs;
         for (let i = 0; i < numWorkers; i++) {
           const tessConfig = await resolveTesseractAssetConfig(mainLangs);
-          const w = await window.Tesseract.createWorker(mainLangs, window.Tesseract.OEM?.DEFAULT || 3, {
-            workerPath: tessConfig.workerPath, corePath: tessConfig.corePath, langPath: tessConfig.langPath,
-            workerBlob: true, gzip: tessConfig.gzip, cacheMethod: 'none'
-          });
+          const w = await window.Tesseract.createWorker(
+            mainLangs,
+            window.Tesseract.OEM?.DEFAULT || 3,
+            {
+              workerPath: tessConfig.workerPath,
+              corePath: tessConfig.corePath,
+              langPath: tessConfig.langPath,
+              workerBlob: true,
+              gzip: tessConfig.gzip,
+              cacheMethod: 'none',
+            }
+          );
           currentWorkers.push(w);
         }
         tesseractWorkersRef.current = currentWorkers;
@@ -767,8 +793,12 @@ export default function UniversalOCRModal({
         addLog(`[TESSERACT] Initializing Latin-Only Pool (fra)...`);
         const tessConfig = await resolveTesseractAssetConfig('fra');
         const w = await window.Tesseract.createWorker('fra', window.Tesseract.OEM?.DEFAULT || 3, {
-          workerPath: tessConfig.workerPath, corePath: tessConfig.corePath, langPath: tessConfig.langPath,
-          workerBlob: true, gzip: tessConfig.gzip, cacheMethod: 'none'
+          workerPath: tessConfig.workerPath,
+          corePath: tessConfig.corePath,
+          langPath: tessConfig.langPath,
+          workerBlob: true,
+          gzip: tessConfig.gzip,
+          cacheMethod: 'none',
         });
         currentFraWorkers = [w];
         tesseractFraWorkersRef.current = currentFraWorkers;
@@ -776,23 +806,39 @@ export default function UniversalOCRModal({
 
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
-      let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
+      let gridResults = Array(numRows)
+        .fill(null)
+        .map(() => createEmptyCandidate());
       let cellsProcessed = 0;
       const totalCells = numRows * numCols;
 
       for (let c = 0; c < numCols; c++) {
         const colIndex = isRTL ? numCols - 1 - c : c;
         const field = colMapping[colIndex];
-        if (!field || field === 'ignore') { cellsProcessed += numRows; continue; }
+        if (!field || field === 'ignore') {
+          cellsProcessed += numRows;
+          continue;
+        }
 
         const isID = field === 'national_id';
         // ROUTING: Use Latin pool for IDs, Main pool for others
         const activePool = isID ? currentFraWorkers : currentWorkers;
-        
+
         const params = isID
-            ? { tessedit_pageseg_mode: '7', preserve_interword_spaces: '0', tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-.', tessedit_char_blacklist: 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي' }
-            : { tessedit_pageseg_mode: '7', preserve_interword_spaces: '1', tessedit_char_whitelist: '', tessedit_char_blacklist: '' };
-        
+          ? {
+              tessedit_pageseg_mode: '7',
+              preserve_interword_spaces: '0',
+              tessedit_char_whitelist:
+                '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-.',
+              tessedit_char_blacklist: 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي',
+            }
+          : {
+              tessedit_pageseg_mode: '7',
+              preserve_interword_spaces: '1',
+              tessedit_char_whitelist: '',
+              tessedit_char_blacklist: '',
+            };
+
         await Promise.all(activePool.map((w) => w.setParameters(params)));
 
         const promises = [];
@@ -810,9 +856,18 @@ export default function UniversalOCRModal({
             const padding = isID ? 10 : 5;
             const bufferX = isID ? 10 : 8;
             const tessScale = 2.5;
-            const tessBinarize = isID; 
+            const tessBinarize = isID;
 
-            const cellUrl = getCellImage(imageRef.current, rect, 5, padding, tessBinarize, tessScale, bufferX, 5);
+            const cellUrl = getCellImage(
+              imageRef.current,
+              rect,
+              5,
+              padding,
+              tessBinarize,
+              tessScale,
+              bufferX,
+              5
+            );
 
             if (debugMode && isMounted.current) {
               setDebugCrops((prev) => [
@@ -821,21 +876,33 @@ export default function UniversalOCRModal({
               ]);
             }
 
-            const { data: { text, confidence } } = await activePool[workerIndex].recognize(cellUrl);
+            const {
+              data: { text, confidence },
+            } = await activePool[workerIndex].recognize(cellUrl);
             let cleanText = text.trim();
             if (isID) cleanText = cleanText.replace(/[\u0600-\u06FF]/g, ''); // Extra safety
-            
+
             if (cleanText && isMounted.current) {
               gridResults[r][field] = cleanText;
               addLog(`[CELL] R${r + 1}C${c + 1}: ${cleanText} (${confidence}%)`);
             }
-            
+
             // ... (debugBox logic)
             if (debugMode && isMounted.current) {
-              setDebugBoxes(prev => [...prev, {
-                box: [[rect.x, rect.y], [rect.x + rect.width, rect.y], [rect.x + rect.width, rect.y + rect.height], [rect.x, rect.y + rect.height]],
-                text: cleanText, confidence, isAligned: true
-              }]);
+              setDebugBoxes((prev) => [
+                ...prev,
+                {
+                  box: [
+                    [rect.x, rect.y],
+                    [rect.x + rect.width, rect.y],
+                    [rect.x + rect.width, rect.y + rect.height],
+                    [rect.x, rect.y + rect.height],
+                  ],
+                  text: cleanText,
+                  confidence,
+                  isAligned: true,
+                },
+              ]);
             }
             cellsProcessed++;
             if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
@@ -898,7 +965,7 @@ export default function UniversalOCRModal({
       } else {
         addLog('[PADDLE] Reusing existing engine.');
       }
-      
+
       const ocr = paddleOcrRef.current;
 
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
@@ -937,12 +1004,21 @@ export default function UniversalOCRModal({
           const padding = isID ? 25 : 8;
           const bufferX = isID ? 10 : 8;
           const scale = 2.2;
-          const cellUrl = getCellImage(imageRef.current, rect, 8, padding, false, scale, bufferX, 8);
+          const cellUrl = getCellImage(
+            imageRef.current,
+            rect,
+            8,
+            padding,
+            false,
+            scale,
+            bufferX,
+            8
+          );
 
           if (debugMode && isMounted.current) {
             setDebugCrops((prev) => [
               ...prev,
-              { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl }
+              { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl },
             ]);
           }
 
@@ -955,28 +1031,33 @@ export default function UniversalOCRModal({
               const sourceY = Math.max(0, rect.y - 8);
 
               const mapPoint = (p) => [
-                (p[0] / scale) - padding + sourceX,
-                (p[1] / scale) - 8 + sourceY
+                p[0] / scale - padding + sourceX,
+                p[1] / scale - 8 + sourceY,
               ];
 
               const mappedBox = box.box.map(mapPoint);
-              
+
               const boxCenterX = (mappedBox[0][0] + mappedBox[2][0]) / 2;
               const boxCenterY = (mappedBox[0][1] + mappedBox[2][1]) / 2;
               const cellCenterX = rect.x + rect.width / 2;
               const cellCenterY = rect.y + rect.height / 2;
-              
+
               const distX = Math.abs(boxCenterX - cellCenterX);
               const distY = Math.abs(boxCenterY - cellCenterY);
               const isAligned = distX < rect.width * 0.2 && distY < rect.height * 0.2;
 
-              const confidence = typeof box.confidence !== 'undefined' ? box.confidence : (typeof box.prob !== 'undefined' ? Math.round(box.prob * 100) : 100);
+              const confidence =
+                typeof box.confidence !== 'undefined'
+                  ? box.confidence
+                  : typeof box.prob !== 'undefined'
+                  ? Math.round(box.prob * 100)
+                  : 100;
 
               return {
                 box: mappedBox,
                 text: box.text,
                 confidence: confidence,
-                isAligned: isAligned
+                isAligned: isAligned,
               };
             });
             setDebugBoxes((prev) => [...prev, ...newBoxes]);
@@ -988,17 +1069,24 @@ export default function UniversalOCRModal({
             .trim();
           if (text) {
             text = text.replace(/[|]/g, '').trim();
-            
+
             // [MATRICULE SANITIZER] Strip any accidental Arabic characters from IDs
             if (isID) {
-               text = text.replace(/[\u0600-\u06FF]/g, '').trim();
+              text = text.replace(/[\u0600-\u06FF]/g, '').trim();
             }
 
             if (isRTL && !isID) text = smartRTLFix(text);
             gridResults[r][field] = text;
-            
-            const avgConf = results.length > 0 ? Math.round(results.reduce((acc, b) => acc + (b.confidence || (b.prob*100) || 100), 0) / results.length) : 0;
-            if (isMounted.current) addLog(`[CELL] R${r + 1}C${c + 1} (${field}): ${text} (${avgConf}%)`);
+
+            const avgConf =
+              results.length > 0
+                ? Math.round(
+                    results.reduce((acc, b) => acc + (b.confidence || b.prob * 100 || 100), 0) /
+                      results.length
+                  )
+                : 0;
+            if (isMounted.current)
+              addLog(`[CELL] R${r + 1}C${c + 1} (${field}): ${text} (${avgConf}%)`);
           }
 
           cellsProcessed++;
@@ -1046,11 +1134,14 @@ export default function UniversalOCRModal({
       if (isMounted.current) addLog('[HYBRID] Starting Engines...');
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-      
+
       // [SMART HYBRID LANG] Main pool for Names
-      const tesseractNeedsArabic = isRTL && colMapping.some((field, idx) => 
-        colEngines[idx] === 'tesseract' && (field === 'full_name' || field === 'job_info')
-      );
+      const tesseractNeedsArabic =
+        isRTL &&
+        colMapping.some(
+          (field, idx) =>
+            colEngines[idx] === 'tesseract' && (field === 'full_name' || field === 'job_info')
+        );
       const mainLangs = tesseractNeedsArabic ? 'ara+fra' : 'fra';
 
       const hardwareCores = window.navigator.hardwareConcurrency || 1;
@@ -1060,15 +1151,28 @@ export default function UniversalOCRModal({
       if (currentWorkers.length !== numTesseractWorkers || currentLangsRef.current !== mainLangs) {
         const tessConfig = await resolveTesseractAssetConfig(mainLangs);
         addLog(`[HYBRID] Initializing Main Pool (${mainLangs})...`);
-        currentWorkers.forEach(w => w.terminate());
+        currentWorkers.forEach((w) => w.terminate());
         currentWorkers = [];
         currentLangsRef.current = mainLangs;
         for (let i = 0; i < numTesseractWorkers; i++) {
-          const w = await window.Tesseract.createWorker(mainLangs, window.Tesseract.OEM?.DEFAULT || 3, {
-            workerPath: tessConfig.workerPath, corePath: tessConfig.corePath, langPath: tessConfig.langPath,
-            workerBlob: true, gzip: tessConfig.gzip, cacheMethod: 'none',
-            logger: (m) => { if (isMounted.current) addLog(`[HYBRID_W${i}] ${m.status}: ${m.progress ? Math.round(m.progress * 100) : 0}%`); }
-          });
+          const w = await window.Tesseract.createWorker(
+            mainLangs,
+            window.Tesseract.OEM?.DEFAULT || 3,
+            {
+              workerPath: tessConfig.workerPath,
+              corePath: tessConfig.corePath,
+              langPath: tessConfig.langPath,
+              workerBlob: true,
+              gzip: tessConfig.gzip,
+              cacheMethod: 'none',
+              logger: (m) => {
+                if (isMounted.current)
+                  addLog(
+                    `[HYBRID_W${i}] ${m.status}: ${m.progress ? Math.round(m.progress * 100) : 0}%`
+                  );
+              },
+            }
+          );
           currentWorkers.push(w);
         }
         tesseractWorkersRef.current = currentWorkers;
@@ -1079,8 +1183,12 @@ export default function UniversalOCRModal({
         addLog(`[HYBRID] Initializing Latin-Only Pool (fra)...`);
         const tessConfig = await resolveTesseractAssetConfig('fra');
         const w = await window.Tesseract.createWorker('fra', window.Tesseract.OEM?.DEFAULT || 3, {
-          workerPath: tessConfig.workerPath, corePath: tessConfig.corePath, langPath: tessConfig.langPath,
-          workerBlob: true, gzip: tessConfig.gzip, cacheMethod: 'none'
+          workerPath: tessConfig.workerPath,
+          corePath: tessConfig.corePath,
+          langPath: tessConfig.langPath,
+          workerBlob: true,
+          gzip: tessConfig.gzip,
+          cacheMethod: 'none',
         });
         currentFraWorkers = [w];
         tesseractFraWorkersRef.current = currentFraWorkers;
@@ -1090,7 +1198,11 @@ export default function UniversalOCRModal({
       if (!paddleOcrRef.current) {
         const modelsUrl = getModelsUrl();
         paddleOcrRef.current = await Ocr.create({
-          models: { detectionPath: `${modelsUrl}/det.onnx`, recognitionPath: `${modelsUrl}/rec_ara.onnx`, dictionaryPath: `${modelsUrl}/keys_ara.txt` }
+          models: {
+            detectionPath: `${modelsUrl}/det.onnx`,
+            recognitionPath: `${modelsUrl}/rec_ara.onnx`,
+            dictionaryPath: `${modelsUrl}/keys_ara.txt`,
+          },
         });
         addLog('[HYBRID] Paddle initialized.');
       }
@@ -1098,7 +1210,9 @@ export default function UniversalOCRModal({
 
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
-      let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
+      let gridResults = Array(numRows)
+        .fill(null)
+        .map(() => createEmptyCandidate());
       const totalCells = numRows * numCols;
       let cellsProcessed = 0;
 
@@ -1106,7 +1220,10 @@ export default function UniversalOCRModal({
         if (!isMounted.current) break;
         const colIndex = isRTL ? numCols - 1 - c : c;
         const field = colMapping[colIndex];
-        if (!field || field === 'ignore') { cellsProcessed += numRows; continue; }
+        if (!field || field === 'ignore') {
+          cellsProcessed += numRows;
+          continue;
+        }
 
         const enginePreference = colEngines[colIndex] || 'paddle';
         const isID = field === 'national_id';
@@ -1114,17 +1231,20 @@ export default function UniversalOCRModal({
         if (enginePreference === 'tesseract') {
           // ROUTING: Hand IDs to the Latin-only Pool
           const activePool = isID ? currentFraWorkers : currentWorkers;
-          
-          if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Tesseract (${isID ? 'Latin-Only' : 'Main'})`);
-          
+
+          if (isMounted.current)
+            addLog(`[HYBRID] Column "${field}" -> Tesseract (${isID ? 'Latin-Only' : 'Main'})`);
+
           const params = {
             tessedit_pageseg_mode: '7',
             preserve_interword_spaces: isID ? '0' : '1',
-            tessedit_char_whitelist: isID ? '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-.' : '',
+            tessedit_char_whitelist: isID
+              ? '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-.'
+              : '',
             tessedit_char_blacklist: isID ? 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي' : '',
           };
           await Promise.all(activePool.map((w) => w.setParameters(params)));
-          
+
           const promises = [];
           for (let r = 0; r < numRows; r++) {
             const worker = activePool[r % activePool.length];
@@ -1136,29 +1256,54 @@ export default function UniversalOCRModal({
                 width: (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width,
                 height: (sortedH[r + 1] - sortedH[r]) * imgDimensions.height,
               };
-              
+
               const padding = isID ? 15 : 5;
               const bufferX = isID ? 12 : 8;
               const tessScale = isID ? 3.5 : 2.5;
-              const tessBinarize = isID; 
-              const cellUrl = getCellImage(imageRef.current, rect, 5, padding, tessBinarize, tessScale, bufferX, 5);
+              const tessBinarize = isID;
+              const cellUrl = getCellImage(
+                imageRef.current,
+                rect,
+                5,
+                padding,
+                tessBinarize,
+                tessScale,
+                bufferX,
+                5
+              );
 
               if (debugMode && isMounted.current) {
-                setDebugCrops((prev) => [...prev, { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl }]);
+                setDebugCrops((prev) => [
+                  ...prev,
+                  { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl },
+                ]);
               }
 
-              const { data: { text, confidence } } = await worker.recognize(cellUrl);
+              const {
+                data: { text, confidence },
+              } = await worker.recognize(cellUrl);
               let cleanText = text.trim();
               if (isID) cleanText = cleanText.replace(/[\u0600-\u06FF]/g, '');
               if (cleanText && isMounted.current) gridResults[r][field] = cleanText;
 
               if (debugMode && isMounted.current) {
-                setDebugBoxes(prev => [...prev, {
-                  box: [[rect.x, rect.y], [rect.x + rect.width, rect.y], [rect.x + rect.width, rect.y + rect.height], [rect.x, rect.y + rect.height]],
-                  text: cleanText, confidence, isAligned: true
-                }]);
+                setDebugBoxes((prev) => [
+                  ...prev,
+                  {
+                    box: [
+                      [rect.x, rect.y],
+                      [rect.x + rect.width, rect.y],
+                      [rect.x + rect.width, rect.y + rect.height],
+                      [rect.x, rect.y + rect.height],
+                    ],
+                    text: cleanText,
+                    confidence,
+                    isAligned: true,
+                  },
+                ]);
               }
-              if (isMounted.current) addLog(`[HYBRID_CELL] ${field}: ${cleanText} (${confidence}%)`);
+              if (isMounted.current)
+                addLog(`[HYBRID_CELL] ${field}: ${cleanText} (${confidence}%)`);
               cellsProcessed++;
               if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
             };
@@ -1179,7 +1324,16 @@ export default function UniversalOCRModal({
             const padding = isID ? 25 : 8;
             const bufferX = isID ? 10 : 8;
             const scale = 2.2;
-            const cellUrl = getCellImage(imageRef.current, cropParams, 8, padding, false, scale, bufferX, 8);
+            const cellUrl = getCellImage(
+              imageRef.current,
+              cropParams,
+              8,
+              padding,
+              false,
+              scale,
+              bufferX,
+              8
+            );
 
             if (debugMode && isMounted.current) {
               setDebugCrops((prev) => [
@@ -1195,7 +1349,10 @@ export default function UniversalOCRModal({
               const newBoxes = results.map((box) => {
                 const sourceX = Math.max(0, cropParams.x - bufferX);
                 const sourceY = Math.max(0, cropParams.y - 8);
-                const mapPoint = (p) => [ (p[0] / scale) - padding + sourceX, (p[1] / scale) - 8 + sourceY ];
+                const mapPoint = (p) => [
+                  p[0] / scale - padding + sourceX,
+                  p[1] / scale - 8 + sourceY,
+                ];
                 const mappedBox = box.box.map(mapPoint);
                 const boxCenterX = (mappedBox[0][0] + mappedBox[2][0]) / 2;
                 const boxCenterY = (mappedBox[0][1] + mappedBox[2][1]) / 2;
@@ -1204,19 +1361,33 @@ export default function UniversalOCRModal({
                 const distX = Math.abs(boxCenterX - cellCenterX);
                 const distY = Math.abs(boxCenterY - cellCenterY);
                 const isAligned = distX < cropParams.width * 0.2 && distY < cropParams.height * 0.2;
-                const confidence = typeof box.confidence !== 'undefined' ? box.confidence : (typeof box.prob !== 'undefined' ? Math.round(box.prob * 100) : 100);
+                const confidence =
+                  typeof box.confidence !== 'undefined'
+                    ? box.confidence
+                    : typeof box.prob !== 'undefined'
+                    ? Math.round(box.prob * 100)
+                    : 100;
                 return { box: mappedBox, text: box.text, confidence, isAligned };
               });
               setDebugBoxes((prev) => [...prev, ...newBoxes]);
             }
 
-            let text = results.map((b) => b.text).join(' ').trim();
+            let text = results
+              .map((b) => b.text)
+              .join(' ')
+              .trim();
             if (text) {
               text = text.replace(/[|]/g, '').trim();
               if (isID) text = text.replace(/[\u0600-\u06FF]/g, '').trim();
               if (isRTL && !isID) text = smartRTLFix(text);
               gridResults[r][field] = text;
-              const avgConf = results.length > 0 ? Math.round(results.reduce((acc, b) => acc + (b.confidence || (b.prob*100) || 100), 0) / results.length) : 0;
+              const avgConf =
+                results.length > 0
+                  ? Math.round(
+                      results.reduce((acc, b) => acc + (b.confidence || b.prob * 100 || 100), 0) /
+                        results.length
+                    )
+                  : 0;
               if (isMounted.current) addLog(`[HYBRID_CELL] ${field}: ${text} (${avgConf}%)`);
             }
             cellsProcessed++;
@@ -1278,6 +1449,7 @@ export default function UniversalOCRModal({
     national_id: '',
     raw_id: '',
     department_id: '',
+    workplace_id: '', // [NEW]
     job_info: '',
     raw_job: '',
     isArabic: false,
@@ -1294,6 +1466,28 @@ export default function UniversalOCRModal({
     c.suggested_name = null;
     c.suggested_job = null;
 
+    // [NEW] AUTO-MATCHING FOR SERVICES & WORKPLACES
+    const normalize = (str) => (str ? str.toString().trim().toLowerCase() : '');
+    
+    if (c.department_id) {
+      const scannedDept = normalize(c.department_id);
+      const match = departments.find(d => normalize(d.name) === scannedDept);
+      if (match) {
+        c.department_id = match.id;
+      } else {
+        // Keep the text temporarily so user can see what was scanned
+        // But the select will show "-" because scanned text isn't a valid ID
+      }
+    }
+
+    if (c.workplace_id) {
+      const scannedWp = normalize(c.workplace_id);
+      const match = workplaces.find(w => normalize(w.name) === scannedWp);
+      if (match) {
+        c.workplace_id = match.id;
+      }
+    }
+
     // 3. Background AI Detection (Does NOT overwrite)
     try {
       const dict = JSON.parse(
@@ -1301,15 +1495,18 @@ export default function UniversalOCRModal({
       );
       if (c.national_id) {
         const key = c.national_id.replace(/\s+/g, '').toLowerCase();
-        if (dict.national_id[key] && dict.national_id[key] !== c.national_id) c.suggested_id = dict.national_id[key];
+        if (dict.national_id[key] && dict.national_id[key] !== c.national_id)
+          c.suggested_id = dict.national_id[key];
       }
       if (c.job_info) {
         const key = c.job_info.replace(/\s+/g, '').toLowerCase();
-        if (dict.job_info[key] && dict.job_info[key] !== c.job_info) c.suggested_job = dict.job_info[key];
+        if (dict.job_info[key] && dict.job_info[key] !== c.job_info)
+          c.suggested_job = dict.job_info[key];
       }
       if (c.full_name) {
         const key = c.full_name.replace(/\s+/g, '').toLowerCase();
-        if (dict.full_name[key] && dict.full_name[key] !== c.full_name) c.suggested_name = dict.full_name[key];
+        if (dict.full_name[key] && dict.full_name[key] !== c.full_name)
+          c.suggested_name = dict.full_name[key];
       }
     } catch (e) {
       console.warn('Dictionary error', e);
@@ -1323,61 +1520,71 @@ export default function UniversalOCRModal({
     // 5. Set the Symmetric Master Anchor
     if (isAr) {
       c.original_ar = c.full_name;
-      c.manual_fr = ''; 
+      c.manual_fr = '';
     } else {
       c.manual_fr = c.full_name;
-      c.original_ar = ''; 
+      c.original_ar = '';
     }
   };
 
   // [NEW] Apply a specific AI suggestion when the user clicks the Star
   const applySuggestion = (id, fieldType) => {
-    setCandidates((prev) => prev.map((c) => {
-      if (c.id !== id) return c;
-      const updated = { ...c };
-      
-      if (fieldType === 'national_id' && updated.suggested_id) {
-        updated.national_id = updated.suggested_id;
-        updated.suggested_id = null;
-      } else if (fieldType === 'job_info' && updated.suggested_job) {
-        updated.job_info = updated.suggested_job;
-        updated.suggested_job = null;
-      } else if (fieldType === 'full_name' && updated.suggested_name) {
-        updated.full_name = updated.suggested_name;
-        updated.suggested_name = null;
-        
-        // Sync anchors so translation doesn't break
-        if (updated.is_viewing_ar) {
-          updated.original_ar = updated.full_name;
-          if (updated.isArabic) updated.manual_fr = '';
-        } else {
-          updated.manual_fr = updated.full_name;
-          if (!updated.isArabic) updated.original_ar = '';
+    setCandidates((prev) =>
+      prev.map((c) => {
+        if (c.id !== id) return c;
+        const updated = { ...c };
+
+        if (fieldType === 'national_id' && updated.suggested_id) {
+          updated.national_id = updated.suggested_id;
+          updated.suggested_id = null;
+        } else if (fieldType === 'job_info' && updated.suggested_job) {
+          updated.job_info = updated.suggested_job;
+          updated.suggested_job = null;
+        } else if (fieldType === 'full_name' && updated.suggested_name) {
+          updated.full_name = updated.suggested_name;
+          updated.suggested_name = null;
+
+          // Sync anchors so translation doesn't break
+          if (updated.is_viewing_ar) {
+            updated.original_ar = updated.full_name;
+            if (updated.isArabic) updated.manual_fr = '';
+          } else {
+            updated.manual_fr = updated.full_name;
+            if (!updated.isArabic) updated.original_ar = '';
+          }
         }
-      }
-      return updated;
-    }));
+        return updated;
+      })
+    );
   };
 
   // [NEW] Master button to apply ALL stars on the screen at once
   const applyAllSuggestions = () => {
-    setCandidates((prev) => prev.map((c) => {
-      const updated = { ...c };
-      if (updated.suggested_id) { updated.national_id = updated.suggested_id; updated.suggested_id = null; }
-      if (updated.suggested_job) { updated.job_info = updated.suggested_job; updated.suggested_job = null; }
-      if (updated.suggested_name) {
-        updated.full_name = updated.suggested_name;
-        updated.suggested_name = null;
-        if (updated.is_viewing_ar) {
-          updated.original_ar = updated.full_name;
-          if (updated.isArabic) updated.manual_fr = '';
-        } else {
-          updated.manual_fr = updated.full_name;
-          if (!updated.isArabic) updated.original_ar = '';
+    setCandidates((prev) =>
+      prev.map((c) => {
+        const updated = { ...c };
+        if (updated.suggested_id) {
+          updated.national_id = updated.suggested_id;
+          updated.suggested_id = null;
         }
-      }
-      return updated;
-    }));
+        if (updated.suggested_job) {
+          updated.job_info = updated.suggested_job;
+          updated.suggested_job = null;
+        }
+        if (updated.suggested_name) {
+          updated.full_name = updated.suggested_name;
+          updated.suggested_name = null;
+          if (updated.is_viewing_ar) {
+            updated.original_ar = updated.full_name;
+            if (updated.isArabic) updated.manual_fr = '';
+          } else {
+            updated.manual_fr = updated.full_name;
+            if (!updated.isArabic) updated.original_ar = '';
+          }
+        }
+        return updated;
+      })
+    );
   };
 
   const updateCandidate = (id, field, val) => {
@@ -1410,26 +1617,56 @@ export default function UniversalOCRModal({
     } catch (e) {}
     // ---------------------------------------------------
 
-    for (const c of valid) {
-      const data = {
-        full_name: c.full_name || 'Inconnu',
-        national_id: c.national_id || '?',
-        department_id: c.department_id ? parseInt(c.department_id) : null,
-        status: mode === 'worker' ? 'active' : 'pending',
-        created_at: new Date().toISOString(),
-      };
-      if (mode === 'worker') {
-        // [FIX] Map strictly to BOTH properties to ensure the Copro DB catches it
-        data.job_role = c.job_info || 'N/A';
-        data.position = c.job_info || 'N/A';
-        await db.saveWorker(data);
-      } else {
-        // [FIX] Map strictly to job_function for Weapons DB
-        data.job_function = c.job_info || 'Agent';
-        await db.saveWeaponHolder(data);
+    let importedCount = 0;
+    let skippedCount = 0;
+
+    try {
+      // Fetch existing records for duplicate check
+      const existing =
+        mode === 'worker' ? await db.getWorkers() : await db.getWeaponHolders();
+
+      const normalize = (str) => (str ? str.toString().trim().toLowerCase() : '');
+
+      for (const c of valid) {
+        const currentName = normalize(c.full_name);
+        const currentId = normalize(c.national_id);
+
+        // Check for duplicates
+        const isDuplicate = existing.some((item) => {
+          const nameMatch = normalize(item.full_name) === currentName;
+          const idMatch = currentId && normalize(item.national_id) === currentId;
+          return nameMatch || idMatch;
+        });
+
+        if (isDuplicate) {
+          skippedCount++;
+          continue;
+        }
+
+        const data = {
+          full_name: c.full_name || 'Inconnu',
+          national_id: c.national_id || '?',
+          department_id: c.department_id ? parseInt(c.department_id) : null,
+          workplace_id: c.workplace_id ? parseInt(c.workplace_id) : null, // [NEW]
+          status: mode === 'worker' ? 'active' : 'pending',
+          created_at: new Date().toISOString(),
+        };
+
+        if (mode === 'worker') {
+          data.job_role = c.job_info || 'N/A';
+          data.position = c.job_info || 'N/A';
+          await db.saveWorker(data);
+        } else {
+          data.job_function = c.job_info || 'Agent';
+          await db.saveWeaponHolder(data);
+        }
+        importedCount++;
       }
+    } catch (err) {
+      console.error('Import error:', err);
     }
-    onImportSuccess(valid.length);
+
+    onImportSuccess(importedCount, skippedCount);
     onClose();
   };
 
@@ -1446,16 +1683,20 @@ export default function UniversalOCRModal({
   };
 
   const applyDefaultDictionary = async () => {
-    if (!confirm('Voulez-vous charger le dictionnaire Algérien par défaut ? (Ceci fusionnera avec vos corrections existantes)')) return;
-    
+    if (
+      !confirm(
+        'Voulez-vous charger le dictionnaire Algérien par défaut ? (Ceci fusionnera avec vos corrections existantes)'
+      )
+    )
+      return;
+
     try {
       const response = await fetch(getAssetUrl('algerian_dictionary.json'));
       if (!response.ok) throw new Error('Impossible de charger le fichier dictionnaire.');
-      
+
       const imported = await response.json();
       const existing = JSON.parse(
-        localStorage.getItem('ocr_smart_dict') ||
-          '{"national_id":{},"full_name":{},"job_info":{}}'
+        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
       );
 
       // Merge
@@ -1465,7 +1706,11 @@ export default function UniversalOCRModal({
 
       localStorage.setItem('ocr_smart_dict', JSON.stringify(existing));
       addLog('[DICT] Dictionnaire Algérien par défaut appliqué.');
-      alert('Dictionnaire Algérien chargé avec succès ! (' + Object.keys(imported.full_name).length + ' entrées)');
+      alert(
+        'Dictionnaire Algérien chargé avec succès ! (' +
+          Object.keys(imported.full_name).length +
+          ' entrées)'
+      );
     } catch (err) {
       console.error('Apply default dict failed:', err);
       alert('Erreur lors du chargement du dictionnaire par défaut.');
@@ -1531,7 +1776,7 @@ export default function UniversalOCRModal({
           }
         `}
       </style>
-      
+
       <div
         className="modal"
         style={{
@@ -2117,7 +2362,7 @@ export default function UniversalOCRModal({
                   fontSize: '0.85rem',
                   display: 'flex',
                   alignItems: 'start',
-                  gap: '10px'
+                  gap: '10px',
                 }}
               >
                 <div style={{ fontSize: '1.2rem' }}>⚠️</div>
@@ -2125,9 +2370,15 @@ export default function UniversalOCRModal({
                   <b>Erreur Fatale OCR</b>
                   <p style={{ margin: '5px 0 0 0' }}>{errorMessage}</p>
                 </div>
-                <button 
+                <button
                   onClick={() => setErrorMessage(null)}
-                  style={{ background: 'none', border: 'none', color: '#b91c1c', cursor: 'pointer', fontSize: '1.2rem' }}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: '#b91c1c',
+                    cursor: 'pointer',
+                    fontSize: '1.2rem',
+                  }}
                 >
                   ×
                 </button>
@@ -2234,13 +2485,44 @@ export default function UniversalOCRModal({
         {activeTab === 'results' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
             {/* [NEW] MASTER AI BUTTON */}
-            {candidates.some(c => c.suggested_id || c.suggested_name || c.suggested_job) && (
-              <div style={{ background: '#fffbeb', border: '1px solid #fde68a', padding: '10px 15px', borderRadius: '8px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#d97706', fontWeight: 'bold' }}>
-                  <FaMagic className="magic-star-btn" style={{ position: 'relative', transform: 'none', top: 0, right: 0 }} />
+            {candidates.some((c) => c.suggested_id || c.suggested_name || c.suggested_job) && (
+              <div
+                style={{
+                  background: '#fffbeb',
+                  border: '1px solid #fde68a',
+                  padding: '10px 15px',
+                  borderRadius: '8px',
+                  marginBottom: '15px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '10px',
+                    color: '#d97706',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  <FaMagic
+                    className="magic-star-btn"
+                    style={{ position: 'relative', transform: 'none', top: 0, right: 0 }}
+                  />
                   Des corrections intelligentes sont disponibles.
                 </div>
-                <button onClick={applyAllSuggestions} className="btn btn-sm" style={{ background: '#f59e0b', color: 'white', fontWeight: 'bold', border: 'none' }}>
+                <button
+                  onClick={applyAllSuggestions}
+                  className="btn btn-sm"
+                  style={{
+                    background: '#f59e0b',
+                    color: 'white',
+                    fontWeight: 'bold',
+                    border: 'none',
+                  }}
+                >
                   Appliquer Tout
                 </button>
               </div>
@@ -2248,12 +2530,43 @@ export default function UniversalOCRModal({
 
             <div className="table-container">
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                <thead style={{ position: 'sticky', top: 0, background: 'white', zIndex: 10, borderBottom: '2px solid #eee' }}>
+                <thead
+                  style={{
+                    position: 'sticky',
+                    top: 0,
+                    background: 'white',
+                    zIndex: 10,
+                    borderBottom: '2px solid #eee',
+                  }}
+                >
                   <tr style={{ color: '#64748b' }}>
-                    <th style={{ padding: '10px', textAlign: 'left' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaList /> Matricule</div></th>
-                    <th style={{ padding: '10px', textAlign: 'left' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaUsers /> Nom</div></th>
-                    <th style={{ padding: '10px', textAlign: 'left' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaArrowsAltH /> Service</div></th>
-                    <th style={{ padding: '10px', textAlign: 'left' }}><div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><FaClipboardList /> {mode === 'worker' ? 'Poste' : 'Grade'}</div></th>
+                    <th style={{ padding: '10px', textAlign: 'left' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <FaList /> Matricule
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px', textAlign: 'left' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <FaUsers /> Nom
+                      </div>
+                    </th>
+                    <th style={{ padding: '10px', textAlign: 'left' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <FaArrowsAltH /> Service
+                      </div>
+                    </th>
+                    {mode === 'worker' && (
+                      <th style={{ padding: '10px', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <FaGlobeAfrica /> Lieu
+                        </div>
+                      </th>
+                    )}
+                    <th style={{ padding: '10px', textAlign: 'left' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <FaClipboardList /> {mode === 'worker' ? 'Poste' : 'Grade'}
+                      </div>
+                    </th>
                     <th></th>
                   </tr>
                 </thead>
@@ -2267,10 +2580,19 @@ export default function UniversalOCRModal({
                             className="input"
                             value={c.national_id}
                             onChange={(e) => updateCandidate(c.id, 'national_id', e.target.value)}
-                            style={{ width: '100%', fontFamily: 'monospace', paddingRight: c.suggested_id ? '25px' : '8px', borderColor: c.suggested_id ? '#fde68a' : '#cbd5e1' }}
+                            style={{
+                              width: '100%',
+                              fontFamily: 'monospace',
+                              paddingRight: c.suggested_id ? '25px' : '8px',
+                              borderColor: c.suggested_id ? '#fde68a' : '#cbd5e1',
+                            }}
                           />
                           {c.suggested_id && (
-                            <button className="magic-star-btn" onClick={() => applySuggestion(c.id, 'national_id')} title={`Correction IA : ${c.suggested_id}`}>
+                            <button
+                              className="magic-star-btn"
+                              onClick={() => applySuggestion(c.id, 'national_id')}
+                              title={`Correction IA : ${c.suggested_id}`}
+                            >
                               <FaMagic />
                             </button>
                           )}
@@ -2278,7 +2600,14 @@ export default function UniversalOCRModal({
                       </td>
 
                       {/* NOM ET PRÉNOM */}
-                      <td style={{ padding: '8px', display: 'flex', gap: '5px', alignItems: 'center' }}>
+                      <td
+                        style={{
+                          padding: '8px',
+                          display: 'flex',
+                          gap: '5px',
+                          alignItems: 'center',
+                        }}
+                      >
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input
                             className="input"
@@ -2295,10 +2624,19 @@ export default function UniversalOCRModal({
                                 if (!c.isArabic) updateCandidate(c.id, 'original_ar', '');
                               }
                             }}
-                            style={{ fontWeight: 'bold', width: '100%', paddingRight: c.suggested_name ? '25px' : '8px', borderColor: c.suggested_name ? '#fde68a' : '#cbd5e1' }}
+                            style={{
+                              fontWeight: 'bold',
+                              width: '100%',
+                              paddingRight: c.suggested_name ? '25px' : '8px',
+                              borderColor: c.suggested_name ? '#fde68a' : '#cbd5e1',
+                            }}
                           />
                           {c.suggested_name && (
-                            <button className="magic-star-btn" onClick={() => applySuggestion(c.id, 'full_name')} title={`Correction IA : ${c.suggested_name}`}>
+                            <button
+                              className="magic-star-btn"
+                              onClick={() => applySuggestion(c.id, 'full_name')}
+                              title={`Correction IA : ${c.suggested_name}`}
+                            >
                               <FaMagic />
                             </button>
                           )}
@@ -2319,7 +2657,15 @@ export default function UniversalOCRModal({
                           }}
                           className="btn btn-outline btn-sm"
                           title={c.is_viewing_ar ? 'Traduire en Français' : 'Traduire en Arabe'}
-                          style={{ padding: '4px 8px', borderColor: (c.isArabic ? c.manual_fr : c.original_ar) ? '#10b981' : '#3b82f6', color: (c.isArabic ? c.manual_fr : c.original_ar) ? '#10b981' : '#3b82f6' }}
+                          style={{
+                            padding: '4px 8px',
+                            borderColor: (c.isArabic ? c.manual_fr : c.original_ar)
+                              ? '#10b981'
+                              : '#3b82f6',
+                            color: (c.isArabic ? c.manual_fr : c.original_ar)
+                              ? '#10b981'
+                              : '#3b82f6',
+                          }}
                         >
                           <FaGlobeAfrica />
                         </button>
@@ -2327,11 +2673,37 @@ export default function UniversalOCRModal({
 
                       {/* SERVICE */}
                       <td style={{ padding: '8px' }}>
-                        <select className="input" value={c.department_id} onChange={(e) => updateCandidate(c.id, 'department_id', e.target.value)}>
+                        <select
+                          className="input"
+                          value={c.department_id}
+                          onChange={(e) => updateCandidate(c.id, 'department_id', e.target.value)}
+                        >
                           <option value="">-</option>
-                          {departments.map((d) => (<option key={d.id} value={d.id}>{d.name}</option>))}
+                          {departments.map((d) => (
+                            <option key={d.id} value={d.id}>
+                              {d.name}
+                            </option>
+                          ))}
                         </select>
                       </td>
+
+                      {/* LIEU DE TRAVAIL (Worker Only) */}
+                      {mode === 'worker' && (
+                        <td style={{ padding: '8px' }}>
+                          <select
+                            className="input"
+                            value={c.workplace_id}
+                            onChange={(e) => updateCandidate(c.id, 'workplace_id', e.target.value)}
+                          >
+                            <option value="">-</option>
+                            {workplaces.map((wp) => (
+                              <option key={wp.id} value={wp.id}>
+                                {wp.name}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      )}
 
                       {/* POSTE */}
                       <td style={{ padding: '8px' }}>
@@ -2340,10 +2712,17 @@ export default function UniversalOCRModal({
                             className="input"
                             value={c.job_info}
                             onChange={(e) => updateCandidate(c.id, 'job_info', e.target.value)}
-                            style={{ paddingRight: c.suggested_job ? '25px' : '8px', borderColor: c.suggested_job ? '#fde68a' : '#cbd5e1' }}
+                            style={{
+                              paddingRight: c.suggested_job ? '25px' : '8px',
+                              borderColor: c.suggested_job ? '#fde68a' : '#cbd5e1',
+                            }}
                           />
                           {c.suggested_job && (
-                            <button className="magic-star-btn" onClick={() => applySuggestion(c.id, 'job_info')} title={`Correction IA : ${c.suggested_job}`}>
+                            <button
+                              className="magic-star-btn"
+                              onClick={() => applySuggestion(c.id, 'job_info')}
+                              title={`Correction IA : ${c.suggested_job}`}
+                            >
                               <FaMagic />
                             </button>
                           )}
@@ -2352,7 +2731,17 @@ export default function UniversalOCRModal({
 
                       {/* DELETE */}
                       <td style={{ padding: '8px' }}>
-                        <button onClick={() => removeCandidate(c.id)} style={{ color: 'red', background: 'none', border: 'none', cursor: 'pointer' }}><FaTimes /></button>
+                        <button
+                          onClick={() => removeCandidate(c.id)}
+                          style={{
+                            color: 'red',
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                          }}
+                        >
+                          <FaTimes />
+                        </button>
                       </td>
                     </tr>
                   ))}
@@ -2491,9 +2880,10 @@ export default function UniversalOCRModal({
                 <FaSave /> Mémoire IA (Dictionaire)
               </h3>
               <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: '15px' }}>
-                L'IA apprend de vos corrections. Chargez le dictionnaire complet (250+ noms) ou transférez votre mémoire.
+                L'IA apprend de vos corrections. Chargez le dictionnaire complet (250+ noms) ou
+                transférez votre mémoire.
               </p>
-              
+
               <button
                 onClick={applyDefaultDictionary}
                 className="btn btn-success"
