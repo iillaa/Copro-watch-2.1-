@@ -246,8 +246,10 @@ export default function UniversalOCRModal({
 
   // [NEW] Persistent Worker Refs
   const tesseractWorkersRef = useRef([]);
+  const tesseractFraWorkersRef = useRef([]); // Dedicated Latin-only pool
   const paddleOcrRef = useRef(null);
   const currentLangsRef = useRef('');
+  const currentFraLangsRef = useRef('');
 
   // NEW: SAFE COMPONENT MOUNT TRACKER (Prevents memory leaks/crashes)
   const isMounted = useRef(true);
@@ -264,6 +266,7 @@ export default function UniversalOCRModal({
       // [CLEANUP] Kill workers on unmount
       console.log('[OCR] Cleaning up workers...');
       tesseractWorkersRef.current.forEach(w => w.terminate());
+      tesseractFraWorkersRef.current.forEach(w => w.terminate());
       if (paddleOcrRef.current && paddleOcrRef.current.dispose) {
         paddleOcrRef.current.dispose();
       }
@@ -555,123 +558,165 @@ export default function UniversalOCRModal({
   const getCellImage = (
     imgElement,
     rect,
-    paddingY = 15,
+    paddingY = 8,
     paddingX = 8,
-    binarize = true,
-    customScale = 4
+    binarize = false,
+    customScale = 2.2,
+    bufferX = 8,
+    bufferY = 8
   ) => {
-    // [OPTIMIZATION] Reuse a temporary canvas if possible or at least ensure clean allocation
     const canvas = document.createElement('canvas');
-    const ctx = canvas.getContext('2d', { alpha: false }); // Disable alpha for better performance
+    const ctx = canvas.getContext('2d', { alpha: false });
     const scale = customScale;
 
-    const targetW = Math.floor((rect.width + paddingX * 2) * scale);
-    const targetH = Math.floor((rect.height + paddingY * 2) * scale);
+    // [DYNAMIC BUFFER] Column-specific reach (IDs get 16px, Names get 8px)
+    const bX = bufferX;
+    const bY = bufferY;
+
+    const sourceX = Math.max(0, rect.x - bX); 
+    const sourceY = Math.max(0, rect.y - bY);
+    const sourceW = rect.width + (bX * 2);
+    const sourceH = rect.height + (bY * 2);
+
+    const targetW = Math.floor((sourceW + paddingX * 2) * scale);
+    const targetH = Math.floor((sourceH + paddingY * 2) * scale);
     
-    // Safety check for invalid dimensions
     if (targetW <= 0 || targetH <= 0) return null;
     
     canvas.width = targetW;
     canvas.height = targetH;
 
-    // Fast clear
     ctx.fillStyle = '#FFFFFF';
     ctx.fillRect(0, 0, targetW, targetH);
     
     ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    ctx.imageSmoothingQuality = 'medium';
 
     if (binarize) {
-      // [FIX] Apply filters BEFORE drawing for maximum hardware acceleration
-      ctx.filter = 'contrast(200%) grayscale(100%)';
+      // Google-Challenger contrast: Sharpens text edges and nukes background noise
+      ctx.filter = 'contrast(140%) grayscale(100%) brightness(95%)';
     }
 
     ctx.drawImage(
       imgElement,
-      rect.x,
-      rect.y,
-      rect.width,
-      rect.height,
+      sourceX,
+      sourceY,
+      sourceW,
+      sourceH,
       paddingX * scale,
       paddingY * scale,
-      rect.width * scale,
-      rect.height * scale
+      sourceW * scale,
+      sourceH * scale
     );
 
-    // Reset filter for safety
     if (binarize) ctx.filter = 'none';
-
     return canvas.toDataURL('image/png');
   };
 
   // ========== VISUAL DEBUGGER (RESTORED) ==========
   const drawDebugGrid = () => {
     const canvas = canvasRef.current;
-    if (!canvas || !imageRef.current) {
-      addLog('[DEBUG ERROR] Impossible de dessiner (Canvas/Image manquant)');
-      return;
-    }
+    if (!canvas || !imageRef.current || !imageRef.current.naturalWidth) return;
     const ctx = canvas.getContext('2d');
-    canvas.width = imgDimensions.width;
-    canvas.height = imgDimensions.height;
-
-    try {
-      ctx.drawImage(imageRef.current, 0, 0, canvas.width, canvas.height);
-    } catch (e) {
-      return;
+    
+    const displayW = canvas.offsetWidth;
+    const displayH = canvas.offsetHeight;
+    
+    // Only resize the buffer if it actually changed (prevents memory spikes)
+    if (canvas.width !== displayW || canvas.height !== displayH) {
+      canvas.width = displayW;
+      canvas.height = displayH;
     }
+    
+    const naturalW = imageRef.current.naturalWidth;
+    const naturalH = imageRef.current.naturalHeight;
+    const scaleX = canvas.width / naturalW;
+    const scaleY = canvas.height / naturalH;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
     const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
 
     // Draw Rows
-    ctx.strokeStyle = 'rgba(255, 0, 0, 0.8)';
-    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(255, 0, 0, 0.6)';
+    ctx.lineWidth = 2;
     for (let r = 0; r < sortedH.length - 1; r++) {
       const y = sortedH[r] * canvas.height;
       const h = (sortedH[r + 1] - sortedH[r]) * canvas.height;
       ctx.strokeRect(0, y, canvas.width, h);
       ctx.fillStyle = 'red';
-      ctx.font = 'bold 30px monospace';
-      ctx.fillText(`ROW ${r + 1} (Y=${Math.round(y)})`, 20, y + 40);
+      ctx.font = 'bold 12px monospace';
+      ctx.fillText(`R${r + 1}`, 5, y + 15);
     }
 
     // Draw Cols
-    ctx.strokeStyle = 'rgba(0, 0, 255, 0.8)';
+    ctx.strokeStyle = 'rgba(0, 0, 255, 0.6)';
     vLines.forEach((v, i) => {
       const x = v * canvas.width;
-      ctx.strokeRect(x, 0, 2, canvas.height);
+      ctx.strokeRect(x, 0, 1, canvas.height);
       ctx.fillStyle = 'blue';
-      ctx.fillText(`C${i + 1}`, x + 5, 60);
+      ctx.fillText(`C${i + 1}`, x + 5, 15);
     });
 
-    // Draw Debug Boxes (Paddle)
+    // 2. Visual Language Augmentation (Diagnostic Engine)
     if (debugBoxes.length > 0) {
-      ctx.strokeStyle = '#00ff00';
-      ctx.lineWidth = 2;
       debugBoxes.forEach((box) => {
-        // box.box is [[x,y],...]
-        // Draw polygon
-        ctx.beginPath();
-        ctx.moveTo(box.box[0][0], box.box[0][1]);
-        ctx.lineTo(box.box[1][0], box.box[1][1]);
-        ctx.lineTo(box.box[2][0], box.box[2][1]);
-        ctx.lineTo(box.box[3][0], box.box[3][1]);
-        ctx.closePath();
-        ctx.stroke();
+        const conf = typeof box.confidence === 'number' ? box.confidence : 100;
+        const isAligned = typeof box.isAligned !== 'undefined' ? box.isAligned : true;
+        
+        let color = '#22c55e'; // Green (>85% + Aligned)
+        let fill = 'rgba(34, 197, 94, 0.15)';
+        ctx.setLineDash([]); // Reset dash
+
+        if (conf < 60) {
+          color = '#ef4444'; // Red (<60%)
+          fill = 'rgba(239, 68, 68, 0.2)';
+        } else if (!isAligned) {
+          color = '#d946ef'; // Magenta (Misaligned)
+          fill = 'rgba(217, 70, 239, 0.15)';
+          ctx.setLineDash([5, 5]); // Dashed line for misalignment
+        } else if (conf <= 85) {
+          color = '#eab308'; // Yellow (60-85%)
+          fill = 'rgba(234, 179, 8, 0.2)';
+        }
+
+        ctx.strokeStyle = color;
+        ctx.fillStyle = fill;
+        ctx.lineWidth = 2;
+
+        // Draw scaled polygon
+        if (box.box && box.box.length === 4) {
+          ctx.beginPath();
+          ctx.moveTo(box.box[0][0] * scaleX, box.box[0][1] * scaleY);
+          ctx.lineTo(box.box[1][0] * scaleX, box.box[1][1] * scaleY);
+          ctx.lineTo(box.box[2][0] * scaleX, box.box[2][1] * scaleY);
+          ctx.lineTo(box.box[3][0] * scaleX, box.box[3][1] * scaleY);
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+          
+          // Small text label for confidence
+          if (debugMode) {
+             ctx.setLineDash([]);
+             ctx.fillStyle = color;
+             ctx.font = '10px sans-serif';
+             ctx.fillText(`${Math.round(conf)}%`, box.box[0][0] * scaleX, (box.box[0][1] * scaleY) - 2);
+          }
+        }
       });
     }
 
-    addLog('[DEBUG] Grille dessinée dans le cadre jaune.');
+    addLog('[DEBUG] Diagnostic layer updated.');
   };
 
-  // AUTO-DEBUG: Redraw whenever grid/debug mode changes
+  // AUTO-DEBUG: Redraw whenever grid/debug mode/tab changes
   useEffect(() => {
-    if (debugMode && image) {
+    if (debugMode && image && activeTab === 'scan') {
       // Small timeout to ensure image ref is ready/layout stable
-      const timer = setTimeout(drawDebugGrid, 50);
+      const timer = setTimeout(drawDebugGrid, 100);
       return () => clearTimeout(timer);
     }
-  }, [debugMode, image, hLines, vLines, debugBoxes]);
+  }, [debugMode, image, hLines, vLines, debugBoxes, activeTab]);
 
   const runTesseractOCR = async () => {
     if (!image || !imageRef.current) return;
@@ -683,110 +728,92 @@ export default function UniversalOCRModal({
     setProgress(0);
     setStatusText('Tesseract (Parallel Workers)...');
 
+    const isRTL = docLanguage === 'ara';
     let currentWorkers = tesseractWorkersRef.current;
+    let currentFraWorkers = tesseractFraWorkersRef.current;
 
     try {
-      const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
+      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+
+      // [SMART LANG] Main pool for Names (Arabic/French)
+      const needsArabic = isRTL && colMapping.some((field, idx) => 
+        (field === 'full_name' || field === 'job_info')
+      );
+      const mainLangs = needsArabic ? 'ara+fra' : 'fra';
+      
       const hardwareCores = window.navigator.hardwareConcurrency || 1;
       const numWorkers = Math.min(2, Math.max(1, hardwareCores - 1));
 
-      // [REUSE LOGIC]
-      const needsNewWorkers = currentWorkers.length !== numWorkers || currentLangsRef.current !== langs; 
-
-      if (needsNewWorkers) {
-        addLog(`[TESSERACT] Initializing ${numWorkers} workers (${langs})...`);
-        // Cleanup old ones first
+      // 1. Initialize Main Pool
+      if (currentWorkers.length !== numWorkers || currentLangsRef.current !== mainLangs) {
+        addLog(`[TESSERACT] Initializing Main Pool (${mainLangs})...`);
         currentWorkers.forEach(w => w.terminate());
         currentWorkers = [];
-        currentLangsRef.current = langs;
-        
+        currentLangsRef.current = mainLangs;
         for (let i = 0; i < numWorkers; i++) {
-          try {
-            const tessConfig = await resolveTesseractAssetConfig(langs);
-            const w = await window.Tesseract.createWorker(langs, window.Tesseract.OEM?.DEFAULT || 3, {
-              workerPath: tessConfig.workerPath,
-              corePath: tessConfig.corePath,
-              langPath: tessConfig.langPath,
-              workerBlob: true,
-              gzip: tessConfig.gzip,
-              cacheMethod: 'none',
-              logger: (m) => {
-                const prog = m.progress ? Math.round(m.progress * 100) : 0;
-                if (isMounted.current) {
-                  addLog(`[TESS_W${i}] ${m.status}: ${prog}%`);
-                }
-                if (m.status.includes('loading') || m.status.includes('init')) {
-                   setProgress(prev => Math.min(99, prev + 1)); 
-                }
-              },
-            });
-            currentWorkers.push(w);
-          } catch (err) {
-            console.error('[TESSERACT] Worker init failed:', err);
-            throw new Error('Moteur OCR indisponible. Erreur de chargement des ressources locales.');
-          }
+          const tessConfig = await resolveTesseractAssetConfig(mainLangs);
+          const w = await window.Tesseract.createWorker(mainLangs, window.Tesseract.OEM?.DEFAULT || 3, {
+            workerPath: tessConfig.workerPath, corePath: tessConfig.corePath, langPath: tessConfig.langPath,
+            workerBlob: true, gzip: tessConfig.gzip, cacheMethod: 'none'
+          });
+          currentWorkers.push(w);
         }
         tesseractWorkersRef.current = currentWorkers;
-      } else {
-        addLog('[TESSERACT] Reusing existing workers...');
       }
 
-      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-      const isRTL = docLanguage === 'ara';
+      // 2. Initialize Dedicated Latin Pool (Always 'fra')
+      if (currentFraWorkers.length === 0) {
+        addLog(`[TESSERACT] Initializing Latin-Only Pool (fra)...`);
+        const tessConfig = await resolveTesseractAssetConfig('fra');
+        const w = await window.Tesseract.createWorker('fra', window.Tesseract.OEM?.DEFAULT || 3, {
+          workerPath: tessConfig.workerPath, corePath: tessConfig.corePath, langPath: tessConfig.langPath,
+          workerBlob: true, gzip: tessConfig.gzip, cacheMethod: 'none'
+        });
+        currentFraWorkers = [w];
+        tesseractFraWorkersRef.current = currentFraWorkers;
+      }
 
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
-      let gridResults = Array(numRows)
-        .fill(null)
-        .map(() => createEmptyCandidate());
+      let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
       let cellsProcessed = 0;
       const totalCells = numRows * numCols;
 
       for (let c = 0; c < numCols; c++) {
         const colIndex = isRTL ? numCols - 1 - c : c;
         const field = colMapping[colIndex];
+        if (!field || field === 'ignore') { cellsProcessed += numRows; continue; }
 
-        if (!field || field === 'ignore') {
-          cellsProcessed += numRows;
-          continue;
-        }
-
-        const params =
-          field === 'national_id'
-            ? {
-                tessedit_pageseg_mode: '7',
-                preserve_interword_spaces: '1',
-                tessedit_char_whitelist:
-                  '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. ',
-              }
-            : {
-                tessedit_pageseg_mode: '7',
-                preserve_interword_spaces: '1',
-                tessedit_char_whitelist: '',
-              };
-        await Promise.all(currentWorkers.map((w) => w.setParameters(params)));
+        const isID = field === 'national_id';
+        // ROUTING: Use Latin pool for IDs, Main pool for others
+        const activePool = isID ? currentFraWorkers : currentWorkers;
+        
+        const params = isID
+            ? { tessedit_pageseg_mode: '7', preserve_interword_spaces: '0', tessedit_char_whitelist: '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-.', tessedit_char_blacklist: 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي' }
+            : { tessedit_pageseg_mode: '7', preserve_interword_spaces: '1', tessedit_char_whitelist: '', tessedit_char_blacklist: '' };
+        
+        await Promise.all(activePool.map((w) => w.setParameters(params)));
 
         const promises = [];
         for (let r = 0; r < numRows; r++) {
-          const workerIndex = r % numWorkers;
+          const workerIndex = r % activePool.length;
           const task = async () => {
             if (!isMounted.current) return;
-            const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
-            const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-
-            // FIX: Reduced margin to 2px so it does not physically crop out letters
-            const safetyMargin = 2;
-            const cropParams = {
-              x: sortedV[colIndex] * imgDimensions.width + safetyMargin,
-              y: sortedH[r] * imgDimensions.height + safetyMargin,
-              width: rawW - safetyMargin * 2,
-              height: rawH - safetyMargin * 2,
+            const rect = {
+              x: sortedV[colIndex] * imgDimensions.width,
+              y: sortedH[r] * imgDimensions.height,
+              width: (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width,
+              height: (sortedH[r + 1] - sortedH[r]) * imgDimensions.height,
             };
 
-            if (cropParams.width < 10 || cropParams.height < 10) return;
+            const padding = isID ? 10 : 5;
+            const bufferX = isID ? 10 : 8;
+            const tessScale = 2.5;
+            const tessBinarize = isID; 
 
-            const cellUrl = getCellImage(imageRef.current, cropParams, 5, 0);
+            const cellUrl = getCellImage(imageRef.current, rect, 5, padding, tessBinarize, tessScale, bufferX, 5);
+
             if (debugMode && isMounted.current) {
               setDebugCrops((prev) => [
                 ...prev,
@@ -794,17 +821,22 @@ export default function UniversalOCRModal({
               ]);
             }
 
-            const {
-              data: { text, confidence },
-            } = await currentWorkers[workerIndex].recognize(cellUrl);
-            let cleanText = text.trim().replace(/^[\s|I_\-.]+|[\s|I_\-.]+$/g, '');
-            if (isRTL && cleanText.length < 3 && /^[a-zA-Z\s|]+$/.test(cleanText)) cleanText = '';
-
+            const { data: { text, confidence } } = await activePool[workerIndex].recognize(cellUrl);
+            let cleanText = text.trim();
+            if (isID) cleanText = cleanText.replace(/[\u0600-\u06FF]/g, ''); // Extra safety
+            
             if (cleanText && isMounted.current) {
               gridResults[r][field] = cleanText;
               addLog(`[CELL] R${r + 1}C${c + 1}: ${cleanText} (${confidence}%)`);
             }
-
+            
+            // ... (debugBox logic)
+            if (debugMode && isMounted.current) {
+              setDebugBoxes(prev => [...prev, {
+                box: [[rect.x, rect.y], [rect.x + rect.width, rect.y], [rect.x + rect.width, rect.y + rect.height], [rect.x, rect.y + rect.height]],
+                text: cleanText, confidence, isAligned: true
+              }]);
+            }
             cellsProcessed++;
             if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
           };
@@ -850,6 +882,7 @@ export default function UniversalOCRModal({
     setProgress(0);
     setStatusText('Paddle AI (Cellular Mode)...');
 
+    const isRTL = docLanguage === 'ara';
     try {
       // [REUSE LOGIC]
       if (!paddleOcrRef.current) {
@@ -870,7 +903,6 @@ export default function UniversalOCRModal({
 
       const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
       const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-      const isRTL = docLanguage === 'ara';
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
       let gridResults = Array(numRows)
@@ -901,12 +933,16 @@ export default function UniversalOCRModal({
             height: rawH,
           };
 
-          const cellUrl = getCellImage(imageRef.current, rect, 5, 6, false, 2);
+          const isID = field === 'national_id';
+          const padding = isID ? 25 : 8;
+          const bufferX = isID ? 10 : 8;
+          const scale = 2.2;
+          const cellUrl = getCellImage(imageRef.current, rect, 8, padding, false, scale, bufferX, 8);
 
           if (debugMode && isMounted.current) {
             setDebugCrops((prev) => [
               ...prev,
-              { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl },
+              { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl }
             ]);
           }
 
@@ -914,13 +950,36 @@ export default function UniversalOCRModal({
           if (!isMounted.current) break;
 
           if (debugMode) {
-            results.forEach((box) => {
-              const translatedBox = {
-                box: box.box.map((point) => [point[0] + rect.x, point[1] + rect.y]),
+            const newBoxes = results.map((box) => {
+              const sourceX = Math.max(0, rect.x - bufferX);
+              const sourceY = Math.max(0, rect.y - 8);
+
+              const mapPoint = (p) => [
+                (p[0] / scale) - padding + sourceX,
+                (p[1] / scale) - 8 + sourceY
+              ];
+
+              const mappedBox = box.box.map(mapPoint);
+              
+              const boxCenterX = (mappedBox[0][0] + mappedBox[2][0]) / 2;
+              const boxCenterY = (mappedBox[0][1] + mappedBox[2][1]) / 2;
+              const cellCenterX = rect.x + rect.width / 2;
+              const cellCenterY = rect.y + rect.height / 2;
+              
+              const distX = Math.abs(boxCenterX - cellCenterX);
+              const distY = Math.abs(boxCenterY - cellCenterY);
+              const isAligned = distX < rect.width * 0.2 && distY < rect.height * 0.2;
+
+              const confidence = typeof box.confidence !== 'undefined' ? box.confidence : (typeof box.prob !== 'undefined' ? Math.round(box.prob * 100) : 100);
+
+              return {
+                box: mappedBox,
                 text: box.text,
+                confidence: confidence,
+                isAligned: isAligned
               };
-              allDebugBoxes.push(translatedBox);
             });
+            setDebugBoxes((prev) => [...prev, ...newBoxes]);
           }
 
           let text = results
@@ -929,9 +988,17 @@ export default function UniversalOCRModal({
             .trim();
           if (text) {
             text = text.replace(/[|]/g, '').trim();
-            if (isRTL) text = smartRTLFix(text);
+            
+            // [MATRICULE SANITIZER] Strip any accidental Arabic characters from IDs
+            if (isID) {
+               text = text.replace(/[\u0600-\u06FF]/g, '').trim();
+            }
+
+            if (isRTL && !isID) text = smartRTLFix(text);
             gridResults[r][field] = text;
-            if (isMounted.current) addLog(`[CELL] R${r + 1}C${c + 1} (${field}): ${text}`);
+            
+            const avgConf = results.length > 0 ? Math.round(results.reduce((acc, b) => acc + (b.confidence || (b.prob*100) || 100), 0) / results.length) : 0;
+            if (isMounted.current) addLog(`[CELL] R${r + 1}C${c + 1} (${field}): ${text} (${avgConf}%)`);
           }
 
           cellsProcessed++;
@@ -945,15 +1012,13 @@ export default function UniversalOCRModal({
       if (isMounted.current) {
         setCandidates(gridResults.filter((c) => c.national_id || c.full_name || c.job_info));
         if (debugMode) {
-          setDebugBoxes(allDebugBoxes);
-          addLog(`[DEBUG] ${allDebugBoxes.length} zones de texte détectées.`);
+          // setDebugBoxes(allDebugBoxes); // Removed to prevent state fighting
+          addLog(`[DEBUG] Scan terminé. Resté sur l'onglet Scan.`);
           setTimeout(drawDebugGrid, 100);
         }
 
         if (!debugMode && gridResults.length > 0) {
           setActiveTab('results');
-        } else if (debugMode) {
-          addLog("[DEBUG] Scan terminé. Resté sur l'onglet Scan.");
         }
       }
     } catch (e) {
@@ -973,68 +1038,67 @@ export default function UniversalOCRModal({
     setProgress(0);
     setStatusText('Hybrid Mode (Smart Cellular)...');
 
+    const isRTL = docLanguage === 'ara';
     let currentWorkers = tesseractWorkersRef.current;
-    let currentPaddleOcr = paddleOcrRef.current;
+    let currentFraWorkers = tesseractFraWorkersRef.current;
 
     try {
       if (isMounted.current) addLog('[HYBRID] Starting Engines...');
-      const langs = docLanguage === 'ara' ? 'ara+fra' : 'fra';
+      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
+      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
+      
+      // [SMART HYBRID LANG] Main pool for Names
+      const tesseractNeedsArabic = isRTL && colMapping.some((field, idx) => 
+        colEngines[idx] === 'tesseract' && (field === 'full_name' || field === 'job_info')
+      );
+      const mainLangs = tesseractNeedsArabic ? 'ara+fra' : 'fra';
+
       const hardwareCores = window.navigator.hardwareConcurrency || 1;
       const numTesseractWorkers = Math.min(2, Math.max(1, hardwareCores - 1));
 
-      // 1. Init Tesseract if needed
-      if (currentWorkers.length !== numTesseractWorkers || currentLangsRef.current !== langs) {
-        const tessConfig = await resolveTesseractAssetConfig(langs);
-        addLog(`[HYBRID] Initializing Tesseract workers (${langs})...`);
+      // 1. Init Main Pool
+      if (currentWorkers.length !== numTesseractWorkers || currentLangsRef.current !== mainLangs) {
+        const tessConfig = await resolveTesseractAssetConfig(mainLangs);
+        addLog(`[HYBRID] Initializing Main Pool (${mainLangs})...`);
         currentWorkers.forEach(w => w.terminate());
         currentWorkers = [];
-        currentLangsRef.current = langs;
+        currentLangsRef.current = mainLangs;
         for (let i = 0; i < numTesseractWorkers; i++) {
-          const w = await window.Tesseract.createWorker(langs, window.Tesseract.OEM?.DEFAULT || 3, {
-            workerPath: tessConfig.workerPath,
-            corePath: tessConfig.corePath,
-            langPath: tessConfig.langPath,
-            workerBlob: true,
-            gzip: tessConfig.gzip,
-            cacheMethod: 'none',
-            logger: (m) => {
-              if (isMounted.current) {
-                const prog = m.progress ? Math.round(m.progress * 100) : 0;
-                addLog(`[HYBRID_TESS_W${i}] ${m.status}: ${prog}%`);
-              }
-            },
+          const w = await window.Tesseract.createWorker(mainLangs, window.Tesseract.OEM?.DEFAULT || 3, {
+            workerPath: tessConfig.workerPath, corePath: tessConfig.corePath, langPath: tessConfig.langPath,
+            workerBlob: true, gzip: tessConfig.gzip, cacheMethod: 'none',
+            logger: (m) => { if (isMounted.current) addLog(`[HYBRID_W${i}] ${m.status}: ${m.progress ? Math.round(m.progress * 100) : 0}%`); }
           });
           currentWorkers.push(w);
         }
         tesseractWorkersRef.current = currentWorkers;
-      } else {
-        addLog('[HYBRID] Reusing Tesseract workers.');
       }
 
-      // 2. Init Paddle if needed
-      if (!currentPaddleOcr) {
-        const modelsUrl = getModelsUrl();
-        currentPaddleOcr = await Ocr.create({
-          models: {
-            detectionPath: `${modelsUrl}/det.onnx`,
-            recognitionPath: `${modelsUrl}/rec_ara.onnx`,
-            dictionaryPath: `${modelsUrl}/keys_ara.txt`,
-          },
+      // 2. Init Dedicated Latin Pool
+      if (currentFraWorkers.length === 0) {
+        addLog(`[HYBRID] Initializing Latin-Only Pool (fra)...`);
+        const tessConfig = await resolveTesseractAssetConfig('fra');
+        const w = await window.Tesseract.createWorker('fra', window.Tesseract.OEM?.DEFAULT || 3, {
+          workerPath: tessConfig.workerPath, corePath: tessConfig.corePath, langPath: tessConfig.langPath,
+          workerBlob: true, gzip: tessConfig.gzip, cacheMethod: 'none'
         });
-        paddleOcrRef.current = currentPaddleOcr;
-        addLog('[HYBRID] Paddle engine initialized.');
-      } else {
-        addLog('[HYBRID] Reusing Paddle engine.');
+        currentFraWorkers = [w];
+        tesseractFraWorkersRef.current = currentFraWorkers;
       }
 
-      const sortedH = [0, ...hLines, 1].sort((a, b) => a - b);
-      const sortedV = [0, ...vLines, 1].sort((a, b) => a - b);
-      const isRTL = docLanguage === 'ara';
+      // 3. Init Paddle if needed
+      if (!paddleOcrRef.current) {
+        const modelsUrl = getModelsUrl();
+        paddleOcrRef.current = await Ocr.create({
+          models: { detectionPath: `${modelsUrl}/det.onnx`, recognitionPath: `${modelsUrl}/rec_ara.onnx`, dictionaryPath: `${modelsUrl}/keys_ara.txt` }
+        });
+        addLog('[HYBRID] Paddle initialized.');
+      }
+      const currentPaddleOcr = paddleOcrRef.current;
+
       const numRows = sortedH.length - 1;
       const numCols = sortedV.length - 1;
-      let gridResults = Array(numRows)
-        .fill(null)
-        .map(() => createEmptyCandidate());
+      let gridResults = Array(numRows).fill(null).map(() => createEmptyCandidate());
       const totalCells = numRows * numCols;
       let cellsProcessed = 0;
 
@@ -1042,42 +1106,59 @@ export default function UniversalOCRModal({
         if (!isMounted.current) break;
         const colIndex = isRTL ? numCols - 1 - c : c;
         const field = colMapping[colIndex];
-
-        if (!field || field === 'ignore') {
-          cellsProcessed += numRows;
-          continue;
-        }
+        if (!field || field === 'ignore') { cellsProcessed += numRows; continue; }
 
         const enginePreference = colEngines[colIndex] || 'paddle';
+        const isID = field === 'national_id';
 
         if (enginePreference === 'tesseract') {
-          if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Tesseract (User Selected)`);
+          // ROUTING: Hand IDs to the Latin-only Pool
+          const activePool = isID ? currentFraWorkers : currentWorkers;
+          
+          if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Tesseract (${isID ? 'Latin-Only' : 'Main'})`);
+          
           const params = {
             tessedit_pageseg_mode: '7',
-            preserve_interword_spaces: '1',
-            tessedit_char_whitelist:
-              '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-. ',
+            preserve_interword_spaces: isID ? '0' : '1',
+            tessedit_char_whitelist: isID ? '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz/-.' : '',
+            tessedit_char_blacklist: isID ? 'ابتثجحخدذرزسشصضطظعغفقكلمنهوي' : '',
           };
-          await Promise.all(currentWorkers.map((w) => w.setParameters(params)));
+          await Promise.all(activePool.map((w) => w.setParameters(params)));
+          
           const promises = [];
           for (let r = 0; r < numRows; r++) {
-            const worker = currentWorkers[r % numTesseractWorkers];
+            const worker = activePool[r % activePool.length];
             const task = async () => {
               if (!isMounted.current) return;
-              const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
-              const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
-              const cropParams = {
+              const rect = {
                 x: sortedV[colIndex] * imgDimensions.width,
                 y: sortedH[r] * imgDimensions.height,
-                width: rawW,
-                height: rawH,
+                width: (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width,
+                height: (sortedH[r + 1] - sortedH[r]) * imgDimensions.height,
               };
-              const cellUrl = getCellImage(imageRef.current, cropParams, 5, 5);
+              
+              const padding = isID ? 15 : 5;
+              const bufferX = isID ? 12 : 8;
+              const tessScale = isID ? 3.5 : 2.5;
+              const tessBinarize = isID; 
+              const cellUrl = getCellImage(imageRef.current, rect, 5, padding, tessBinarize, tessScale, bufferX, 5);
 
-              const {
-                data: { text },
-              } = await worker.recognize(cellUrl);
-              if (text.trim() && isMounted.current) gridResults[r][field] = text.trim();
+              if (debugMode && isMounted.current) {
+                setDebugCrops((prev) => [...prev, { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl }]);
+              }
+
+              const { data: { text, confidence } } = await worker.recognize(cellUrl);
+              let cleanText = text.trim();
+              if (isID) cleanText = cleanText.replace(/[\u0600-\u06FF]/g, '');
+              if (cleanText && isMounted.current) gridResults[r][field] = cleanText;
+
+              if (debugMode && isMounted.current) {
+                setDebugBoxes(prev => [...prev, {
+                  box: [[rect.x, rect.y], [rect.x + rect.width, rect.y], [rect.x + rect.width, rect.y + rect.height], [rect.x, rect.y + rect.height]],
+                  text: cleanText, confidence, isAligned: true
+                }]);
+              }
+              if (isMounted.current) addLog(`[HYBRID_CELL] ${field}: ${cleanText} (${confidence}%)`);
               cellsProcessed++;
               if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
             };
@@ -1085,31 +1166,58 @@ export default function UniversalOCRModal({
           }
           await Promise.all(promises);
         } else {
+          // ... (Paddle Hybrid logic remains correct)
           if (isMounted.current) addLog(`[HYBRID] Column "${field}" -> Paddle (Text Cellular)`);
           for (let r = 0; r < numRows; r++) {
             if (!isMounted.current) break;
-            const rawW = (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width;
-            const rawH = (sortedH[r + 1] - sortedH[r]) * imgDimensions.height;
             const cropParams = {
               x: sortedV[colIndex] * imgDimensions.width,
               y: sortedH[r] * imgDimensions.height,
-              width: rawW,
-              height: rawH,
+              width: (sortedV[colIndex + 1] - sortedV[colIndex]) * imgDimensions.width,
+              height: (sortedH[r + 1] - sortedH[r]) * imgDimensions.height,
             };
-            const cellUrl = getCellImage(imageRef.current, cropParams, 5, 6, false, 2);
+            const padding = isID ? 25 : 8;
+            const bufferX = isID ? 10 : 8;
+            const scale = 2.2;
+            const cellUrl = getCellImage(imageRef.current, cropParams, 8, padding, false, scale, bufferX, 8);
+
+            if (debugMode && isMounted.current) {
+              setDebugCrops((prev) => [
+                ...prev,
+                { label: `R${r + 1}C${c + 1} (${field})`, url: cellUrl },
+              ]);
+            }
 
             const results = await currentPaddleOcr.detect(cellUrl);
             if (!isMounted.current) break;
-            let text = results
-              .map((b) => b.text)
-              .join(' ')
-              .trim();
 
+            if (debugMode) {
+              const newBoxes = results.map((box) => {
+                const sourceX = Math.max(0, cropParams.x - bufferX);
+                const sourceY = Math.max(0, cropParams.y - 8);
+                const mapPoint = (p) => [ (p[0] / scale) - padding + sourceX, (p[1] / scale) - 8 + sourceY ];
+                const mappedBox = box.box.map(mapPoint);
+                const boxCenterX = (mappedBox[0][0] + mappedBox[2][0]) / 2;
+                const boxCenterY = (mappedBox[0][1] + mappedBox[2][1]) / 2;
+                const cellCenterX = cropParams.x + cropParams.width / 2;
+                const cellCenterY = cropParams.y + cropParams.height / 2;
+                const distX = Math.abs(boxCenterX - cellCenterX);
+                const distY = Math.abs(boxCenterY - cellCenterY);
+                const isAligned = distX < cropParams.width * 0.2 && distY < cropParams.height * 0.2;
+                const confidence = typeof box.confidence !== 'undefined' ? box.confidence : (typeof box.prob !== 'undefined' ? Math.round(box.prob * 100) : 100);
+                return { box: mappedBox, text: box.text, confidence, isAligned };
+              });
+              setDebugBoxes((prev) => [...prev, ...newBoxes]);
+            }
+
+            let text = results.map((b) => b.text).join(' ').trim();
             if (text) {
               text = text.replace(/[|]/g, '').trim();
-              if (isRTL) text = smartRTLFix(text);
+              if (isID) text = text.replace(/[\u0600-\u06FF]/g, '').trim();
+              if (isRTL && !isID) text = smartRTLFix(text);
               gridResults[r][field] = text;
-              if (isMounted.current) addLog(`[CELL] ${field}: ${text}`);
+              const avgConf = results.length > 0 ? Math.round(results.reduce((acc, b) => acc + (b.confidence || (b.prob*100) || 100), 0) / results.length) : 0;
+              if (isMounted.current) addLog(`[HYBRID_CELL] ${field}: ${text} (${avgConf}%)`);
             }
             cellsProcessed++;
             if (isMounted.current) setProgress(Math.round((cellsProcessed / totalCells) * 100));
@@ -1138,6 +1246,8 @@ export default function UniversalOCRModal({
   const handleGo = async () => {
     setErrorMessage(null); // Clear previous errors
     setIsProcessing(true); // Indicate processing has started
+    setDebugBoxes([]); // Clear previous debug boxes
+    setDebugCrops([]); // [MEMORY FIX] Clear old traces to prevent OOM
     try {
       if (ocrEngine === 'paddle') {
         await runPaddleOCR(); // Now Cellular (Slice-then-Read)
@@ -1691,18 +1801,12 @@ export default function UniversalOCRModal({
                   background: '#333',
                 }}
               >
-                {/* Debug Canvas (RESTORED VISIBILITY) */}
-                <canvas
-                  ref={canvasRef}
-                  style={{ display: debugMode ? 'block' : 'none', width: '100%', maxWidth: '100%' }}
-                />
-
                 {/* Interactive Editor with Scroll Gutter */}
                 <div
                   style={{
                     position: 'relative',
                     minWidth: '600px',
-                    display: debugMode ? 'none' : 'block',
+                    display: 'block',
                   }}
                 >
                   {/* SCROLL GUTTER */}
@@ -1714,14 +1818,14 @@ export default function UniversalOCRModal({
                       width: '50px',
                       height: '100%',
                       zIndex: 60,
-                      background: 'rgba(0, 0, 0, 0.1)',
-                      borderLeft: '2px solid rgba(0, 0, 0, 0.2)',
+                      background: 'rgba(0, 0, 0, 0.05)',
+                      borderLeft: '1px solid rgba(0, 0, 0, 0.1)',
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      touchAction: 'pan-y',
-                      pointerEvents: 'auto',
+                      touchAction: 'auto',
+                      pointerEvents: 'none', // Don't block horizontal scroll
                     }}
                   >
                     <div
@@ -1816,11 +1920,25 @@ export default function UniversalOCRModal({
 
                   {/* STRICT IMAGE WRAPPER (Fixes the coordinate offset drift) */}
                   <div style={{ position: 'relative', marginTop: '30px' }}>
+                    {/* Debug Canvas (OVERLAY) */}
+                    <canvas
+                      ref={canvasRef}
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        left: 0,
+                        width: '100%',
+                        height: '100%',
+                        zIndex: 35, // Below handles (40) but above image
+                        pointerEvents: 'none',
+                        display: debugMode ? 'block' : 'none',
+                      }}
+                    />
                     {/* MAIN IMAGE */}
                     <img
                       ref={imageRef}
                       src={image}
-                      style={{ display: 'block', width: '100%', touchAction: 'pan-y' }}
+                      style={{ display: 'block', width: '100%', touchAction: 'auto' }}
                       alt="Scan"
                     />
 
@@ -2062,7 +2180,7 @@ export default function UniversalOCRModal({
             )}
 
             {/* TRACE GALLERY (DEBUG CROPS RESTORED) */}
-            {debugCrops.length > 0 && (
+            {debugMode && debugCrops.length > 0 && (
               <div style={{ marginTop: '20px', borderTop: '2px solid #ddd', paddingTop: '10px' }}>
                 <h4 style={{ fontSize: '0.8rem', color: '#64748b', marginBottom: '10px' }}>
                   <FaEye /> Traces des cellules découpées (Debug)
