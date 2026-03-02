@@ -301,6 +301,19 @@ export const db = {
     triggerBackupCheck();
   },
 
+  // --- BATCH MOVE HELPERS ---
+  async moveWorkers(ids, newDeptId) {
+    const numIds = Array.from(ids).map(Number);
+    await dbInstance.workers.where('id').anyOf(numIds).modify({ department_id: Number(newDeptId) });
+    triggerBackupCheck();
+  },
+
+  async moveWeaponHolders(ids, newDeptId) {
+    const numIds = Array.from(ids).map(Number);
+    await dbInstance.weapon_holders.where('id').anyOf(numIds).modify({ department_id: Number(newDeptId) });
+    triggerBackupCheck();
+  },
+
   // --- IMPORT / EXPORT ---
   exportData,
   exportDataEncrypted: exportData,

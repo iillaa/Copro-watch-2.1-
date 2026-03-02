@@ -1,7 +1,39 @@
 import { useState, useRef, useEffect } from 'react';
-// [FIX] Removed import Tesseract to use global window.Tesseract (UMD) for true offline support
+// [FIX] Removed import Tesseract and ORT to use global window objects for true isolation from Vite
 import Ocr from '@gutenye/ocr-browser';
-import * as ort from 'onnxruntime-web';
+
+// --- [CRITICAL] GLOBAL OCR ENGINE CONFIGURATION (ELITE PERFORMANCE) ---
+if (typeof window !== 'undefined') {
+  const setupOrt = () => {
+    const ort = window.ort;
+    if (!ort) return;
+
+    // 1. Detect Environment
+    const isAndroid = /Android/i.test(navigator.userAgent) || (window.Capacitor && window.Capacitor.getPlatform() === 'android');
+    const isChrome = /Chrome/i.test(navigator.userAgent);
+    const chromeVersion = isChrome ? parseInt(navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] || '0') : 999;
+    const isOldBrowser = isChrome && chromeVersion < 91;
+
+    // 2. Performance Rules (ELITE)
+    ort.env.wasm.proxy = false;
+    // Enable Multi-threading
+    ort.env.wasm.numThreads = Math.min(4, window.navigator.hardwareConcurrency || 2);
+    // Enable SIMD (The Opcode 0xfd thing)
+    ort.env.wasm.simd = true; 
+
+    if (isOldBrowser && !isAndroid) {
+      console.warn('[COMPAT] Old Browser detected (Chrome ' + chromeVersion + '). SIMD may crash.');
+    }
+
+    ort.env.wasm.wasmPaths = './'; 
+    ort.env.wasm.logging = { warning: () => {} };
+    window.ort = ort;
+    console.log('[OCR_CONFIG] Elite 1.24.1 Initialized. SIMD=ON, Threads=' + ort.env.wasm.numThreads);
+  };
+
+  if (window.ort) setupOrt();
+  else setTimeout(setupOrt, 500);
+}
 
 import { db } from '../services/db';
 import {
@@ -275,21 +307,16 @@ export default function UniversalOCRModal({
 
   // [NEW] Asset URL Helper for Capacitor/Web/Standalone consistency
   const getAssetUrl = (path, isDirectory = false) => {
-    const isCapacitor = window.Capacitor && window.Capacitor.isNative;
-    const isFileProtocol =
-      window.location.protocol === 'file:' || window.location.origin === 'null';
-
     // Clean leading/trailing slashes
     let cleanPath = path.replace(/^\/+|\/+$/g, '');
 
+    const isCapacitor = window.Capacitor && window.Capacitor.isNative;
     if (isCapacitor) {
-      // [FIX] Use origin-based URLs and avoid accidental double slashes.
       return cleanPath ? `${window.location.origin}/${cleanPath}` : `${window.location.origin}/`;
-    } else if (isFileProtocol) {
-      return cleanPath ? `./${cleanPath}` : './';
-    } else {
-      return cleanPath ? `/${cleanPath}` : '/';
     }
+
+    // Always use relative paths for Standalone and regular Web for better portability
+    return cleanPath ? `./${cleanPath}` : './';
   };
 
   const resolveTesseractAssetConfig = async (langs) => {
@@ -349,71 +376,30 @@ export default function UniversalOCRModal({
 
   // [STRATEGY 2]: STRICT ISOLATION & DYNAMIC INITIALIZATION
   useEffect(() => {
-    console.log('Initializing OCR Engine in Sandbox...');
-    const isProd = import.meta.env.PROD;
-
-    // 1. Thread & Worker Rules
-    ort.env.wasm.proxy = false;
-    ort.env.wasm.numThreads = 1;
-    // [COMPAT] Disable SIMD to support older desktop CPUs/browsers in standalone mode
-    // (prevents: "WebAssembly SIMD is not supported in the current environment")
-    ort.env.wasm.simd = false;
-
-    // 2. Suppress ONNX Runtime CPU vendor warning (harmless but noisy)
-    ort.env.wasm.logging = { warning: () => {} };
-
-    // 2. Path Rules
-    if (isProd) {
-      const isFileProtocol =
-        window.location.protocol === 'file:' || window.location.origin === 'null';
-      const assetsBase = getAssetUrl('/assets', true);
-      const rootBase = getAssetUrl('/', true);
-
-      // [ROBUST] Explicit mapping prevents bad URL resolution (ex: https://localhost//...)
-      // and lets ORT load JS loader chunks from /assets while keeping wasm fallbacks at root.
-      ort.env.wasm.wasmPaths = {
-        'ort-wasm-simd-threaded.mjs': `${assetsBase}/ort-wasm-simd-threaded.mjs`,
-        'ort-wasm-simd-threaded.jsep.mjs': `${assetsBase}/ort-wasm-simd-threaded.jsep.mjs`,
-        'ort-wasm-simd-threaded.asyncify.mjs': `${assetsBase}/ort-wasm-simd-threaded.asyncify.mjs`,
-        'ort-wasm-simd-threaded.jspi.mjs': `${assetsBase}/ort-wasm-simd-threaded.jspi.mjs`,
-        'ort-wasm-simd-threaded.wasm': `${assetsBase}/ort-wasm-simd-threaded.wasm`,
-        'ort-wasm-simd-threaded.jsep.wasm': `${assetsBase}/ort-wasm-simd-threaded.jsep.wasm`,
-        'ort-wasm-simd-threaded.asyncify.wasm': `${assetsBase}/ort-wasm-simd-threaded.asyncify.wasm`,
-        'ort-wasm-simd-threaded.jspi.wasm': `${assetsBase}/ort-wasm-simd-threaded.jspi.wasm`,
-        // non-SIMD fallback binaries kept at root
-        'ort-wasm.wasm': `${rootBase}/ort-wasm.wasm`,
-        'ort-wasm-simd.wasm': `${rootBase}/ort-wasm-simd.wasm`,
-      };
-
-      if (isFileProtocol) {
-        // For standalone HTML opened directly (file://)
-        // Keep deterministic local relative loading.
-        ort.env.wasm.wasmPaths = './';
-      }
-
-      console.log('[ORT] wasmPaths configured:', ort.env.wasm.wasmPaths);
+    const isAndroid = /Android/i.test(navigator.userAgent) || (window.Capacitor && window.Capacitor.getPlatform() === 'android');
+    const ort = window.ort;
+    
+    if (ort) {
+      const performanceMode = ort.env.wasm.simd ? 'PERFORMANCE (SIMD)' : 'SAFE (Non-SIMD)';
+      addLog(`[SYSTEM] OS: ${isAndroid ? 'Android' : 'PC/Web'}`);
+      addLog(`[SYSTEM] Engine: ${performanceMode}`);
+      addLog(`[SYSTEM] Threads: ${ort.env.wasm.numThreads}`);
     } else {
-      // npm run dev
-      ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.1/dist/';
+      addLog(`[SYSTEM] Waiting for OCR Engine...`);
     }
-    window.ort = ort;
 
     // THE KILL SWITCH
     return () => {
       console.log('Modal closed: Executing Memory Kill Switch...');
-
+      const ort = window.ort;
       // Destroy ONNX Runtime
-      if (window.ort) {
-        window.ort.env.wasm.numThreads = 0;
-        window.ort = null;
+      if (ort) {
+        ort.env.wasm.numThreads = 0;
       }
-
       // Destroy OpenCV Global
       if (window.cv) {
         window.cv = null;
       }
-
-      // Force Garbage Collection hint (browser decides when to actually clear it)
       console.log('OCR RAM flagged for deletion.');
     };
   }, []);
@@ -1000,6 +986,15 @@ export default function UniversalOCRModal({
             height: rawH,
           };
 
+          // [ELITE] ADAPTIVE ROW SENSING
+          // Detect if rows are "compact" (small height) and shrink the detection padding
+          // to prevent bleeding into adjacent rows.
+          let unclipRatio = 1.6; // Default
+          if (rawH < 45) {
+            unclipRatio = 1.3; // Compact Row Mode
+            if (cellsProcessed === 0) addLog('[ADAPTIVE] Compact layout detected. Tightening boxes.');
+          }
+
           const isID = field === 'national_id';
           const padding = isID ? 25 : 8;
           const bufferX = isID ? 10 : 8;
@@ -1022,7 +1017,9 @@ export default function UniversalOCRModal({
             ]);
           }
 
-          const results = await ocr.detect(cellUrl);
+          const results = await ocr.detect(cellUrl, {
+            det_db_unclip_ratio: unclipRatio,
+          });
           if (!isMounted.current) break;
 
           if (debugMode) {

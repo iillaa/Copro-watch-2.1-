@@ -85,7 +85,11 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
     if (!showArchived) result = result.filter((h) => !h.archived);
 
     if (filterDept) {
-      result = result.filter((h) => h.department_id === Number(filterDept));
+      if (filterDept === 'none') {
+        result = result.filter((h) => !h.department_id || h.department_id === 0);
+      } else {
+        result = result.filter((h) => h.department_id === Number(filterDept));
+      }
     }
 
     if (filterStatus) {
@@ -470,6 +474,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
           }}
         >
           <option value="">Tous les services</option>
+          <option value="none">⚠️ Sans service</option>
           {departments.map((d) => (
             <option key={d.id} value={d.id}>
               {d.name}

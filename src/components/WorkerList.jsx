@@ -168,7 +168,13 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
 
     // 1. Fast Filtering (Booleans/IDs first)
     if (!showArchived) result = result.filter((w) => !w.archived);
-    if (filterDept) result = result.filter((w) => w.department_id === Number(filterDept));
+    if (filterDept) {
+      if (filterDept === 'none') {
+        result = result.filter((w) => !w.department_id || w.department_id === 0);
+      } else {
+        result = result.filter((w) => w.department_id === Number(filterDept));
+      }
+    }
     
     // 2. Status filters (Optimized order)
     if (filterStatus) {
@@ -448,12 +454,9 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     }
   };
   const handleBatchMoveConfirm = async (deptId) => {
-    const targets = workers.filter((w) => selectedIds.has(w.id));
-    await Promise.all(targets.map((w) => db.saveWorker({ ...w, department_id: parseInt(deptId) })));
-
+    await db.moveWorkers(selectedIds, deptId);
     setShowMoveModal(false);
     setSelectedIds(new Set());
-    // [FIX] Mode stays ON after move
     loadData();
   };
 
@@ -765,6 +768,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
               onChange={(e) => setFilterDept(e.target.value)}
             >
               <option value="">Tous les services</option>
+              <option value="none">⚠️ Sans service</option>
               {departments.map((d) => (
                 <option key={d.id} value={d.id}>
                   {d.name}

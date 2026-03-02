@@ -20,7 +20,7 @@ export default defineConfig({
   ],
   
   // [CRITICAL FIX] Set base to './' so the file works when opened from a local disk
-  base: '/', 
+  base: './', 
 
   build: {
     outDir: 'dist-standalone', // Ensure output goes to dist-standalone
