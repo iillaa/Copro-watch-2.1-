@@ -2676,6 +2676,7 @@ export default function UniversalOCRModal({
                             style={{
                               fontWeight: 'bold',
                               width: '100%',
+                              fontFamily: c.is_viewing_ar ? 'Amiri, serif' : 'inherit',
                               paddingRight: c.suggested_name ? '25px' : '8px',
                               borderColor: c.suggested_name ? '#fde68a' : '#cbd5e1',
                             }}
@@ -2772,6 +2773,7 @@ export default function UniversalOCRModal({
                             onChange={(e) => updateCandidate(c.id, 'job_info', e.target.value)}
                             style={{
                               paddingRight: c.suggested_job ? '25px' : '8px',
+                              fontFamily: c.is_viewing_ar ? 'Amiri, serif' : 'inherit',
                               borderColor: c.suggested_job ? '#fde68a' : '#cbd5e1',
                             }}
                           />
