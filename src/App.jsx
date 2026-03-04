@@ -17,7 +17,7 @@ import WeaponDashboard from './components/Weapons/WeaponDashboard';
 import WeaponList from './components/Weapons/WeaponList';
 import WeaponDetail from './components/Weapons/WeaponDetail';
 
-import { FaUsers, FaChartLine, FaCog, FaFlask, FaShieldAlt, FaUserShield } from 'react-icons/fa';
+import { FaUsers, FaChartLine, FaCog, FaFlask, FaShieldAlt, FaUserShield, FaGlobe } from 'react-icons/fa';
 
 // [STRATEGY] Lazy load OCR Modal - NOT included in main bundle
 const UniversalOCRModal = lazy(() => import('./components/UniversalOCRModal'));
@@ -59,6 +59,11 @@ function App() {
   }, [forceMobile]);
 
   const [pin, setPin] = useState('0000');
+  const [appLanguage, setAppLanguage] = useState(() => localStorage.getItem('copro_app_lang') || 'fr');
+
+  useEffect(() => {
+    localStorage.setItem('copro_app_lang', appLanguage);
+  }, [appLanguage]);
 
   // [NEW] Touch Swipe Gestures for Tablet
   const [touchStart, setTouchStart] = useState(null);
@@ -507,19 +512,22 @@ function App() {
             <WorkerList
               onNavigateWorker={navigateToWorker}
               compactMode={compactMode}
+              appLanguage={appLanguage}
+              onToggleLanguage={() => setAppLanguage(p => p === 'fr' ? 'ar' : 'fr')}
             />
           )}
           {view === 'worker-detail' && selectedWorkerId && (
             <WorkerDetail
               workerId={selectedWorkerId}
               onBack={() => setView('workers')}
-              compactMode={compactMode} // <--- [NEW] Pass Prop
+              compactMode={compactMode}
+              appLanguage={appLanguage}
             />
           )}
           {view === 'water-analyses' && (
             <WaterAnalyses
               key={waterResetKey}
-              compactMode={compactMode} // <--- [NEW] Pass Prop
+              compactMode={compactMode}
             />
           )}
 
@@ -534,6 +542,8 @@ function App() {
             <WeaponList 
               onNavigateWeaponHolder={navigateToWeaponHolder} 
               compactMode={compactMode} 
+              appLanguage={appLanguage}
+              onToggleLanguage={() => setAppLanguage(p => p === 'fr' ? 'ar' : 'fr')}
             />
           )}
           {view === 'weapon-detail' && selectedWeaponHolderId && (
@@ -541,6 +551,7 @@ function App() {
               holderId={selectedWeaponHolderId}
               onBack={() => setView('weapons-list')}
               compactMode={compactMode}
+              appLanguage={appLanguage}
             />
           )}
 

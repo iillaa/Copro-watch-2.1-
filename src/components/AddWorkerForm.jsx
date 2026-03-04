@@ -2,24 +2,35 @@ import { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { logic } from '../services/logic';
 import { useToast } from './Toast';
+import { FaGlobe } from 'react-icons/fa';
 
-export default function WorkerForm({ workerToEdit, onClose, onSave }) {
+export default function WorkerForm({ workerToEdit, onClose, onSave, appLanguage = 'fr' }) {
   const { showToast, ToastContainer } = useToast();
   const [departments, setDepartments] = useState([]);
   const [workplaces, setWorkplaces] = useState([]);
 
+  // [NEW] Local language toggle for quick checking
+  const [localLang, setLocalLang] = useState(appLanguage);
+  const isArMode = localLang === 'ar';
+
   const [formData, setFormData] = useState({
     full_name: '',
+    full_name_ar: '',
     national_id: '',
     phone: '',
     department_id: '',
     workplace_id: '',
     job_role: '',
+    job_role_ar: '',
     start_date: new Date().toISOString().split('T')[0],
     notes: '',
     next_exam_due: '',
-    archived: false, // On initialise à false par défaut
+    archived: false,
   });
+
+  useEffect(() => {
+    setLocalLang(appLanguage);
+  }, [appLanguage]);
 
   useEffect(() => {
     const loadRefData = async () => {
@@ -29,9 +40,7 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
         setDepartments(depts);
         setWorkplaces(works);
 
-        // [FIX] Sticky Defaults
         if (!workerToEdit) {
-          // 1. Service
           const lastDept = localStorage.getItem('last_worker_dept');
           const validDept =
             lastDept && depts.find((d) => d.id === Number(lastDept))
@@ -40,7 +49,6 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
               ? depts[0].id
               : '';
 
-          // 2. Lieu de Travail
           const lastPlace = localStorage.getItem('last_worker_place');
           const validPlace =
             lastPlace && works.find((p) => p.id === Number(lastPlace))
@@ -62,13 +70,22 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
     loadRefData();
 
     if (workerToEdit) {
-      // On charge les données existantes (y compris le statut 'archived')
       setFormData(workerToEdit);
     }
   }, [workerToEdit]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    
+    // [SMART DETECT] If typing in Arabic name field while in AR mode, or vice versa
+    if (name === 'full_name') {
+      const isArabic = /[\u0600-\u06FF]/.test(value);
+      if (isArabic) {
+        setFormData(prev => ({ ...prev, full_name_ar: value }));
+        return;
+      }
+    }
+    
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
@@ -78,45 +95,35 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
       showToast('Veuillez sélectionner un lieu de travail.', 'error');
       return;
     }
-    // --- LOGIQUE ANTI-DOUBLON ---
+    
     try {
       const allWorkers = await db.getWorkers();
-      // On normalise pour comparer proprement (minuscule, sans espaces inutiles)
       const normalize = (str) => (str ? str.toString().trim().toLowerCase() : '');
       const currentName = normalize(formData.full_name);
       const currentMatricule = normalize(formData.national_id);
-      const currentPhone = normalize(formData.phone);
+      
       const duplicate = allWorkers.find((w) => {
-        // Ignorer le travailleur qu'on modifie actuellement
         if (workerToEdit && w.id === workerToEdit.id) return false;
-        // Vérifier les doublons
         const nameMatch = normalize(w.full_name) === currentName;
-        // On ne vérifie matricule/téléphone que s'ils ne sont pas vides
         const matriculeMatch = currentMatricule && normalize(w.national_id) === currentMatricule;
-        const phoneMatch = currentPhone && normalize(w.phone) === currentPhone;
-        return nameMatch || matriculeMatch || phoneMatch;
+        return nameMatch || matriculeMatch;
       });
       if (duplicate) {
         showToast(`Doublon détecté : ${duplicate.full_name}`, 'error');
-        return; // Arrêter l'enregistrement
+        return;
       }
-    } catch (error) {
-      console.error('Erreur lors de la vérification des doublons', error);
-    }
-    // --- FIN LOGIQUE ---
+    } catch (error) {}
 
-    // [FIX] Save sticky values
     if (formData.department_id) localStorage.setItem('last_worker_dept', formData.department_id);
     if (formData.workplace_id) localStorage.setItem('last_worker_place', formData.workplace_id);
 
-    // Date par défaut si nouvelle saisie
     let nextDue = formData.next_exam_due;
     if (!nextDue) {
       nextDue = new Date().toISOString().split('T')[0];
     }
 
     await db.saveWorker({
-      ...formData, // Cela préserve le champ 'archived' si on modifie un ancien dossier
+      ...formData,
       id: workerToEdit ? workerToEdit.id : undefined,
       department_id: parseInt(formData.department_id),
       workplace_id: parseInt(formData.workplace_id),
@@ -149,25 +156,9 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
           <h3 style={{ margin: 0, color: 'var(--primary)' }}>
             {workerToEdit ? 'Modifier' : 'Ajouter'} un travailleur
           </h3>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'var(--danger-light)',
-              border: '2px solid var(--danger)',
-              color: 'var(--danger)',
-              borderRadius: '8px',
-              padding: '0.5rem',
-              cursor: 'pointer',
-              fontSize: '1.2rem',
-              fontWeight: 'bold',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            ×
-          </button>
+          <button onClick={onClose} className="btn-icon" style={{ color: 'var(--danger)' }}>×</button>
         </div>
 
-        {/* AJOUT : Alerte si le dossier est archivé */}
         {formData.archived && (
           <div
             style={{
@@ -180,32 +171,56 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
               border: '1px solid #ccc',
             }}
           >
-            <strong>📦 Attention :</strong> Ce travailleur est actuellement <strong>archivé</strong>
-            .
-            <br />
-            Ses données ne sont pas visibles dans le tableau de bord principal.
+            <strong>📦 Attention :</strong> Ce travailleur est actuellement <strong>archivé</strong>.
           </div>
         )}
 
         <form onSubmit={handleSubmit}>
+          {/* NOM COMPLET (SMART TOGGLE) */}
           <div className="form-group">
-            <label className="label">Nom complet</label>
+            <label className="label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>{isArMode ? 'الاسم الكامل' : 'Nom Complet'}</span>
+              <button 
+                type="button"
+                onClick={() => setLocalLang(p => p === 'fr' ? 'ar' : 'fr')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  opacity: 0.7
+                }}
+                title="Vérifier l'autre langue"
+              >
+                <FaGlobe size={14} />
+              </button>
+            </label>
             <input
               className="input"
-              name="full_name"
-              value={formData.full_name}
+              name={isArMode ? 'full_name_ar' : 'full_name'}
+              value={(isArMode ? formData.full_name_ar : formData.full_name) || ''}
               onChange={handleChange}
-              required
+              placeholder={isArMode ? 'أدخل الاسم بالعربية' : 'Saisir le nom en français'}
+              dir={isArMode ? 'rtl' : 'ltr'}
+              style={{ 
+                fontFamily: isArMode ? 'Amiri, serif' : 'inherit',
+                fontSize: isArMode ? '1.2rem' : '1rem',
+                fontWeight: 'bold'
+              }}
+              required={!isArMode}
             />
           </div>
 
           <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>
-              <label className="label">N° Matricule / CIN</label>
+              <label className="label">Matricule</label>
               <input
                 className="input"
                 name="national_id"
-                value={formData.national_id}
+                value={formData.national_id || ''}
                 onChange={handleChange}
               />
             </div>
@@ -214,7 +229,7 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
               <input
                 className="input"
                 name="phone"
-                value={formData.phone}
+                value={formData.phone || ''}
                 onChange={handleChange}
               />
             </div>
@@ -222,11 +237,11 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
 
           <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>
-              <label className="label">Service</label>
+              <label className="label">Service RH</label>
               <select
                 className="input"
                 name="department_id"
-                value={formData.department_id}
+                value={formData.department_id || ''}
                 onChange={handleChange}
                 required
               >
@@ -239,11 +254,11 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
               </select>
             </div>
             <div style={{ flex: 1 }}>
-              <label className="label">Lieu de travail</label>
+              <label className="label">Lieu de Travail</label>
               <select
                 className="input"
                 name="workplace_id"
-                value={formData.workplace_id}
+                value={formData.workplace_id || ''}
                 onChange={handleChange}
                 required
               >
@@ -257,36 +272,55 @@ export default function WorkerForm({ workerToEdit, onClose, onSave }) {
             </div>
           </div>
 
+          {/* POSTE / FONCTION (SMART TOGGLE) */}
           <div className="form-group">
-            <label className="label">Poste / Fonction</label>
+            <label className="label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>{isArMode ? 'الوظيفة' : 'Poste / Fonction'}</span>
+              <button 
+                type="button"
+                onClick={() => setLocalLang(p => p === 'fr' ? 'ar' : 'fr')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  opacity: 0.7
+                }}
+              >
+                <FaGlobe size={14} />
+              </button>
+            </label>
             <input
               className="input"
-              name="job_role"
-              value={formData.job_role}
+              name={isArMode ? 'job_role_ar' : 'job_role'}
+              value={(isArMode ? formData.job_role_ar : formData.job_role) || ''}
               onChange={handleChange}
+              placeholder={isArMode ? 'أدخل الوظيفة' : 'Saisir le poste'}
+              dir={isArMode ? 'rtl' : 'ltr'}
+              style={{ 
+                fontFamily: isArMode ? 'Amiri, serif' : 'inherit',
+                fontSize: isArMode ? '1.1rem' : '1rem'
+              }}
             />
           </div>
 
           <div className="form-group">
-            <label className="label">Antécédents médicaux</label>
+            <label className="label">Notes / Antécédents</label>
             <textarea
               className="input"
               name="notes"
-              value={formData.notes}
+              value={formData.notes || ''}
               onChange={handleChange}
-              rows={3}
+              rows={2}
             />
           </div>
 
-          <div
-            style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}
-          >
-            <button type="button" className="btn btn-outline" onClick={onClose}>
-              Annuler
-            </button>
-            <button type="submit" className="btn btn-primary">
-              Enregistrer
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+            <button type="button" className="btn btn-outline" onClick={onClose}>Annuler</button>
+            <button type="submit" className="btn btn-primary">Enregistrer</button>
           </div>
         </form>
         <ToastContainer />

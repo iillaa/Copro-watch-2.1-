@@ -2,9 +2,20 @@ import { useState, useEffect } from 'react';
 import { db } from '../services/db';
 import { logic } from '../services/logic';
 import WaterAnalysisForm from './WaterAnalysisForm';
-import { FaPlay, FaCheckCircle, FaExclamationTriangle, FaClock, FaFlask } from 'react-icons/fa';
+import { useToast } from './Toast';
+import { 
+  FaPlay, 
+  FaCheckCircle, 
+  FaExclamationTriangle, 
+  FaClock, 
+  FaFlask, 
+  FaEye,
+  FaEnvelopeOpenText,
+  FaTimes
+} from 'react-icons/fa';
 
 export default function WaterAnalysesOverview() {
+  const { showToast, ToastContainer } = useToast();
   const [workplaces, setWorkplaces] = useState([]);
   const [waterAnalyses, setWaterAnalyses] = useState([]);
   const [stats, setStats] = useState(null);
@@ -14,6 +25,36 @@ export default function WaterAnalysesOverview() {
   const [selectedAnalysis, setSelectedAnalysis] = useState(null);
   const [showDetailForm, setShowDetailForm] = useState(false);
   const [detailAnalysis, setDetailAnalysis] = useState(null);
+
+  // --- [NEW] MONTHLY REMINDER LOGIC ---
+  const [showMonthlyReminder, setShowMonthlyReminder] = useState(false);
+
+  useEffect(() => {
+    const checkReminder = () => {
+      const now = new Date();
+      const day = now.getDate();
+      const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+      
+      // 1. Is it the first 5 days of the month?
+      const isReminderPeriod = day >= 1 && day <= 5;
+      
+      // 2. Has it already been dismissed this month?
+      const isDismissed = localStorage.getItem('water_lab_reminder_dismissed') === monthKey;
+
+      if (isReminderPeriod && !isDismissed) {
+        setShowMonthlyReminder(true);
+      }
+    };
+    checkReminder();
+  }, []);
+
+  const dismissReminder = () => {
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+    localStorage.setItem('water_lab_reminder_dismissed', monthKey);
+    setShowMonthlyReminder(false);
+  };
+  // ------------------------------------
 
   const loadData = async () => {
     setLoading(true);
@@ -249,6 +290,56 @@ export default function WaterAnalysesOverview() {
 
   return (
     <div>
+      {/* MONTHLY REMINDER BANNER */}
+      {showMonthlyReminder && (
+        <div
+          style={{
+            background: 'linear-gradient(135deg, #0ea5e9 0%, #4f46e5 100%)',
+            color: 'white',
+            padding: '1rem 1.5rem',
+            borderRadius: '12px',
+            marginBottom: '2rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            boxShadow: '0 10px 15px -3px rgba(79, 70, 229, 0.2)',
+            animation: 'slideFadeIn 0.5s ease-out',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={{ 
+              background: 'rgba(255,255,255,0.2)', 
+              padding: '10px', 
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <FaEnvelopeOpenText size={24} />
+            </div>
+            <div>
+              <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700 }}>Rappel Mensuel : Analyse des Eaux</h4>
+              <p style={{ margin: '2px 0 0 0', opacity: 0.9, fontSize: '0.9rem' }}>
+                N'oubliez pas de rédiger la lettre pour le responsable du laboratoire d'analyses.
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={dismissReminder}
+            className="btn-icon"
+            style={{ 
+              color: 'white', 
+              background: 'rgba(255,255,255,0.1)',
+              borderRadius: '8px',
+              padding: '8px'
+            }}
+            title="Masquer pour ce mois"
+          >
+            <FaTimes size={18} />
+          </button>
+        </div>
+      )}
+
       {/* Summary Statistics */}
       {stats && (
         <div
@@ -375,6 +466,7 @@ export default function WaterAnalysesOverview() {
           }}
         />
       )}
+      <ToastContainer />
     </div>
   );
 }

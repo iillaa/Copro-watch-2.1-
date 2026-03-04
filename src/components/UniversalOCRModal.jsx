@@ -18,6 +18,7 @@ import {
   FaArrowsAltH,
   FaArrowsAltV,
   FaList,
+  FaGlobe,
   FaImage,
   FaEye,
   FaLightbulb,
@@ -30,9 +31,9 @@ const transliterateArToFr = (text) => {
   if (!text) return '';
   try {
     const customDict = JSON.parse(
-      localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
+      localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"full_name_ar":{},"job_info":{},"job_info_ar":{}}'
     );
-    const rawKey = text.replace(/\s+/g, '');
+    const rawKey = text.replace(/\s+/g, '').toLowerCase();
     if (customDict.full_name && customDict.full_name[rawKey]) return customDict.full_name[rawKey];
   } catch (e) {}
 
@@ -1488,25 +1489,39 @@ export default function UniversalOCRModal({
       }
     }
 
-    // 3. Background AI Detection (Does NOT overwrite)
+    // 3. Background AI Detection (Bilingual Lookup)
     try {
       const dict = JSON.parse(
-        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
+        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"full_name_ar":{},"job_info":{},"job_info_ar":{}}'
       );
+      
+      const key = (c.full_name || '').replace(/\s+/g, '').toLowerCase();
+
       if (c.national_id) {
-        const key = c.national_id.replace(/\s+/g, '').toLowerCase();
-        if (dict.national_id[key] && dict.national_id[key] !== c.national_id)
-          c.suggested_id = dict.national_id[key];
+        const idKey = c.national_id.replace(/\s+/g, '').toLowerCase();
+        if (dict.national_id[idKey] && dict.national_id[idKey] !== c.national_id)
+          c.suggested_id = dict.national_id[idKey];
       }
-      if (c.job_info) {
-        const key = c.job_info.replace(/\s+/g, '').toLowerCase();
-        if (dict.job_info[key] && dict.job_info[key] !== c.job_info)
-          c.suggested_job = dict.job_info[key];
-      }
-      if (c.full_name) {
-        const key = c.full_name.replace(/\s+/g, '').toLowerCase();
-        if (dict.full_name[key] && dict.full_name[key] !== c.full_name)
+
+      if (key) {
+        // [MEMORY LOAD] Pre-load previous manual edits
+        if (dict.full_name[key]) c.manual_fr = dict.full_name[key];
+        if (dict.full_name_ar[key]) c.original_ar = dict.full_name_ar[key];
+
+        // [STAR LOGIC] Suggest if current display differs from trusted memory
+        if (dict.full_name[key] && dict.full_name[key] !== c.full_name) {
           c.suggested_name = dict.full_name[key];
+        }
+        // Support for Arabic Star suggestion
+        if (dict.full_name_ar[key]) {
+           c.suggested_name_ar = dict.full_name_ar[key];
+        }
+      }
+
+      if (c.job_info) {
+        const jobKey = c.job_info.replace(/\s+/g, '').toLowerCase();
+        if (dict.job_info[jobKey] && dict.job_info[jobKey] !== c.job_info)
+          c.suggested_job = dict.job_info[jobKey];
       }
     } catch (e) {
       console.warn('Dictionary error', e);
@@ -1540,17 +1555,15 @@ export default function UniversalOCRModal({
         } else if (fieldType === 'job_info' && updated.suggested_job) {
           updated.job_info = updated.suggested_job;
           updated.suggested_job = null;
-        } else if (fieldType === 'full_name' && updated.suggested_name) {
-          updated.full_name = updated.suggested_name;
-          updated.suggested_name = null;
-
-          // Sync anchors so translation doesn't break
-          if (updated.is_viewing_ar) {
-            updated.original_ar = updated.full_name;
-            if (updated.isArabic) updated.manual_fr = '';
-          } else {
-            updated.manual_fr = updated.full_name;
-            if (!updated.isArabic) updated.original_ar = '';
+        } else if (fieldType === 'full_name') {
+          if (updated.is_viewing_ar && updated.suggested_name_ar) {
+            updated.full_name = updated.suggested_name_ar;
+            updated.original_ar = updated.suggested_name_ar;
+            updated.suggested_name_ar = null;
+          } else if (!updated.is_viewing_ar && updated.suggested_name) {
+            updated.full_name = updated.suggested_name;
+            updated.manual_fr = updated.suggested_name;
+            updated.suggested_name = null;
           }
         }
         return updated;
@@ -1571,15 +1584,15 @@ export default function UniversalOCRModal({
           updated.job_info = updated.suggested_job;
           updated.suggested_job = null;
         }
-        if (updated.suggested_name) {
-          updated.full_name = updated.suggested_name;
-          updated.suggested_name = null;
-          if (updated.is_viewing_ar) {
-            updated.original_ar = updated.full_name;
-            if (updated.isArabic) updated.manual_fr = '';
-          } else {
-            updated.manual_fr = updated.full_name;
-            if (!updated.isArabic) updated.original_ar = '';
+        if (updated.suggested_name || updated.suggested_name_ar) {
+          if (updated.is_viewing_ar && updated.suggested_name_ar) {
+            updated.full_name = updated.suggested_name_ar;
+            updated.original_ar = updated.suggested_name_ar;
+            updated.suggested_name_ar = null;
+          } else if (!updated.is_viewing_ar && updated.suggested_name) {
+            updated.full_name = updated.suggested_name;
+            updated.manual_fr = updated.suggested_name;
+            updated.suggested_name = null;
           }
         }
         return updated;
@@ -1596,19 +1609,29 @@ export default function UniversalOCRModal({
     if (candidates.length === 0) return;
     const valid = candidates.filter((c) => c.full_name || c.national_id);
 
-    // --- MACHINE LEARNING MEMORY UPDATE (SPACE-IMMUNE) ---
+    // --- MACHINE LEARNING MEMORY UPDATE (BILINGUAL) ---
     try {
       let dict = JSON.parse(
-        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
+        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"full_name_ar":{},"job_info":{},"job_info_ar":{}}'
       );
       valid.forEach((c) => {
-        // Save corrections by stripping spaces from the raw OCR key
+        const nameKey = c.raw_name ? c.raw_name.replace(/\s+/g, '').toLowerCase() : null;
         if (c.raw_id && c.national_id && c.raw_id !== c.national_id) {
           dict.national_id[c.raw_id.replace(/\s+/g, '')] = c.national_id.trim();
         }
-        if (c.raw_name && c.full_name && c.raw_name !== c.full_name) {
-          dict.full_name[c.raw_name.replace(/\s+/g, '')] = c.full_name.trim();
+        
+        if (nameKey) {
+          // If we are currently viewing/edited Arabic
+          if (c.is_viewing_ar && c.full_name !== c.raw_name) {
+             if (!dict.full_name_ar) dict.full_name_ar = {};
+             dict.full_name_ar[nameKey] = c.full_name.trim();
+          } 
+          // If we edited French (manual_fr is the trusted anchor for French edits)
+          if (c.manual_fr && c.manual_fr !== c.raw_name) {
+             dict.full_name[nameKey] = c.manual_fr.trim();
+          }
         }
+
         if (c.raw_job && c.job_info && c.raw_job !== c.job_info) {
           dict.job_info[c.raw_job.replace(/\s+/g, '')] = c.job_info.trim();
         }
@@ -1644,20 +1667,23 @@ export default function UniversalOCRModal({
         }
 
         const data = {
-          full_name: c.full_name || 'Inconnu',
+          full_name: c.is_viewing_ar ? (c.manual_fr || transliterateArToFr(c.full_name)) : c.full_name,
+          full_name_ar: c.is_viewing_ar ? c.full_name : (c.original_ar || transliterateFrToAr(c.full_name)),
           national_id: c.national_id || '?',
           department_id: c.department_id ? parseInt(c.department_id) : null,
-          workplace_id: c.workplace_id ? parseInt(c.workplace_id) : null, // [NEW]
+          workplace_id: c.workplace_id ? parseInt(c.workplace_id) : null,
           status: mode === 'worker' ? 'active' : 'pending',
           created_at: new Date().toISOString(),
         };
 
         if (mode === 'worker') {
           data.job_role = c.job_info || 'N/A';
+          data.job_role_ar = c.is_viewing_ar ? c.job_info : ''; 
           data.position = c.job_info || 'N/A';
           await db.saveWorker(data);
         } else {
           data.job_function = c.job_info || 'Agent';
+          data.job_function_ar = c.is_viewing_ar ? c.job_info : '';
           await db.saveWeaponHolder(data);
         }
         importedCount++;
@@ -1673,7 +1699,7 @@ export default function UniversalOCRModal({
   // --- DICTIONARY MANAGEMENT ---
   const exportDictionary = () => {
     const dict =
-      localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}';
+      localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"full_name_ar":{},"job_info":{},"job_info_ar":{}}';
     const blob = new Blob([dict], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1696,13 +1722,15 @@ export default function UniversalOCRModal({
 
       const imported = await response.json();
       const existing = JSON.parse(
-        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"job_info":{}}'
+        localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"full_name_ar":{},"job_info":{},"job_info_ar":{}}'
       );
 
       // Merge
       existing.national_id = { ...existing.national_id, ...(imported.national_id || {}) };
       existing.full_name = { ...existing.full_name, ...(imported.full_name || {}) };
+      existing.full_name_ar = { ...existing.full_name_ar, ...(imported.full_name_ar || {}) };
       existing.job_info = { ...existing.job_info, ...(imported.job_info || {}) };
+      existing.job_info_ar = { ...existing.job_info_ar, ...(imported.job_info_ar || {}) };
 
       localStorage.setItem('ocr_smart_dict', JSON.stringify(existing));
       addLog('[DICT] Dictionnaire Algérien par défaut appliqué.');
@@ -1726,13 +1754,15 @@ export default function UniversalOCRModal({
         const imported = JSON.parse(event.target.result);
         const existing = JSON.parse(
           localStorage.getItem('ocr_smart_dict') ||
-            '{"national_id":{},"full_name":{},"job_info":{}}'
+            '{"national_id":{},"full_name":{},"full_name_ar":{},"job_info":{},"job_info_ar":{}}'
         );
 
         // Merge the uploaded dictionary with the existing one
         existing.national_id = { ...existing.national_id, ...(imported.national_id || {}) };
         existing.full_name = { ...existing.full_name, ...(imported.full_name || {}) };
+        existing.full_name_ar = { ...existing.full_name_ar, ...(imported.full_name_ar || {}) };
         existing.job_info = { ...existing.job_info, ...(imported.job_info || {}) };
+        existing.job_info_ar = { ...existing.job_info_ar, ...(imported.job_info_ar || {}) };
 
         localStorage.setItem('ocr_smart_dict', JSON.stringify(existing));
         alert('Dictionnaire importé et fusionné avec succès !');
@@ -2547,7 +2577,26 @@ export default function UniversalOCRModal({
                     </th>
                     <th style={{ padding: '10px', textAlign: 'left' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <FaUsers /> Nom
+                        <FaUsers /> Nom et Prénom
+                        <button 
+                          onClick={() => {
+                            const anyAr = candidates.some(c => c.is_viewing_ar);
+                            setCandidates(prev => prev.map(c => {
+                              const targetAr = c.original_ar || transliterateFrToAr(c.full_name);
+                              const targetFr = c.manual_fr || transliterateArToFr(c.full_name);
+                              return {
+                                ...c,
+                                full_name: anyAr ? targetFr : targetAr,
+                                is_viewing_ar: !anyAr
+                              };
+                            }));
+                          }}
+                          className="btn-icon"
+                          style={{ marginLeft: 'auto', background: '#f0f9ff', color: '#0ea5e9', padding: '4px' }}
+                          title="Fliper toute la liste (FR/AR)"
+                        >
+                          <FaGlobe />
+                        </button>
                       </div>
                     </th>
                     <th style={{ padding: '10px', textAlign: 'left' }}>
@@ -2611,7 +2660,7 @@ export default function UniversalOCRModal({
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input
                             className="input"
-                            value={c.full_name}
+                            value={c.full_name || ''}
                             onChange={(e) => {
                               const newVal = e.target.value;
                               updateCandidate(c.id, 'full_name', newVal);
@@ -2631,11 +2680,20 @@ export default function UniversalOCRModal({
                               borderColor: c.suggested_name ? '#fde68a' : '#cbd5e1',
                             }}
                           />
-                          {c.suggested_name && (
+                          {c.suggested_name && !c.is_viewing_ar && (
                             <button
                               className="magic-star-btn"
                               onClick={() => applySuggestion(c.id, 'full_name')}
                               title={`Correction IA : ${c.suggested_name}`}
+                            >
+                              <FaMagic />
+                            </button>
+                          )}
+                          {c.suggested_name_ar && c.is_viewing_ar && (
+                            <button
+                              className="magic-star-btn"
+                              onClick={() => applySuggestion(c.id, 'full_name')}
+                              title={`Correction IA (Arabe) : ${c.suggested_name_ar}`}
                             >
                               <FaMagic />
                             </button>
@@ -2710,7 +2768,7 @@ export default function UniversalOCRModal({
                         <div style={{ position: 'relative' }}>
                           <input
                             className="input"
-                            value={c.job_info}
+                            value={c.job_info || ''}
                             onChange={(e) => updateCandidate(c.id, 'job_info', e.target.value)}
                             style={{
                               paddingRight: c.suggested_job ? '25px' : '8px',

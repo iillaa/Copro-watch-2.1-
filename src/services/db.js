@@ -44,6 +44,12 @@ class CoproDatabase extends Dexie {
       weapon_exams: '++id, holder_id, exam_date, visit_reason, final_decision',
       weapon_departments: '++id, name',
     });
+
+    this.version(4).stores({
+      workers: '++id, full_name, full_name_ar, job_role_ar, national_id, department_id, archived',
+      weapon_holders:
+        '++id, full_name, full_name_ar, job_function_ar, national_id, department_id, status, next_review_date, archived',
+    });
   }
 }
 
@@ -110,7 +116,14 @@ async function triggerBackupCheck() {
 // Internal raw export (plain JSON)
 async function exportDataRaw() {
   const rawData = {
-    meta: { version: '1.1', exported_at: new Date().getTime() },
+    meta: { version: '1.2', exported_at: new Date().getTime() },
+    // --- [NEW] APP SETTINGS (NON-SENSITIVE) ---
+    app_settings: {
+      ocr_smart_dict: localStorage.getItem('ocr_smart_dict'),
+      ocr_grid_presets: localStorage.getItem('ocr_grid_presets'),
+      copro_app_lang: localStorage.getItem('copro_app_lang'),
+      copro_force_mobile: localStorage.getItem('copro_force_mobile')
+    },
     departments: await dbInstance.departments.toArray(),
     workplaces: await dbInstance.workplaces.toArray(),
     workers: await dbInstance.workers.toArray(),
@@ -367,6 +380,17 @@ export const db = {
         if (data.weapon_exams) await dbInstance.weapon_exams.bulkPut(data.weapon_exams);
         if (data.weapon_departments) await dbInstance.weapon_departments.bulkPut(data.weapon_departments);
       });
+
+      // --- [NEW] RESTORE APP SETTINGS ---
+      if (data.app_settings) {
+        console.log('[DB IMPORT] Restoring App Settings & OCR Memory...');
+        const s = data.app_settings;
+        if (s.ocr_smart_dict) localStorage.setItem('ocr_smart_dict', s.ocr_smart_dict);
+        if (s.ocr_grid_presets) localStorage.setItem('ocr_grid_presets', s.ocr_grid_presets);
+        if (s.copro_app_lang) localStorage.setItem('copro_app_lang', s.copro_app_lang);
+        if (s.copro_force_mobile) localStorage.setItem('copro_force_mobile', s.copro_force_mobile);
+      }
+
       return true;
     } catch (e) {
       console.error('Import failed', e);

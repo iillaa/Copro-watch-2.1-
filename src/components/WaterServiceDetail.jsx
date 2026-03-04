@@ -260,7 +260,7 @@ export default function WaterServiceDetail({ department, onBack, onSave, compact
                 </div>
 
                 {/* Actions */}
-                <div className="hybrid-actions">
+                <div className="hybrid-actions" style={{ display: 'flex', gap: '9px', justifyContent: 'flex-end' }}>
                   <button
                     className="btn btn-outline btn-sm"
                     onClick={() => handleEdit(a)}

@@ -1306,3 +1306,17 @@ body {
   }
 }
 
+
+/* --- BILINGUAL & ARABIC STYLES --- */
+@font-face {
+  font-family: 'Amiri';
+  src: url('https://fonts.googleapis.com/css2?family=Amiri:wght@400;700&display=swap');
+}
+
+.rtl-text {
+  direction: rtl !important;
+}
+
+.arabic-font {
+  font-family: 'Amiri', serif !important;
+}

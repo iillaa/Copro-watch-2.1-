@@ -10,9 +10,19 @@
     />
 
     <title>Copro Watch</title>
-    <!-- [PRAGMATIC] Load ONNX Runtime as a static global via script tag -->
-    <script src="./ort.min.js"></script>
-    <script src="./tesseract/tesseract.min.js"></script>
+    <!-- [PRAGMATIC] Dynamic injection to bypass Vite build errors while keeping isolation -->
+    <script>
+      (function() {
+        function loadScript(src) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.async = false;
+          document.head.appendChild(s);
+        }
+        // Tesseract remains as a global UMD
+        loadScript('./tesseract/tesseract.min.js');
+      })();
+    </script>
     <script>
       // ERROR HANDLER: Log crashes but don't freeze the UI
       window.onerror = function(msg, url, line, col, error) {

@@ -25,6 +25,7 @@ import {
   FaUserPlus,
   FaCheckSquare,
   FaCamera,
+  FaGlobe,
 } from 'react-icons/fa';
 
 // [SURGICAL ADDITION] Fix #5: Loading Skeleton
@@ -69,7 +70,7 @@ const LoadingSkeleton = ({ mode }) => {
   );
 };
 
-export default function WorkerList({ onNavigateWorker, compactMode }) {
+export default function WorkerList({ onNavigateWorker, compactMode, appLanguage, onToggleLanguage }) {
   // [NEW] Toast Hook
   const { showToast, ToastContainer } = useToast();
 
@@ -332,7 +333,8 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
     // 3. On génère le PDF en passant les nouvelles options (heure/date consultation)
     pdfService.generateBatchDoc(targetsWithInfo, docType, {
       date: dateSelected,
-      ...extraOptions, // <--- C'est ici que passent l'heure et la date de RDV
+      language: appLanguage,
+      ...extraOptions, 
     });
 
     setShowPrintModal(false);
@@ -761,6 +763,25 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
                 onChange={(e) => setSearchTerm(e.target.value)}
               />
             </div>
+
+            {/* [NEW] LANGUAGE TOGGLE */}
+            <button
+              onClick={onToggleLanguage}
+              className="btn-icon"
+              title="Changer de langue (FR/AR)"
+              style={{
+                color: appLanguage === 'ar' ? '#0ea5e9' : '#64748b',
+                background: appLanguage === 'ar' ? '#f0f9ff' : 'transparent',
+                border: '1px solid ' + (appLanguage === 'ar' ? '#0ea5e9' : 'var(--border-color)'),
+                borderRadius: '50%',
+                width: '38px',
+                height: '38px',
+                flexShrink: 0
+              }}
+            >
+              <FaGlobe />
+            </button>
+
             <select
               className="input"
               style={{ width: 'auto', borderRadius: '50px' }}
@@ -905,7 +926,16 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
 
                     {/* Nom et prénom */}
                     <div className="hybrid-cell cell-name">
-                      {highlightMatch(w.full_name, debouncedSearch)}
+                      <span style={{ 
+                        fontFamily: appLanguage === 'ar' ? 'Amiri, serif' : 'inherit',
+                        fontSize: appLanguage === 'ar' ? '1.1rem' : 'inherit',
+                        direction: appLanguage === 'ar' ? 'rtl' : 'ltr',
+                        display: 'inline-block'
+                      }}>
+                        {appLanguage === 'ar' && w.full_name_ar 
+                          ? highlightMatch(w.full_name_ar, debouncedSearch) 
+                          : highlightMatch(w.full_name, debouncedSearch)}
+                      </span>
                       {w.archived && (
                         <span
                           className="badge"
@@ -1068,6 +1098,7 @@ export default function WorkerList({ onNavigateWorker, compactMode }) {
       {showForm && (
         <AddWorkerForm
           workerToEdit={editingWorker}
+          appLanguage={appLanguage}
           onClose={() => setShowForm(false)}
           onSave={() => {
             setShowForm(false);

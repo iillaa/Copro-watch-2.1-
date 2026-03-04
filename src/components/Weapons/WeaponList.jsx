@@ -31,9 +31,10 @@ import {
   FaArchive,
   FaExchangeAlt,
   FaCamera,
+  FaGlobe,
 } from 'react-icons/fa';
 
-export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
+export default function WeaponList({ onNavigateWeaponHolder, compactMode, appLanguage, onToggleLanguage }) {
   const { showToast, ToastContainer } = useToast();
   const [holders, setHolders] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -314,24 +315,19 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
   };
 
   const handleBatchPrintConfirm = (docType, creationDate, options) => {
-    // For Registre de Suivi: print ALL holders (not just selected)
-    let targets;
-    if (docType === 'weapon_registre') {
-      targets = holders
-        .filter((h) => !h.archived) // Only active holders
-        .map((h) => ({
-          ...h,
-          deptName: departments.find((d) => d.id === h.department_id)?.name || '-',
-        }));
-    } else {
-      targets = holders
-        .filter((h) => selectedIds.has(h.id))
-        .map((h) => ({
-          ...h,
-          deptName: departments.find((d) => d.id === h.department_id)?.name || '-',
-        }));
-    }
-    pdfService.generateBatchDoc(targets, docType, { ...options, date: creationDate });
+    // [FIX] Always use selectedIds for ALL document types including weapon_registre
+    const targets = holders
+      .filter((h) => selectedIds.has(h.id))
+      .map((h) => ({
+        ...h,
+        deptName: departments.find((d) => d.id === h.department_id)?.name || '-',
+      }));
+
+    pdfService.generateBatchDoc(targets, docType, { 
+      ...options, 
+      date: creationDate,
+      language: appLanguage 
+    });
     setShowPrintModal(false);
   };
 
@@ -462,6 +458,24 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
+
+        {/* [NEW] LANGUAGE TOGGLE */}
+        <button
+          onClick={onToggleLanguage}
+          className="btn-icon"
+          title="Changer de langue (FR/AR)"
+          style={{
+            color: appLanguage === 'ar' ? '#0ea5e9' : '#64748b',
+            background: appLanguage === 'ar' ? '#f0f9ff' : 'transparent',
+            border: '1px solid ' + (appLanguage === 'ar' ? '#0ea5e9' : 'var(--border-color)'),
+            borderRadius: '50%',
+            width: '38px',
+            height: '38px',
+            flexShrink: 0
+          }}
+        >
+          <FaGlobe />
+        </button>
 
         {/* [FIX] Sticky Dept */}
         <select
@@ -618,15 +632,33 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                     )}
                   </div>
                   <div className="hybrid-cell" style={{ fontWeight: 600 }}>
-                    {highlightMatch(h.full_name)} {/* <--- HIGHLIGHT APPLIED */}
+                    <span style={{ 
+                      fontFamily: appLanguage === 'ar' ? 'Amiri, serif' : 'inherit',
+                      fontSize: appLanguage === 'ar' ? '1.1rem' : 'inherit',
+                      direction: appLanguage === 'ar' ? 'rtl' : 'ltr',
+                      display: 'inline-block'
+                    }}>
+                      {appLanguage === 'ar' && h.full_name_ar 
+                        ? highlightMatch(h.full_name_ar) 
+                        : highlightMatch(h.full_name)}
+                    </span>
                   </div>
                   <div className="hybrid-cell">
                     <span className="badge-id">{highlightMatch(h.national_id)}</span>{' '}
-                    {/* <--- HIGHLIGHT APPLIED */}
                   </div>
                   <div className="hybrid-cell">{deptName}</div>
-                  <div className="hybrid-cell">{highlightMatch(h.job_function)}</div>{' '}
-                  {/* <--- HIGHLIGHT APPLIED */}
+                  <div className="hybrid-cell">
+                    <span style={{ 
+                      fontFamily: appLanguage === 'ar' ? 'Amiri, serif' : 'inherit',
+                      fontSize: appLanguage === 'ar' ? '0.9rem' : 'inherit',
+                      direction: appLanguage === 'ar' ? 'rtl' : 'ltr',
+                      display: 'inline-block'
+                    }}>
+                      {appLanguage === 'ar' && h.job_function_ar 
+                        ? highlightMatch(h.job_function_ar) 
+                        : highlightMatch(h.job_function)}
+                    </span>
+                  </div>
                   <div className="hybrid-cell" style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'nowrap' }}>
                     <span
                       style={{
@@ -670,7 +702,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                       </span>
                     )}
                   </div>
-                  <div className="hybrid-actions">
+                  <div className="hybrid-actions" style={{ display: 'flex', gap: '9px', justifyContent: 'flex-end' }}>
                     <button
                       className="btn btn-sm btn-outline"
                       onClick={(e) => {
@@ -678,6 +710,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
                         setEditingHolder(h);
                         setShowForm(true);
                       }}
+                      title="Modifier"
                     >
                       <FaEdit />
                     </button>
@@ -766,6 +799,7 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode }) {
       {showForm && (
         <AddWeaponHolderForm
           holderToEdit={editingHolder}
+          appLanguage={appLanguage}
           onClose={() => setShowForm(false)}
           onSave={() => {
             setShowForm(false);

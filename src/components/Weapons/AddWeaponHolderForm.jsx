@@ -1,18 +1,29 @@
 import { useState, useEffect } from 'react';
 import { db } from '../../services/db';
 import { useToast } from '../Toast';
+import { FaGlobe } from 'react-icons/fa';
 
-export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
+export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave, appLanguage = 'fr' }) {
   const { showToast, ToastContainer } = useToast();
   const [departments, setDepartments] = useState([]);
 
+  // [NEW] Local language toggle for quick checking
+  const [localLang, setLocalLang] = useState(appLanguage);
+  const isArMode = localLang === 'ar';
+
+  useEffect(() => {
+    setLocalLang(appLanguage);
+  }, [appLanguage]);
+
   const [formData, setFormData] = useState({
     full_name: '',
+    full_name_ar: '',
     national_id: '',
     phone: '',
     medical_history: '',
     department_id: '',
     job_function: '',
+    job_function_ar: '',
     status: 'pending',
     archived: false,
     next_review_date: '',
@@ -23,13 +34,10 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
       const depts = await db.getWeaponDepartments();
       setDepartments(depts || []);
 
-      // [FIX] Auto-select LAST used Service if available, otherwise first one
       if (!holderToEdit && depts.length > 0) {
         const lastDept = localStorage.getItem('last_weapon_dept');
         const targetId = lastDept ? Number(lastDept) : depts[0].id;
-        // Verify if ID still exists
         const validId = depts.find((d) => d.id === targetId) ? targetId : depts[0].id;
-
         setFormData((prev) => ({ ...prev, department_id: validId }));
       }
     };
@@ -38,7 +46,6 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
     if (holderToEdit) {
       setFormData(holderToEdit);
     } else {
-      // [FIX] Load LAST used Grade/Function
       const lastJob = localStorage.getItem('last_weapon_job');
       if (lastJob) {
         setFormData((prev) => ({ ...prev, job_function: lastJob }));
@@ -48,13 +55,22 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
 
   const handleChange = (e) => {
     const { name, value } = e.target;
+    
+    // [SMART DETECT] If typing in Arabic name field while in AR mode, or vice versa
+    if (name === 'full_name') {
+      const isArabic = /[\u0600-\u06FF]/.test(value);
+      if (isArabic) {
+        setFormData(prev => ({ ...prev, full_name_ar: value }));
+        return;
+      }
+    }
+    
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-    // Duplicate check
     try {
       const allHolders = await db.getWeaponHolders();
       const normalize = (str) => (str ? str.toString().trim().toLowerCase() : '');
@@ -73,17 +89,13 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
         showToast(`Doublon détecté : ${duplicate.full_name}`, 'error');
         return;
       }
-    } catch (err) {
-      console.error(err);
-    }
+    } catch (err) {}
 
-    // [FIX] Prepare final data with proper types
     const finalData = {
       ...formData,
       department_id: formData.department_id ? Number(formData.department_id) : '',
     };
 
-    // [FIX] Remember these choices for next time
     localStorage.setItem('last_weapon_dept', finalData.department_id);
     localStorage.setItem('last_weapon_job', finalData.job_function);
 
@@ -111,30 +123,55 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
           <h3 style={{ margin: 0, color: 'var(--primary)' }}>
             {holderToEdit ? "Modifier l'Agent" : 'Ajouter un Agent'}
           </h3>
-          <button onClick={onClose} className="btn-close">
-            ×
-          </button>
+          <button onClick={onClose} className="btn-close">×</button>
         </div>
 
         <form onSubmit={handleSubmit}>
+          {/* NOM COMPLET (SMART TOGGLE) */}
           <div className="form-group">
-            <label className="label">Nom complet</label>
+            <label className="label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>{isArMode ? 'الاسم الكامل' : 'Nom Complet'}</span>
+              <button 
+                type="button"
+                onClick={() => setLocalLang(p => p === 'fr' ? 'ar' : 'fr')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  opacity: 0.7
+                }}
+                title="Vérifier l'autre langue"
+              >
+                <FaGlobe size={14} />
+              </button>
+            </label>
             <input
               className="input"
-              name="full_name"
-              value={formData.full_name}
+              name={isArMode ? 'full_name_ar' : 'full_name'}
+              value={(isArMode ? formData.full_name_ar : formData.full_name) || ''}
               onChange={handleChange}
-              required
+              placeholder={isArMode ? 'أدخل الاسم بالعربية' : 'Saisir le nom en français'}
+              dir={isArMode ? 'rtl' : 'ltr'}
+              style={{ 
+                fontFamily: isArMode ? 'Amiri, serif' : 'inherit',
+                fontSize: isArMode ? '1.2rem' : '1rem',
+                fontWeight: 'bold'
+              }}
+              required={!isArMode}
             />
           </div>
 
           <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>
-              <label className="label">Matricule / CIN</label>
+              <label className="label">Matricule</label>
               <input
                 className="input"
                 name="national_id"
-                value={formData.national_id}
+                value={formData.national_id || ''}
                 onChange={handleChange}
                 required
               />
@@ -144,7 +181,7 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
               <input
                 className="input"
                 name="phone"
-                value={formData.phone}
+                value={formData.phone || ''}
                 onChange={handleChange}
               />
             </div>
@@ -155,42 +192,19 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
             <textarea
               className="input"
               name="medical_history"
-              value={formData.medical_history}
+              value={formData.medical_history || ''}
               onChange={handleChange}
-              rows="3"
+              rows="2"
             />
           </div>
 
           <div className="form-group" style={{ display: 'flex', gap: '1rem' }}>
             <div style={{ flex: 1 }}>
-              <label
-                className="label"
-                style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
-              >
-                Service RH
-                <button
-                  type="button"
-                  onClick={() =>
-                    window.alert(
-                      'Veuillez vous rendre dans Paramètres > Organisation pour gérer les services.'
-                    )
-                  }
-                  style={{
-                    border: 'none',
-                    background: 'none',
-                    color: 'var(--primary)',
-                    fontSize: '0.75rem',
-                    cursor: 'pointer',
-                    textDecoration: 'underline',
-                  }}
-                >
-                  Gérer
-                </button>
-              </label>
+              <label className="label">Service RH</label>
               <select
                 className="input"
                 name="department_id"
-                value={formData.department_id}
+                value={formData.department_id || ''}
                 onChange={handleChange}
                 required
               >
@@ -203,25 +217,43 @@ export default function AddWeaponHolderForm({ holderToEdit, onClose, onSave }) {
               </select>
             </div>
             <div style={{ flex: 1 }}>
-              <label className="label">Poste / Grade</label>
+              <label className="label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>{isArMode ? 'الوظيفة' : 'Poste / Grade'}</span>
+                <button 
+                  type="button"
+                  onClick={() => setLocalLang(p => p === 'fr' ? 'ar' : 'fr')}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    color: 'var(--primary)',
+                    cursor: 'pointer',
+                    padding: '2px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    opacity: 0.7
+                  }}
+                >
+                  <FaGlobe size={14} />
+                </button>
+              </label>
               <input
                 className="input"
-                name="job_function"
-                value={formData.job_function}
+                name={isArMode ? 'job_function_ar' : 'job_function'}
+                value={(isArMode ? formData.job_function_ar : formData.job_function) || ''}
                 onChange={handleChange}
+                placeholder={isArMode ? 'أدخل الوظيفة' : 'Saisir le poste'}
+                dir={isArMode ? 'rtl' : 'ltr'}
+                style={{ 
+                  fontFamily: isArMode ? 'Amiri, serif' : 'inherit',
+                  fontSize: isArMode ? '1.1rem' : '1rem'
+                }}
               />
             </div>
           </div>
 
-          <div
-            style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '2rem' }}
-          >
-            <button type="button" className="btn btn-outline" onClick={onClose}>
-              Annuler
-            </button>
-            <button type="submit" className="btn btn-primary">
-              Enregistrer
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+            <button type="button" className="btn btn-outline" onClick={onClose}>Annuler</button>
+            <button type="submit" className="btn btn-primary">Enregistrer</button>
           </div>
         </form>
         <ToastContainer />

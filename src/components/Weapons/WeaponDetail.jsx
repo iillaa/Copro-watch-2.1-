@@ -14,16 +14,21 @@ import {
   FaBoxOpen,
   FaCheckSquare,
   FaEye,
+  FaGlobe,
 } from 'react-icons/fa';
 import BulkActionsToolbar from '../BulkActionsToolbar';
 
-export default function WeaponDetail({ holderId, onBack, compactMode }) {
+export default function WeaponDetail({ holderId, onBack, compactMode, appLanguage }) {
   const [holder, setHolder] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [weapon_exams, setWeaponExams] = useState([]);
   const [showExamForm, setShowExamForm] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
   const [holderNotFound, setHolderNotFound] = useState(false);
+
+  // [NEW] Local language toggle
+  const [localLang, setLocalLang] = useState(appLanguage);
+  useEffect(() => setLocalLang(appLanguage), [appLanguage]);
 
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [deptName, setDeptName] = useState('');
@@ -190,27 +195,67 @@ export default function WeaponDetail({ holderId, onBack, compactMode }) {
       <div className="card">
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'start' }}>
           <div>
-            <h2 style={{ margin: 0 }}>
-              {holder.full_name}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              <h2 style={{ 
+                margin: 0,
+                display: 'inline-block'
+              }}>
+                <span style={{
+                  fontFamily: localLang === 'ar' ? 'Amiri, serif' : 'inherit',
+                  fontSize: localLang === 'ar' ? '2.2rem' : '1.5rem',
+                  direction: localLang === 'ar' ? 'rtl' : 'ltr',
+                  display: 'inline-block'
+                }}>
+                  {localLang === 'ar' && holder.full_name_ar ? holder.full_name_ar : holder.full_name}
+                </span>
+              </h2>
+
+              <button 
+                onClick={() => setLocalLang(p => p === 'fr' ? 'ar' : 'fr')}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--primary)',
+                  cursor: 'pointer',
+                  padding: '4px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  opacity: 0.6
+                }}
+                title="Switcher la langue de ce dossier"
+              >
+                <FaGlobe size={16} />
+              </button>
+
               {holder.archived && (
                 <span
                   style={{
-                    fontSize: '0.5em',
-                    marginLeft: '10px',
+                    fontSize: '0.7rem',
                     background: '#eee',
                     padding: '2px 6px',
                     borderRadius: '4px',
                     color: '#666',
-                    verticalAlign: 'middle',
+                    fontWeight: 'bold',
+                    display: 'inline-block'
                   }}
                 >
                   ARCHIVÉ
                 </span>
               )}
-            </h2>
-            <p style={{ color: 'var(--text-muted)', marginTop: '0.5rem' }}>
+            </div>
+            <p style={{ 
+              color: 'var(--text-muted)', 
+              marginTop: '0.5rem'
+            }}>
               <strong>Service:</strong> {deptName} • <strong>Poste:</strong>{' '}
-              {holder.job_function}
+              <span style={{
+                fontFamily: localLang === 'ar' ? 'Amiri, serif' : 'inherit',
+                fontSize: localLang === 'ar' ? '1.1rem' : 'inherit',
+                direction: localLang === 'ar' ? 'rtl' : 'ltr',
+                display: 'inline-block'
+              }}>
+                {localLang === 'ar' && holder.job_function_ar ? holder.job_function_ar : holder.job_function}
+              </span>
             </p>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
               Matricule: {holder.national_id}

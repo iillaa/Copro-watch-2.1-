@@ -1,0 +1,64 @@
+const __vite__mapDeps=(i,m=__vite__mapDeps,d=(m.f||(m.f=["./web-9U1M1yPK.js","./index-BYM9CpjD.js","./index-bna0i8z1.js"])))=>i.map(i=>d[i]);
+import { _ as l, __tla as __tla_0 } from "./index-bna0i8z1.js";
+import { registerPlugin as p } from "./index-BYM9CpjD.js";
+let r, s, R, _, y;
+let __tla = Promise.all([
+    (()=>{
+        try {
+            return __tla_0;
+        } catch  {}
+    })()
+]).then(async ()=>{
+    function d(t) {
+        t.CapacitorUtils.Synapse = new Proxy({}, {
+            get (u, n) {
+                return new Proxy({}, {
+                    get (E, o) {
+                        return (w, c, i)=>{
+                            const a = t.Capacitor.Plugins[n];
+                            if (a === void 0) {
+                                i(new Error(`Capacitor plugin ${n} not found`));
+                                return;
+                            }
+                            if (typeof a[o] != "function") {
+                                i(new Error(`Method ${o} not found in Capacitor plugin ${n}`));
+                                return;
+                            }
+                            (async ()=>{
+                                try {
+                                    const e = await a[o](w);
+                                    c(e);
+                                } catch (e) {
+                                    i(e);
+                                }
+                            })();
+                        };
+                    }
+                });
+            }
+        });
+    }
+    function f(t) {
+        t.CapacitorUtils.Synapse = new Proxy({}, {
+            get (u, n) {
+                return t.cordova.plugins[n];
+            }
+        });
+    }
+    function C(t = !1) {
+        typeof window > "u" || (window.CapacitorUtils = window.CapacitorUtils || {}, window.Capacitor !== void 0 && !t ? d(window) : window.cordova !== void 0 && f(window));
+    }
+    (function(t) {
+        t.Documents = "DOCUMENTS", t.Data = "DATA", t.Library = "LIBRARY", t.Cache = "CACHE", t.External = "EXTERNAL", t.ExternalStorage = "EXTERNAL_STORAGE", t.ExternalCache = "EXTERNAL_CACHE", t.LibraryNoCloud = "LIBRARY_NO_CLOUD", t.Temporary = "TEMPORARY";
+    })(r || (r = {}));
+    (function(t) {
+        t.UTF8 = "utf8", t.ASCII = "ascii", t.UTF16 = "utf16";
+    })(s || (s = {}));
+    _ = r;
+    y = s;
+    R = p("Filesystem", {
+        web: ()=>l(()=>import("./web-9U1M1yPK.js"), __vite__mapDeps([0,1,2]), import.meta.url).then((t)=>new t.FilesystemWeb)
+    });
+    C();
+});
+export { r as Directory, s as Encoding, R as Filesystem, _ as FilesystemDirectory, y as FilesystemEncoding, __tla };

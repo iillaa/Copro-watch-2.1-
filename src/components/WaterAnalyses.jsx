@@ -10,6 +10,7 @@ import {
   FaFlask,
   FaChevronDown,
   FaChevronUp,
+  FaEnvelopeOpenText,
 } from 'react-icons/fa';
 import WaterAnalysisPanel from './WaterAnalysisPanel';
 import WaterServiceDetail from './WaterServiceDetail';
@@ -17,6 +18,36 @@ import WaterServiceDetail from './WaterServiceDetail';
 export default function WaterAnalyses({ compactMode }) {
   const [departments, setDepartments] = useState([]);
   const [waterAnalyses, setWaterAnalyses] = useState([]);
+
+  // --- [NEW] MONTHLY REMINDER LOGIC ---
+  const [showMonthlyReminder, setShowMonthlyReminder] = useState(false);
+
+  useEffect(() => {
+    const checkReminder = () => {
+      const now = new Date();
+      const day = now.getDate();
+      const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+      
+      // 1. Is it the first 5 days of the month?
+      const isReminderPeriod = day >= 1 && day <= 5;
+      
+      // 2. Has it already been dismissed this month?
+      const isDismissed = localStorage.getItem('water_lab_reminder_dismissed') === monthKey;
+
+      if (isReminderPeriod && !isDismissed) {
+        setShowMonthlyReminder(true);
+      }
+    };
+    checkReminder();
+  }, []);
+
+  const dismissReminder = () => {
+    const now = new Date();
+    const monthKey = `${now.getFullYear()}-${now.getMonth() + 1}`;
+    localStorage.setItem('water_lab_reminder_dismissed', monthKey);
+    setShowMonthlyReminder(false);
+  };
+  // ------------------------------------
 
   // Search
   const [searchTerm, setSearchTerm] = useState('');
@@ -173,6 +204,63 @@ export default function WaterAnalyses({ compactMode }) {
   // --- VIEW: DASHBOARD ---
   return (
     <div style={{ height: compactMode ? '100%' : 'auto', paddingBottom: '2rem' }}>
+      
+      {/* MONTHLY REMINDER BANNER */}
+      {showMonthlyReminder && (
+        <div
+          style={{
+            background: '#eff6ff', // Soft Blue
+            color: '#1e3a8a', // Dark Blue text
+            padding: '1rem 1.5rem',
+            borderRadius: '16px',
+            marginBottom: '2.5rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            border: '3px solid black', // Hard Neobrutalist border
+            boxShadow: '6px 6px 0px rgba(0,0,0,1)', // Hard shadow
+            animation: 'slideFadeIn 0.5s ease-out',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <div style={{ 
+              background: '#dbeafe', 
+              padding: '10px', 
+              borderRadius: '12px',
+              border: '2px solid black',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
+            }}>
+              <FaEnvelopeOpenText size={24} />
+            </div>
+            <div>
+              <h4 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800 }}>Rappel Mensuel</h4>
+              <p style={{ margin: '2px 0 0 0', opacity: 0.8, fontSize: '0.9rem', fontWeight: 600 }}>
+                N'oubliez pas de rédiger la lettre pour le responsable du laboratoire d'analyses.
+              </p>
+            </div>
+          </div>
+          <button 
+            onClick={dismissReminder}
+            style={{ 
+              color: 'black', 
+              background: 'white',
+              border: '2px solid black',
+              borderRadius: '8px',
+              padding: '6px',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              boxShadow: '2px 2px 0px black'
+            }}
+            title="Masquer pour ce mois"
+          >
+            <FaTimes size={16} />
+          </button>
+        </div>
+      )}
+
       {/* --- NEW CLEAN HEADER --- */}
       <div style={{ marginBottom: '2rem' }}>
         {/* TITLE */}
