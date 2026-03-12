@@ -10,7 +10,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
+          cache: 'npm'
 
       # Java MUST come before cap sync
       - uses: actions/setup-java@v4
@@ -23,7 +24,8 @@ jobs:
 
       - name: Build Web Assets
         run: |
-          npm install --legacy-peer-deps
+          npm ci --legacy-peer-deps
+          npm dedupe
           export NODE_OPTIONS="--max-old-space-size=4096"
           npm run build:capacitor
 

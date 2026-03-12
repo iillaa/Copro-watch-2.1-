@@ -271,47 +271,64 @@ function App() {
             )}
           </div>
 
-          <nav style={{ padding: effectiveIsSidebarOpen ? '1.5rem 1rem' : '1.5rem 0', display: 'flex', flexDirection: 'column', gap: '0.25rem', flex: 1, minHeight: 0, overflowY: 'auto' }}>
+          <nav style={{ 
+            padding: effectiveIsSidebarOpen ? '1.5rem 1rem' : '1rem 0', 
+            display: 'flex', 
+            flexDirection: 'column', 
+            alignItems: effectiveIsSidebarOpen ? 'stretch' : 'center',
+            gap: '0.5rem', 
+            flex: 1, 
+            minHeight: 0, 
+            overflowY: 'auto' 
+          }}>
             {(() => {
               const getBtnStyle = (isActive) => ({
-                display: 'flex', alignItems: 'center', justifyContent: effectiveIsSidebarOpen ? 'flex-start' : 'center',
-                padding: effectiveIsSidebarOpen ? '0.75rem 1rem' : '0', borderRadius: '10px',
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: effectiveIsSidebarOpen ? 'flex-start' : 'center',
+                padding: effectiveIsSidebarOpen ? '0.75rem 1rem' : '0', 
+                borderRadius: '12px',
                 background: isActive ? 'var(--primary-light)' : 'transparent',
                 color: isActive ? 'var(--primary)' : '#64748b',
-                border: 'none', cursor: 'pointer', width: effectiveIsSidebarOpen ? '100%' : '42px', height: effectiveIsSidebarOpen ? 'auto' : '42px',
-                transition: 'background 0.2s, color 0.2s'
+                border: 'none', 
+                cursor: 'pointer', 
+                width: effectiveIsSidebarOpen ? '100%' : '48px', 
+                height: effectiveIsSidebarOpen ? '48px' : 'auto',
+                minHeight: '48px',
+                transition: 'all 0.2s ease',
+                outline: 'none'
               });
               return (
                 <>
-                  {effectiveIsSidebarOpen && <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '0.5rem 0 0.5rem 0.5rem' }}>Coproculture</div>}
+                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '0.5rem 0 0.5rem 0.5rem' }}>Coproculture</div>}
                   <button className="nav-item" onClick={() => setView('dashboard')} style={getBtnStyle(view === 'dashboard')} title="Bilan Copro">
-                    <div className="nav-icon" style={{ display: 'flex' }}><FaChartLine size={20} /></div>
-                    {effectiveIsSidebarOpen && <span style={{ marginLeft: '12px', fontWeight: 700 }}>Bilan Copro</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaChartLine size={22} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Bilan Copro</span>}
                   </button>
                   <button className="nav-item" onClick={() => { setView('workers'); setSelectedWorkerId(null); }} style={getBtnStyle(view === 'workers' || view === 'worker-detail')} title="Registre Copro">
-                    <div className="nav-icon" style={{ display: 'flex' }}><FaUsers size={20} /></div>
-                    {effectiveIsSidebarOpen && <span style={{ marginLeft: '12px', fontWeight: 700 }}>Registre Copro</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaUsers size={22} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Registre Copro</span>}
                   </button>
 
-                  {effectiveIsSidebarOpen && <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '1.5rem 0 0.5rem 0.5rem' }}>Sanitaire</div>}
+                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '1.5rem 0 0.5rem 0.5rem' }}>Sanitaire</div>}
                   <button className="nav-item" onClick={() => { setView('water-analyses'); setWaterResetKey(p => p + 1); }} style={getBtnStyle(view === 'water-analyses')} title="Analyses d'Eau">
-                    <div className="nav-icon" style={{ display: 'flex' }}><FaFlask size={20} /></div>
-                    {effectiveIsSidebarOpen && <span style={{ marginLeft: '12px', fontWeight: 700 }}>Analyses d'Eau</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaFlask size={22} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Analyses d'Eau</span>}
                   </button>
 
-                  {effectiveIsSidebarOpen && <div style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '1.5rem 0 0.5rem 0.5rem' }}>Port d'Arme</div>}
+                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '1.5rem 0 0.5rem 0.5rem' }}>Port d'Arme</div>}
                   <button className="nav-item" onClick={() => setView('weapons-dashboard')} style={getBtnStyle(view === 'weapons-dashboard')} title="Bilan Armes">
-                    <div className="nav-icon" style={{ display: 'flex' }}><FaShieldAlt size={20} /></div>
-                    {effectiveIsSidebarOpen && <span style={{ marginLeft: '12px', fontWeight: 700 }}>Bilan Armes</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaShieldAlt size={22} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Bilan Armes</span>}
                   </button>
                   <button className="nav-item" onClick={() => { setView('weapons-list'); setSelectedWeaponHolderId(null); }} style={getBtnStyle(view === 'weapons-list' || view === 'weapon-detail')} title="Détenteurs d'Armes">
-                    <div className="nav-icon" style={{ display: 'flex' }}><FaUserShield size={20} /></div>
-                    {effectiveIsSidebarOpen && <span style={{ marginLeft: '12px', fontWeight: 700 }}>Détenteurs d'Armes</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaUserShield size={22} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Détenteurs d'Armes</span>}
                   </button>
 
                   <button className="nav-item" onClick={() => setView('settings')} style={{...getBtnStyle(view === 'settings'), marginTop: 'auto'}} title="Paramètres">
-                    <div className="nav-icon" style={{ display: 'flex' }}><FaCog size={20} /></div>
-                    {effectiveIsSidebarOpen && <span style={{ marginLeft: '12px', fontWeight: 700 }}>Paramètres</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaCog size={22} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Paramètres</span>}
                   </button>
                 </>
               );

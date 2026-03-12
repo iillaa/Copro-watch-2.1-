@@ -11,7 +11,7 @@ import BatchPrintModal from '../BatchPrintModal';
 import BatchResultModal from '../BatchResultModal';
 import { exportWeaponsToExcel } from '../../services/excelExport';
 import { pdfService } from '../../services/pdfGenerator';
-import UniversalOCRModal from '../UniversalOCRModal'; // [NEW]
+// [FIX] REMOVED STATIC UniversalOCRModal IMPORT to prevent 11MB startup lag.
 
 import {
   FaPlus,

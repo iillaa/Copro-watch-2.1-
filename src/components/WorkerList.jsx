@@ -12,7 +12,7 @@ import BatchPrintModal from './BatchPrintModal'; // [NEW]
 import BatchResultModal from './BatchResultModal'; // [NEW]
 import { exportWorkersToExcel } from '../services/excelExport';
 import { useToast } from './Toast'; // [NEW] Import Toast Hook
-import UniversalOCRModal from './UniversalOCRModal'; // [NEW] Import
+// [FIX] REMOVED STATIC UniversalOCRModal IMPORT to prevent 11MB startup lag.
 import {
   FaPlus,
   FaSearch,
