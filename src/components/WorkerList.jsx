@@ -26,6 +26,7 @@ import {
   FaCheckSquare,
   FaCamera,
   FaGlobe,
+  FaBolt,
 } from 'react-icons/fa';
 
 // [SURGICAL ADDITION] Fix #5: Loading Skeleton
@@ -70,7 +71,13 @@ const LoadingSkeleton = ({ mode }) => {
   );
 };
 
-export default function WorkerList({ onNavigateWorker, compactMode, appLanguage, onToggleLanguage }) {
+export default function WorkerList({ 
+  onNavigateWorker, 
+  compactMode, 
+  appLanguage, 
+  onToggleLanguage,
+  onShowFastInput // [NEW]
+}) {
   // [NEW] Toast Hook
   const { showToast, ToastContainer } = useToast();
 
@@ -711,6 +718,16 @@ export default function WorkerList({ onNavigateWorker, compactMode, appLanguage,
             style={{ borderColor: '#107C41', color: '#107C41' }}
           >
             <FaFileExcel /> <span className="hide-mobile">Excel</span>
+          </button>
+
+          {/* [NEW] FAST INPUT (THUNDER) */}
+          <button
+            className="btn btn-outline"
+            onClick={() => onShowFastInput('worker')}
+            title="Saisie rapide par tableau (Excel-style)"
+            style={{ borderColor: '#d97706', color: '#d97706', background: '#fffbeb' }}
+          >
+            <FaBolt /> <span className="hide-mobile">Rapide</span>
           </button>
 
           {/* NEW WORKER BUTTON */}

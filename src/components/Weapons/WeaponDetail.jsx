@@ -182,7 +182,8 @@ export default function WeaponDetail({ holderId, onBack, compactMode, appLanguag
   }
 
   if (!holder) return <div>Chargement...</div>;
-  const isOverdue = logic.isWeaponDueSoon(holder.next_review_date);
+  const isOverdue = logic.isOverdue(holder.next_review_date);
+  const isSoon = logic.isWeaponDueSoon(holder.next_review_date);
 
   return (
     <div>
@@ -272,7 +273,7 @@ export default function WeaponDetail({ holderId, onBack, compactMode, appLanguag
                 const totalDays = 365; // Standard validity for weapons (1 year)
                 const percentage = Math.max(0, Math.min(100, (diffDays / totalDays) * 100));
                 
-                const gaugeColor = isOverdue ? '#ef4444' : percentage > 30 ? '#22c55e' : '#f59e0b';
+                const gaugeColor = isOverdue ? '#ef4444' : isSoon ? '#f59e0b' : '#22c55e';
 
                 return (
                   <div style={{ display: 'flex', alignItems: 'center' }} title={isOverdue ? 'Expiré' : `${diffDays} jours restants`}>
@@ -294,6 +295,8 @@ export default function WeaponDetail({ holderId, onBack, compactMode, appLanguag
                 className={`badge ${
                   isOverdue
                     ? 'badge-red'
+                    : isSoon
+                    ? 'badge-yellow'
                     : holder.status === 'apte'
                     ? 'badge-green'
                     : holder.status === 'inapte_definitif'
@@ -307,11 +310,13 @@ export default function WeaponDetail({ holderId, onBack, compactMode, appLanguag
                   ? 'Inaptitude Définitive'
                   : holder.status === 'pending'
                   ? 'Visite en cours'
+                  : isOverdue 
+                  ? `EXAMEN DÉPASSÉ: ${logic.formatDateDisplay(holder.next_review_date)}`
                   : `Prochaine Visite: ${logic.formatDateDisplay(holder.next_review_date)}`}
               </span>
-              {isOverdue && holder.status !== 'pending' && (
-                <span style={{ color: 'var(--danger)', fontWeight: 'bold', fontSize: '0.9rem' }}>
-                  ⚠️ À Revoir
+              {(isOverdue || isSoon) && holder.status !== 'pending' && (
+                <span style={{ color: isOverdue ? 'var(--danger)' : '#d97706', fontWeight: 'bold', fontSize: '0.9rem' }}>
+                  {isOverdue ? '⚠️ EXAMEN EN RETARD' : '📅 À Prévoir'}
                 </span>
               )}
             </div>

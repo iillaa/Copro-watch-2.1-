@@ -1,7 +1,7 @@
 import Dexie from 'dexie';
-import backupService from './backup';
-import { encryptString, decryptString, hashString } from './crypto';
-import { logic } from './logic';
+import backupService from './backup.js';
+import { encryptString, decryptString, hashString } from './crypto.js';
+import { logic } from './logic.js';
 
 // [NEW] WORKER IMPORT (Vite Syntax)
 import ExportWorker from '../workers/export.worker?worker';
@@ -192,15 +192,19 @@ export const db = {
     return await dbInstance.exams.where('worker_id').equals(Number(workerId)).toArray();
   },
   async saveExam(exam) {
-    const id = await dbInstance.exams.put(exam);
-    const worker = await dbInstance.workers.get(Number(exam.worker_id));
-    if (worker) {
-      const exams = await dbInstance.exams.where('worker_id').equals(worker.id).toArray();
-      const statusUpdate = logic.recalculateWorkerStatus(exams);
-      await dbInstance.workers.put({ ...worker, ...statusUpdate });
-    }
+    let result;
+    await dbInstance.transaction('rw', dbInstance.exams, dbInstance.workers, async () => {
+      const id = await dbInstance.exams.put(exam);
+      const worker = await dbInstance.workers.get(Number(exam.worker_id));
+      if (worker) {
+        const exams = await dbInstance.exams.where('worker_id').equals(worker.id).toArray();
+        const statusUpdate = logic.recalculateWorkerStatus(exams);
+        await dbInstance.workers.put({ ...worker, ...statusUpdate });
+      }
+      result = { ...exam, id };
+    });
     triggerBackupCheck();
-    return { ...exam, id };
+    return result;
   },
   async deleteExam(id) {
     const exam = await dbInstance.exams.get(id);
@@ -287,15 +291,19 @@ export const db = {
     return await dbInstance.weapon_exams.where('holder_id').equals(Number(holderId)).toArray();
   },
   async saveWeaponExam(e) {
-    const id = await dbInstance.weapon_exams.put(e);
-    const holder = await dbInstance.weapon_holders.get(Number(e.holder_id));
-    if (holder) {
-      const exams = await dbInstance.weapon_exams.where('holder_id').equals(holder.id).toArray();
-      const statusUpdate = logic.recalculateWeaponHolderStatus(exams);
-      await dbInstance.weapon_holders.put({ ...holder, ...statusUpdate });
-    }
+    let result;
+    await dbInstance.transaction('rw', dbInstance.weapon_exams, dbInstance.weapon_holders, async () => {
+      const id = await dbInstance.weapon_exams.put(e);
+      const holder = await dbInstance.weapon_holders.get(Number(e.holder_id));
+      if (holder) {
+        const exams = await dbInstance.weapon_exams.where('holder_id').equals(holder.id).toArray();
+        const statusUpdate = logic.recalculateWeaponHolderStatus(exams);
+        await dbInstance.weapon_holders.put({ ...holder, ...statusUpdate });
+      }
+      result = { ...e, id };
+    });
     triggerBackupCheck();
-    return { ...e, id };
+    return result;
   },
   async deleteWeaponExam(id) {
     await dbInstance.weapon_exams.delete(Number(id));

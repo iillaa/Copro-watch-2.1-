@@ -176,6 +176,7 @@ export default function WorkerDetail({ workerId, onBack, compactMode, appLanguag
 
   if (!worker) return <div>Chargement...</div>;
   const isOverdue = logic.isOverdue(worker.next_exam_due);
+  const isSoon = logic.isDueSoon(worker.next_exam_due);
 
   return (
     <div>
@@ -232,9 +233,18 @@ export default function WorkerDetail({ workerId, onBack, compactMode, appLanguag
               Matricule: {worker.national_id}
             </p>
             <div style={{ marginTop: '0.5rem', display: 'flex', gap: '10px', alignItems: 'center' }}>
-              <span className={`badge ${isOverdue && !worker.archived ? 'badge-red' : 'badge-yellow'}`}>
+              <span className={`badge ${
+                isOverdue && !worker.archived 
+                  ? 'badge-red' 
+                  : isSoon && !worker.archived 
+                  ? 'badge-yellow' 
+                  : 'badge-green'
+              }`}>
                 Prochain Examen: {logic.formatDateDisplay(worker.next_exam_due)}
               </span>
+              {!worker.archived && isOverdue && (
+                <span style={{ color: 'var(--danger)', fontWeight: 'bold' }}>⚠️ EN RETARD</span>
+              )}
             </div>
           </div>
 

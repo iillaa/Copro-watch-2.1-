@@ -23,12 +23,16 @@ import {
   FaEye,
   FaLightbulb,
   FaTrash,
-  FaUsers /* [FIX] Added missing icon */,
+  FaUsers,
+  FaBrain,
+  FaUndo,
 } from 'react-icons/fa';
 
 // --- ALG-FR TRANSLITERATION ENGINE (SMART DICTIONARY + PHONETIC) ---
 const transliterateArToFr = (text) => {
   if (!text) return '';
+  
+  // 1. Layer 1: Dictionary Memory (Highest Priority)
   try {
     const customDict = JSON.parse(
       localStorage.getItem('ocr_smart_dict') || '{"national_id":{},"full_name":{},"full_name_ar":{},"job_info":{},"job_info_ar":{}}'
@@ -37,105 +41,74 @@ const transliterateArToFr = (text) => {
     if (customDict.full_name && customDict.full_name[rawKey]) return customDict.full_name[rawKey];
   } catch (e) {}
 
-  let processedText = text;
-  const commonNames = {
-    عبد: 'Abdel ',
+  let str = text.trim();
+
+  // 2. Initial Pass: Multi-character ligatures and common prefixes
+  const ligatures = {
+    'ال': 'El ',
+    'عبد ': 'Abdel ',
+    'بو ': 'Bou ',
+    'أبو ': 'Abou ',
     'بن ': 'Ben ',
-    بو: 'Bou ',
-    محمد: 'Mohamed ',
-    فاطمة: 'Fatima ',
-    صالح: 'Salah ',
-    فضيلة: 'Fadila ',
-    دونية: 'Dounia ',
-    احمد: 'Ahmed ',
-    علي: 'Ali ',
-    عمر: 'Omar ',
-    خديجة: 'Khadidja ',
-    عائشة: 'Aicha ',
-    ابراهيم: 'Brahim ',
-    حسين: 'Hocine ',
-    حسن: 'Hassan ',
-    سعيد: 'Said ',
-    كريم: 'Karim ',
-    امين: 'Amine ',
-    الدين: ' Eddine ',
-    نور: 'Nour ',
-    عبدال: 'Abdel ',
-    ال: 'El ',
+    'آيت ': 'Ait ',
   };
-  for (const [ar, fr] of Object.entries(commonNames)) {
-    processedText = processedText.replace(new RegExp(ar, 'g'), fr);
-  }
-  const map = {
-    ا: 'a',
-    أ: 'a',
-    إ: 'i',
-    آ: 'a',
-    ى: 'a',
-    ة: 'a',
-    ب: 'b',
-    ت: 't',
-    ث: 't',
-    ج: 'dj',
-    ح: 'h',
-    خ: 'kh',
-    د: 'd',
-    ذ: 'd',
-    ر: 'r',
-    ز: 'z',
-    س: 's',
-    ش: 'ch',
-    ص: 's',
-    ض: 'd',
-    ط: 't',
-    ظ: 'z',
-    ع: 'a',
-    غ: 'gh',
-    ف: 'f',
-    ق: 'k',
-    ك: 'k',
-    ل: 'l',
-    م: 'm',
-    ن: 'n',
-    ه: 'h',
-    و: 'ou',
-    ي: 'i',
-  };
-
-  // Helper to check if a char is Arabic (\u0600-\u06FF)
-  const isArabicChar = (char) => /[\u0600-\u06FF]/.test(char);
-
-  let lat = '';
-  // NEW: Process string character by character to detect script switches
-  for (let i = 0; i < processedText.length; i++) {
-    const char = processedText[i];
-    if (isArabicChar(char)) {
-      lat += map[char] || char;
-    } else {
-      // Latin, digit or space - keep as is
-      lat += char;
+  for (const [ar, fr] of Object.entries(ligatures)) {
+    if (str.startsWith(ar)) {
+      str = fr + str.substring(ar.length);
+      break; 
     }
   }
 
-  lat = lat
+  // 3. Layer 2: Phonetic Rule Engine
+  const rules = [
+    [/\u062C/g, 'dj'], // Jeem -> DJ
+    [/\u0648/g, 'ou'], // Waw -> OU
+    [/\u0634/g, 'ch'], // Sheen -> CH
+    [/\u062E/g, 'kh'], // Khah -> KH
+    [/\u0639/g, 'a'],  // Ain -> A
+    [/\u063A/g, 'gh'], // Ghain -> GH
+    [/\u0642/g, 'k'],  // Qaf -> K
+    [/\u062B/g, 'th'], // Theh -> TH
+    [/\u0630/g, 'dh'], // Thal -> DH
+    [/\u0636/g, 'd'],  // Dad -> D
+    [/\u0638/g, 'z'],  // Zah -> Z
+    [/\u0635/g, 's'],  // Sad -> S
+    [/\u0629\b/g, 'a'], // Terminal Teh Marbuta -> A
+  ];
+
+  const charMap = {
+    'ا': 'a', 'أ': 'a', 'إ': 'i', 'آ': 'a', 'ى': 'a',
+    'ب': 'b', 'ت': 't', 'د': 'd', 'ر': 'r', 'ز': 'z',
+    'س': 's', 'ف': 'f', 'ك': 'k', 'ل': 'l', 'م': 'm',
+    'ن': 'n', 'ه': 'h', 'ي': 'y'
+  };
+
+  let result = str;
+  rules.forEach(([regex, replacement]) => {
+    result = result.replace(regex, replacement);
+  });
+
+  let final = '';
+  for (const char of result) {
+    if (/[a-zA-Z0-9\s\.\-\/]/.test(char)) {
+      final += char;
+    } else {
+      final += charMap[char] || char;
+    }
+  }
+
+  return final
     .replace(/oua/g, 'wa')
     .replace(/ouou/g, 'ou')
-    .replace(/ii/g, 'i')
     .replace(/\s+/g, ' ')
-    .trim();
-  return lat
-    .split(' ')
-    .map((word) => {
-      if (!word) return '';
-      return word.charAt(0).toUpperCase() + word.toLowerCase().slice(1);
-    })
-    .join(' ');
+    .trim()
+    .toUpperCase();
 };
 
 // --- FR-ALG TRANSLITERATION ENGINE (HYBRID DICTIONARY + PHONETIC) ---
 const transliterateFrToAr = (text) => {
   if (!text) return '';
-  let processed = text.toLowerCase().trim();
+  let str = text.toLowerCase().trim();
 
   const commonNames = {
     abdel: 'عبد ال',
@@ -143,69 +116,43 @@ const transliterateFrToAr = (text) => {
     bou: 'بو ',
     mohamed: 'محمد',
     fatima: 'فاطمة',
-    salah: 'صالح',
-    fadila: 'فضيلة',
-    dounia: 'دونية',
     ahmed: 'أحمد',
-    ali: 'علي',
-    omar: 'عمر',
-    khadidja: 'خديجة',
-    aicha: 'عائشة',
     brahim: 'إبراهيم',
-    hocine: 'حسين',
-    hassan: 'حسن',
     said: 'سعيد',
     karim: 'كريم',
     amine: 'أمين',
-    eddine: 'الدين',
-    nour: 'نور',
     el: 'ال',
   };
   for (const [fr, ar] of Object.entries(commonNames)) {
-    processed = processed.replace(new RegExp('\\b' + fr + '\\b', 'g'), ar);
+    str = str.replace(new RegExp('\\b' + fr + '\\b', 'g'), ar);
   }
 
-  const map = {
-    a: 'ا',
-    b: 'ب',
-    c: 'ك',
-    d: 'د',
-    e: 'ي',
-    f: 'ف',
-    g: 'ق',
-    h: 'ح',
-    i: 'ي',
-    j: 'ج',
-    k: 'ك',
-    l: 'ل',
-    m: 'م',
-    n: 'ن',
-    o: 'و',
-    p: 'ب',
-    q: 'ق',
-    r: 'ر',
-    s: 'س',
-    t: 'ت',
-    u: 'و',
-    v: 'ف',
-    w: 'و',
-    x: 'كس',
-    y: 'ي',
-    z: 'ز',
-    ' ': ' ',
+  const rules = [
+    [/dj/g, 'ج'],
+    [/ch/g, 'ش'],
+    [/kh/g, 'خ'],
+    [/ou/g, 'و'],
+    [/gh/g, 'غ'],
+    [/th/g, 'ث'],
+    [/dh/g, 'ذ'],
+  ];
+
+  const charMap = {
+    'a': 'ا', 'b': 'ب', 't': 'ت', 'd': 'د', 'r': 'ر',
+    'z': 'ز', 's': 'س', 'f': 'ف', 'k': 'ك', 'l': 'ل',
+    'm': 'م', 'n': 'ن', 'h': 'ه', 'y': 'ي', 'i': 'ي'
   };
-  processed = processed
-    .replace(/ch/g, 'ش')
-    .replace(/kh/g, 'خ')
-    .replace(/dj/g, 'ج')
-    .replace(/ou/g, 'و')
-    .replace(/gh/g, 'غ');
-  return processed
-    .split('')
-    .map((char) => map[char] || char)
-    .join('')
-    .replace(/\s+/g, ' ')
-    .trim();
+
+  rules.forEach(([regex, replacement]) => {
+    str = str.replace(regex, replacement);
+  });
+
+  let final = '';
+  for (const char of str) {
+    final += charMap[char] || char;
+  }
+
+  return final.replace(/\s+/g, ' ').trim();
 };
 
 // --- SMART ARABIC REVERSAL ---
@@ -225,6 +172,80 @@ const smartRTLFix = (text) => {
     .join(' ');
 };
 
+// --- FUZZY MATCHER LOGIC (LAYER 3 - AI BRAIN) ---
+const getLevenshteinDistance = (a, b) => {
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) matrix[i] = [i];
+  for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(matrix[i - 1][j - 1] + 1, matrix[i][j - 1] + 1, matrix[i - 1][j] + 1);
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+};
+
+// --- ELITE PHONETIC ENGINE (SOUND-BASED AI) ---
+const getPhoneticCode = (text) => {
+  if (!text) return '';
+  let str = text.toLowerCase().trim();
+  // Simplified Maghreb Phonetic Algorithm
+  return str
+    .replace(/ou/g, 'w')
+    .replace(/dj/g, 'j')
+    .replace(/kh/g, 'x')
+    .replace(/gh/g, 'r')
+    .replace(/ch/g, 's')
+    .replace(/ph/g, 'f')
+    .replace(/th/g, 't')
+    .replace(/[aeiouy]/g, '') // Remove vowels to get the 'skeleton' of the sound
+    .replace(/(.)\1+/g, '$1'); // Remove double consonants
+};
+
+const findBestBrainMatch = (input, dict, threshold = 0.4) => {
+  if (!input || !dict) return null;
+  const targetCode = getPhoneticCode(input);
+  const targetRaw = input.toLowerCase().replace(/\s+/g, '');
+  
+  let bestMatch = null;
+  let minScore = Infinity;
+
+  for (const [key, value] of Object.entries(dict)) {
+    const keyRaw = key.toLowerCase().replace(/\s+/g, '');
+    const keyCode = getPhoneticCode(key);
+    
+    // Calculate a multi-factor score (Phonetic + Levenshtein)
+    const phoneticDist = getLevenshteinDistance(targetCode, keyCode);
+    const rawDist = getLevenshteinDistance(targetRaw, keyRaw);
+    
+    const score = (phoneticDist * 0.7 + rawDist * 0.3) / Math.max(targetRaw.length, keyRaw.length);
+    
+    if (score < minScore && score <= threshold) {
+      minScore = score;
+      bestMatch = value;
+    }
+  }
+  return bestMatch;
+};
+
+// --- ORT CONFIGURATION ---
+const getOrtConfig = async () => {
+  try {
+    // Check for WebGPU support
+    if (navigator.gpu) {
+      const adapter = await navigator.gpu.requestAdapter();
+      if (adapter) return { executionProviders: ['webgpu', 'wasm'], deviceId: 0 };
+    }
+  } catch (e) {
+    console.warn('[ORT] WebGPU not available, falling back to WASM');
+  }
+  return { executionProviders: ['wasm'], wasm: { numThreads: navigator.hardwareConcurrency || 4 } };
+};
+
 export default function UniversalOCRModal({
   mode = 'worker',
   onClose,
@@ -232,7 +253,8 @@ export default function UniversalOCRModal({
   departments,
 }) {
   // ========== STATE ==========
-  const [activeTab, setActiveTab] = useState('scan'); // 'scan' | 'results'
+  const [activeTab, setActiveTab] = useState('scan'); // 'scan' | 'results' | 'ai-lab'
+  const [showAiLab, setShowAiLab] = useState(false); // Toggle for comparison view
   const [image, setImage] = useState(null);
   const [candidates, setCandidates] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -955,14 +977,17 @@ export default function UniversalOCRModal({
       // [REUSE LOGIC]
       if (!paddleOcrRef.current) {
         const modelsUrl = getModelsUrl();
+        const ortConfig = await getOrtConfig();
+        const ep = ortConfig.executionProviders[0] || 'wasm';
         paddleOcrRef.current = await Ocr.create({
           models: {
             detectionPath: `${modelsUrl}/det.onnx`,
             recognitionPath: `${modelsUrl}/rec_ara.onnx`,
             dictionaryPath: `${modelsUrl}/keys_ara.txt`,
           },
+          ...ortConfig
         });
-        addLog('[PADDLE] Engine initialized.');
+        addLog(`[PADDLE] Moteur initialisé sur: ${ep.toUpperCase()}`);
       } else {
         addLog('[PADDLE] Reusing existing engine.');
       }
@@ -1198,14 +1223,17 @@ export default function UniversalOCRModal({
       // 3. Init Paddle if needed
       if (!paddleOcrRef.current) {
         const modelsUrl = getModelsUrl();
+        const ortConfig = await getOrtConfig();
+        const ep = ortConfig.executionProviders[0] || 'wasm';
         paddleOcrRef.current = await Ocr.create({
           models: {
             detectionPath: `${modelsUrl}/det.onnx`,
             recognitionPath: `${modelsUrl}/rec_ara.onnx`,
             dictionaryPath: `${modelsUrl}/keys_ara.txt`,
           },
+          ...ortConfig
         });
-        addLog('[HYBRID] Paddle initialized.');
+        addLog(`[HYBRID] Paddle prêt sur: ${ep.toUpperCase()}`);
       }
       const currentPaddleOcr = paddleOcrRef.current;
 
@@ -1556,6 +1584,9 @@ export default function UniversalOCRModal({
           updated.job_info = updated.suggested_job;
           updated.suggested_job = null;
         } else if (fieldType === 'full_name') {
+          // [REVERSIBLE LOGIC] Store current name before applying
+          updated.prev_name_before_ai = updated.full_name;
+
           if (updated.is_viewing_ar && updated.suggested_name_ar) {
             updated.full_name = updated.suggested_name_ar;
             updated.original_ar = updated.suggested_name_ar;
@@ -1601,8 +1632,151 @@ export default function UniversalOCRModal({
   };
 
   const updateCandidate = (id, field, val) => {
-    setCandidates((prev) => prev.map((c) => (c.id === id ? { ...c, [field]: val } : c)));
+    setCandidates((prev) => prev.map((c) => {
+      if (c.id === id) {
+        return { ...c, [field]: val, manually_edited: true };
+      }
+      return c;
+    }));
   };
+
+  // ==========================================================================
+  // [PAUSED] TRANSFORMERS.JS BRAIN (HEAVY AI)
+  // To next AI Agent: This function is disabled to prevent 1GB+ data drain on 
+  // mobile networks. Do not enable without User confirmation of High-Speed Wifi.
+  // Model used: Xenova/nllb-200-distilled-600M (Quantized q4)
+  // ==========================================================================
+  const runBrainScan = async () => {
+    addLog('[STATION] Séquence Transformers.js en pause (Protection Données)');
+    alert("Intelligence IA (Transformers) est en pause pour économiser votre DATA. Utilisez les moteurs locaux AI 1-4 ci-dessous.");
+    return;
+    /* 
+    if (candidates.length === 0) return;
+    setStatusText('Cerveau IA : Initialisation...');
+    ... rest of heavy logic ...
+    */
+  };
+
+  // --- AI 1-4: POLISH (SAME LANGUAGE IMPROVEMENT) ---
+  const runAi1_Polish_Dict = async () => {
+    const dict = await (await fetch(getAssetUrl('algerian_dictionary.json'))).json();
+    applyLocalBrain((name) => {
+      const isAr = /[\u0600-\u06FF]/.test(name);
+      const clean = name.toLowerCase().replace(/\s+/g, '');
+      if (isAr) {
+        return Object.values(dict.full_name).find(v => v.replace(/\s+/g, '') === clean) || null;
+      } else {
+        return Object.keys(dict.full_name).find(k => k.replace(/\s+/g, '') === clean)?.toUpperCase() || null;
+      }
+    }, 'AI 1 (Dict-Polish)');
+  };
+
+  const runAi2_Polish_Phonetic = () => {
+    applyLocalBrain((name) => {
+      return name.replace(/(.)\1+/g, '$1').replace(/[^\u0600-\u06FFa-zA-Z\s]/g, '').trim().toUpperCase();
+    }, 'AI 2 (Phonetic-Polish)');
+  };
+
+  const runAi3_Polish_Rules = () => {
+    applyLocalBrain((name) => {
+      const isAr = /[\u0600-\u06FF]/.test(name);
+      if (isAr) return name.replace(/عبدال/g, 'عبد ال').replace(/الدين/g, ' الدين').trim();
+      return name.replace(/ABDEL /g, 'ABDEL').replace(/ABDEL/g, 'ABDEL ').replace(/BEN /g, 'BEN').replace(/BEN/g, 'BEN ').trim().toUpperCase();
+    }, 'AI 3 (Rules-Polish)');
+  };
+
+  const runAi4_Polish_Fuzzy = async () => {
+    const dict = await (await fetch(getAssetUrl('algerian_dictionary.json'))).json();
+    applyLocalBrain((name) => {
+      const isAr = /[\u0600-\u06FF]/.test(name);
+      const targetPool = isAr ? Object.values(dict.full_name) : Object.keys(dict.full_name);
+      const poolObj = Object.fromEntries(targetPool.map(x => [x, x]));
+      return findBestBrainMatch(name, poolObj, 0.3);
+    }, 'AI 4 (Fuzzy-Polish)');
+  };
+
+  // --- T AI 1-4: TRANSLATE (FLIP LANGUAGE) ---
+  const runT1_Trans_Dict = async () => {
+    const dict = await (await fetch(getAssetUrl('algerian_dictionary.json'))).json();
+    applyLocalBrain((name) => {
+      const isAr = /[\u0600-\u06FF]/.test(name);
+      const clean = name.toLowerCase().replace(/\s+/g, '');
+      if (isAr) {
+        return Object.keys(dict.full_name).find(k => dict.full_name[k].replace(/\s+/g, '') === clean)?.toUpperCase() || null;
+      } else {
+        return dict.full_name[clean] || null;
+      }
+    }, 'T AI 1 (Dict-Trans)');
+  };
+
+  const runT2_Trans_Phonetic = () => {
+    applyLocalBrain((name) => {
+      const isAr = /[\u0600-\u06FF]/.test(name);
+      return isAr ? transliterateArToFr(name) : transliterateFrToAr(name);
+    }, 'T AI 2 (Phonetic-Trans)');
+  };
+
+  const runT3_Trans_Rules = () => {
+    applyLocalBrain((name) => {
+      const isAr = /[\u0600-\u06FF]/.test(name);
+      if (isAr) return name.replace(/عبد ال/g, 'ABDEL ').replace(/بن /g, 'BEN ').toUpperCase();
+      return name.replace(/ABDEL /g, 'عبد ال').replace(/BEN /g, 'بن ').trim();
+    }, 'T AI 3 (Rules-Trans)');
+  };
+
+  const runT4_Trans_Fuzzy = async () => {
+    const dict = await (await fetch(getAssetUrl('algerian_dictionary.json'))).json();
+    applyLocalBrain((name) => {
+      const isAr = /[\u0600-\u06FF]/.test(name);
+      const clean = name.toLowerCase().replace(/\s+/g, '');
+      const matchKey = Object.keys(dict.full_name).find(k => {
+         const dist = getLevenshteinDistance(clean, k.toLowerCase().replace(/\s+/g, ''));
+         return dist / Math.max(clean.length, k.length) < 0.35;
+      });
+      if (matchKey) return isAr ? matchKey.toUpperCase() : dict.full_name[matchKey];
+      return null;
+    }, 'T AI 4 (Fuzzy-Trans)');
+  };
+
+  // Improved helper that protects manual edits and fills the star
+  const applyLocalBrain = (algo, label) => {
+    setCandidates(prev => prev.map(c => {
+      // PROTECTION: If user manually typed something, don't overwrite it
+      if (c.manually_edited) return c;
+
+      const suggestion = algo(c.full_name);
+      if (suggestion && suggestion !== c.full_name) {
+        const isAr = /[\u0600-\u06FF]/.test(suggestion);
+        return { 
+          ...c, 
+          [isAr ? 'suggested_name_ar' : 'suggested_name']: suggestion 
+        };
+      }
+      return c;
+    }));
+    addLog(`[BRAIN] Moteur ${label} terminé.`);
+    setActiveTab('ai-lab');
+  };
+
+  const runLegacyPhoneticScan = async () => {
+    try {
+      const response = await fetch(getAssetUrl('algerian_dictionary.json'));
+      const masterDict = await response.json();
+      setCandidates(prev => prev.map(c => {
+        const updated = { ...c };
+        if (!updated.suggested_name && !updated.suggested_name_ar) {
+          const match = findBestBrainMatch(updated.full_name, masterDict.full_name);
+          if (match && match !== updated.full_name) {
+            const isArMatch = /[\u0600-\u06FF]/.test(match);
+            if (isArMatch) updated.suggested_name_ar = match;
+            else updated.suggested_name = match;
+          }
+        }
+        return updated;
+      }));
+    } catch(e) {}
+  };
+
   const removeCandidate = (id) => setCandidates((prev) => prev.filter((c) => c.id !== id));
 
   const handleBulkImport = async () => {
@@ -1887,6 +2061,26 @@ export default function UniversalOCRModal({
                 {candidates.length}
               </span>
             )}
+          </button>
+          <button
+            onClick={() => setActiveTab('ai-lab')}
+            disabled={candidates.length === 0}
+            style={{
+              flex: 1,
+              padding: '12px',
+              border: 'none',
+              background: activeTab === 'ai-lab' ? 'white' : 'transparent',
+              fontWeight: activeTab === 'ai-lab' ? 'bold' : 'normal',
+              borderBottom: activeTab === 'ai-lab' ? '3px solid #8b5cf6' : 'none',
+              cursor: candidates.length > 0 ? 'pointer' : 'not-allowed',
+              color: candidates.length > 0 ? (activeTab === 'ai-lab' ? '#8b5cf6' : 'black') : '#ccc',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '8px',
+            }}
+          >
+            <FaBrain color={candidates.length > 0 ? '#8b5cf6' : '#ccc'} /> 3. Lab IA
           </button>
         </div>
 
@@ -2511,11 +2705,147 @@ export default function UniversalOCRModal({
           </div>
         )}
 
+        {/* TAB CONTENT: AI LAB (DUEL VIEW) */}
+        {activeTab === 'ai-lab' && (
+          <div style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
+            
+            {/* [NEW] MULTI-ENGINE CONTROL PANEL */}
+            <div style={{ 
+              background: '#fff', 
+              border: '2px solid #ddd6fe', 
+              borderRadius: '12px', 
+              padding: '1.5rem',
+              marginBottom: '1.5rem',
+              boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)'
+            }}>
+              <h3 style={{ margin: '0 0 1rem 0', color: '#5b21b6', fontSize: '1.1rem' }}>Panneau de Contrôle Multi-Moteurs (Offline)</h3>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                {/* COLUMN A: Correction Methods */}
+                <div>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '0.8rem', fontWeight: 'bold', color: '#6b7280' }}>SUGGESTIONS (MÊME LANGUE)</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    <button onClick={runAi1_Polish_Dict} className="btn btn-sm btn-outline" style={{ borderColor: '#8b5cf6', color: '#8b5cf6' }}>AI 1: Dict</button>
+                    <button onClick={runAi2_Polish_Phonetic} className="btn btn-sm btn-outline" style={{ borderColor: '#8b5cf6', color: '#8b5cf6' }}>AI 2: Phonet</button>
+                    <button onClick={runAi3_Polish_Rules} className="btn btn-sm btn-outline" style={{ borderColor: '#8b5cf6', color: '#8b5cf6' }}>AI 3: Regles</button>
+                    <button onClick={runAi4_Polish_Fuzzy} className="btn btn-sm btn-outline" style={{ borderColor: '#8b5cf6', color: '#8b5cf6' }}>AI 4: Flou</button>
+                  </div>
+                </div>
+
+                {/* COLUMN B: Translation Methods */}
+                <div>
+                  <p style={{ margin: '0 0 8px 0', fontSize: '0.8rem', fontWeight: 'bold', color: '#6b7280' }}>TRADUCTION (AR ↔ FR)</p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    <button onClick={runT1_Trans_Dict} className="btn btn-sm" style={{ background: '#7c3aed', color: 'white' }}>T AI 1</button>
+                    <button onClick={runT2_Trans_Phonetic} className="btn btn-sm" style={{ background: '#7c3aed', color: 'white' }}>T AI 2</button>
+                    <button onClick={runT3_Trans_Rules} className="btn btn-sm" style={{ background: '#7c3aed', color: 'white' }}>T AI 3</button>
+                    <button onClick={runT4_Trans_Fuzzy} className="btn btn-sm" style={{ background: '#7c3aed', color: 'white' }}>T AI 4</button>
+                  </div>
+                </div>
+              </div>
+              
+              <div style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid #f3f4f6', textAlign: 'center' }}>
+                <button 
+                  className="btn btn-sm btn-outline" 
+                  onClick={() => setActiveTab('results')}
+                  style={{ minWidth: '200px' }}
+                >
+                  Fermer Lab et voir résultats
+                </button>
+              </div>
+            </div>
+
+            {/* DUEL VIEW TABLE */}
+            <div className="table-container">
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead style={{ background: '#f8fafc' }}>
+                  <tr>
+                    <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>Texte Scanné</th>
+                    <th style={{ padding: '12px', textAlign: 'center', borderBottom: '2px solid #e2e8f0' }}>→</th>
+                    <th style={{ padding: '12px', textAlign: 'left', borderBottom: '2px solid #e2e8f0' }}>Proposition IA</th>
+                    <th style={{ padding: '12px', textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {candidates.map((c) => {
+                    const hasAi = c.suggested_name || c.suggested_name_ar;
+                    return (
+                      <tr key={c.id} style={{ borderBottom: '1px solid #f1f5f9', background: hasAi ? '#fff' : '#f9fafb' }}>
+                        <td style={{ padding: '12px', fontWeight: 600, color: '#64748b' }}>
+                          {c.full_name}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'center', color: '#94a3b8' }}>
+                          <FaBrain size={14} />
+                        </td>
+                        <td style={{ padding: '12px' }}>
+                          {hasAi ? (
+                            <span style={{ 
+                              color: '#7c3aed', 
+                              fontWeight: 800, 
+                              fontSize: '1.1rem',
+                              fontFamily: c.suggested_name_ar ? 'Amiri, serif' : 'inherit'
+                            }}>
+                              {c.suggested_name || c.suggested_name_ar}
+                            </span>
+                          ) : (
+                            <span style={{ color: '#94a3b8', fontStyle: 'italic' }}>Aucun changement suggéré</span>
+                          )}
+                        </td>
+                        <td style={{ padding: '12px', textAlign: 'right' }}>
+                          {hasAi && (
+                            <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+                              <button 
+                                className="btn btn-sm"
+                                style={{ background: '#10b981', color: 'white', border: 'none' }}
+                                onClick={() => applySuggestion(c.id, 'full_name')}
+                              >
+                                Accepter
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* TAB CONTENT: RESULTS TABLE */}
         {activeTab === 'results' && (
           <div style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
-            {/* [NEW] MASTER AI BUTTON */}
-            {candidates.some((c) => c.suggested_id || c.suggested_name || c.suggested_job) && (
+            
+            {/* [NEW] ALWAYS VISIBLE BRAIN SCAN ACTION */}
+            <div style={{ 
+              marginBottom: '10px', 
+              display: 'flex', 
+              justifyContent: 'flex-end',
+              gap: '10px'
+            }}>
+               <button
+                  onClick={runBrainScan}
+                  className="btn btn-sm"
+                  style={{
+                    background: '#cbd5e1', // Muted Gray
+                    color: '#64748b',
+                    fontWeight: 'bold',
+                    border: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                    cursor: 'not-allowed',
+                    opacity: 0.8
+                  }}
+                  title="Transformers AI en pause (Economie de DATA)"
+                >
+                  <FaBrain size={14} /> IA en Pause (Wifi)
+                </button>
+            </div>
+
+            {/* [NEW] MASTER AI BANNER (STARS ONLY) */}
+            {candidates.some((c) => c.suggested_id || c.suggested_name || c.suggested_name_ar || c.suggested_job) && (
               <div
                 style={{
                   background: '#fffbeb',
@@ -2543,18 +2873,20 @@ export default function UniversalOCRModal({
                   />
                   Des corrections intelligentes sont disponibles.
                 </div>
-                <button
-                  onClick={applyAllSuggestions}
-                  className="btn btn-sm"
-                  style={{
-                    background: '#f59e0b',
-                    color: 'white',
-                    fontWeight: 'bold',
-                    border: 'none',
-                  }}
-                >
-                  Appliquer Tout
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button
+                    onClick={applyAllSuggestions}
+                    className="btn btn-sm"
+                    style={{
+                      background: '#f59e0b',
+                      color: 'white',
+                      fontWeight: 'bold',
+                      border: 'none',
+                    }}
+                  >
+                    Appliquer Tout
+                  </button>
+                </div>
               </div>
             )}
 
@@ -2601,7 +2933,7 @@ export default function UniversalOCRModal({
                     </th>
                     <th style={{ padding: '10px', textAlign: 'left' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <FaArrowsAltH /> Service
+                        <FaArrowsAltH /> {mode === 'worker' ? 'Service RH' : 'Service Arme'}
                       </div>
                     </th>
                     {mode === 'worker' && (
@@ -2697,6 +3029,25 @@ export default function UniversalOCRModal({
                               title={`Correction IA (Arabe) : ${c.suggested_name_ar}`}
                             >
                               <FaMagic />
+                            </button>
+                          )}
+                          {c.prev_name_before_ai && (
+                            <button
+                              className="magic-star-btn"
+                              style={{ 
+                                right: 'auto', 
+                                left: '-25px', 
+                                background: '#f1f5f9', 
+                                color: '#64748b',
+                                border: '1px solid #cbd5e1'
+                              }}
+                              onClick={() => {
+                                updateCandidate(c.id, 'full_name', c.prev_name_before_ai);
+                                updateCandidate(c.id, 'prev_name_before_ai', null);
+                              }}
+                              title="Annuler la correction IA (Revenir au scan original)"
+                            >
+                              <FaUndo size={10} />
                             </button>
                           )}
                         </div>

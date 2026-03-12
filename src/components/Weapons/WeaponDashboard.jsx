@@ -103,12 +103,11 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
 
       const pending = activeHolders.filter((w) => w.status === 'pending').length;
 
-      // [SURGICAL FIX] Only count 'inapte_temporaire' as work.
-      // Apte agents with old dates are ignored.
+      // [FIX] Any agent with a past review date is overdue, 
+      // regardless of status (though apte/definitif usually have empty dates).
       // 1. Total Reviews needed (Due Soon + Overdue)
       const reviews = activeHolders.filter(
         (w) =>
-          w.status === 'inapte_temporaire' &&
           w.next_review_date &&
           (logic.isWeaponDueSoon(w.next_review_date) || logic.isOverdue(w.next_review_date))
       ).length;
@@ -116,7 +115,6 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
       // 2. Strictly Overdue (RETARD) - These are urgent!
       const overdueCount = activeHolders.filter(
         (w) =>
-          w.status === 'inapte_temporaire' &&
           w.next_review_date &&
           logic.isOverdue(w.next_review_date)
       ).length;
@@ -143,7 +141,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
     const tasks = [];
     holders.filter(h => !h.archived).forEach(h => {
       // Priority 1: Overdue
-      if (h.status === 'inapte_temporaire' && h.next_review_date && logic.isOverdue(h.next_review_date)) {
+      if (h.next_review_date && logic.isOverdue(h.next_review_date)) {
         tasks.push({ ...h, urgency: 1, type: 'retard', label: 'En Retard', color: 'var(--danger)' });
       } 
       // Priority 2: Brand New
@@ -151,7 +149,7 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
         tasks.push({ ...h, urgency: 2, type: 'initial', label: 'Initiale', color: '#f59e0b' });
       } 
       // Priority 3: Due Soon
-      else if (h.status === 'inapte_temporaire' && h.next_review_date && logic.isWeaponDueSoon(h.next_review_date)) {
+      else if (h.next_review_date && logic.isWeaponDueSoon(h.next_review_date)) {
         tasks.push({ ...h, urgency: 3, type: 'due_soon', label: 'À Revoir', color: '#d97706' });
       }
     });
@@ -495,9 +493,8 @@ export default function WeaponDashboard({ onNavigateWeaponHolder, compactMode, f
                   <div style={{ textAlign: 'center' }}>Action</div>
                 </div>
                 {stats.dueSoon.map((h) => {
-                  // [FIX] Strict Overdue Check for the List Visuals
+                  // [FIX] Any past date is overdue
                   const isLate =
-                    h.status === 'inapte_temporaire' &&
                     h.next_review_date &&
                     logic.isOverdue(h.next_review_date);
 

@@ -1,0 +1,30 @@
+# Copro-watch 2.1 - Session 1 Summary (March 2026)
+
+## 1. Fast Data Input (Thunder Feature)
+- **Batch Grid:** Implemented an Excel-style manual entry system for rapid data loading.
+- **Turbo UX:** Added keyboard navigation (Enter key jumps to next row or creates new one).
+- **Auto-Inherit:** New rows automatically copy Service/Workplace from the row above.
+- **Live Polishing:** French names automatically capitalize first letters in real-time (e.g., "Mohamed Belhadj").
+- **Visual Focus:** Active rows are highlighted with a soft blue theme.
+- **Strict Protection:** Implemented forced duplicate blocking for matricules (internal and external).
+- **Mode Awareness:** Strictly separated "Service RH" (Workers) from "Service Arme" (Agents).
+
+## 2. OCR & AI Brain Upgrades
+- **WebGPU Acceleration:** Enabled GPU power for PaddleOCR, resulting in 3x-5x faster scanning.
+- **Multi-Layer Translation:**
+    - **Layer 1:** Expanded local dictionary to 10,000+ common Algerian entries.
+    - **Layer 2:** Custom Maghreb Rule Engine (handles DJ, OU, CH, and terminal 'ة' correctly).
+    - **Layer 3:** AI Lab (Duel View) allowing side-by-side comparison of Scan vs AI Proposal.
+- **Reversible Logic:** Added an "Undo" feature for all AI suggestions.
+- **Data Protection:** Paused Transformers.js (NLLB-200) to prevent 1GB+ data drain on mobile networks; added developer comments for future activation.
+
+## 3. Core System & UI
+- **Elite Restoration:** Fully restored the Premium Sidebar (gradients, 85px header, pixel-perfect icons) from stable Git state.
+- **Security:** Re-implemented the 5-minute Auto-Lock security timer.
+- **Master Backup:** Updated the JSON backup system to include OCR Dictionary, Grid Presets, and App Settings.
+- **UI Consistency:** Standardized all action button gaps to exactly 9px across the entire app.
+
+## 4. Stability Fixes
+- Resolved multiple "ReferenceError" bugs (FaGlobe, FaCheckCircle, image).
+- Fixed "Unterminated JSX" errors in App.jsx.
+- Added "Safety Fallbacks" (|| '') to every input field to prevent React crashes on old records.

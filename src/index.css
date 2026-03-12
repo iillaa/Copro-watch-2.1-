@@ -496,6 +496,7 @@ tr:nth-child(even) td {
   overflow-y: auto;
 
   /* [FIX 1] Removed 'contain' so you don't get stuck! (Restores Scroll Chaining) */
+  /* This allows you to continue scrolling the main page when you reach the list bottom */
   overscroll-behavior: auto !important;
 
   /* [FIX 2] STOP THE VIBRATION (Windows Chrome Fix) */

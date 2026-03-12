@@ -32,9 +32,16 @@ import {
   FaExchangeAlt,
   FaCamera,
   FaGlobe,
+  FaBolt,
 } from 'react-icons/fa';
 
-export default function WeaponList({ onNavigateWeaponHolder, compactMode, appLanguage, onToggleLanguage }) {
+export default function WeaponList({ 
+  onNavigateWeaponHolder, 
+  compactMode, 
+  appLanguage, 
+  onToggleLanguage,
+  onShowFastInput // [NEW]
+}) {
   const { showToast, ToastContainer } = useToast();
   const [holders, setHolders] = useState([]);
   const [departments, setDepartments] = useState([]);
@@ -416,6 +423,16 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode, appLan
             <FaFileExcel /> <span className="hide-mobile">Excel</span>
           </button>
 
+          {/* [NEW] FAST INPUT (THUNDER) */}
+          <button
+            className="btn btn-outline"
+            onClick={() => onShowFastInput('weapon')}
+            title="Saisie rapide par tableau (Excel-style)"
+            style={{ borderColor: '#d97706', color: '#d97706', background: '#fffbeb', padding: '0.8rem 1rem' }}
+          >
+            <FaBolt /> <span className="hide-mobile">Rapide</span>
+          </button>
+
           <button
             className="btn btn-primary"
             style={{ padding: '0.8rem 1rem' }}
@@ -602,10 +619,9 @@ export default function WeaponList({ onNavigateWeaponHolder, compactMode, appLan
               const deptName = departments.find((d) => d.id === h.department_id)?.name || '-';
               const isDue = logic.isWeaponDueSoon(h.next_review_date);
 
-              // [SURGICAL FIX] Strict Status Check
-              // Only 'inapte_temporaire' can be overdue. Apte/Definitif are ignored.
+              // [FIX] Any agent with a past review date is overdue, 
+              // regardless of status (though apte/definitif have empty dates).
               const isOverdue =
-                h.status === 'inapte_temporaire' &&
                 h.next_review_date &&
                 logic.isOverdue(h.next_review_date);
 

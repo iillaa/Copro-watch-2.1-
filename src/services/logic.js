@@ -25,6 +25,18 @@ export const logic = {
   DUE_WARNING_DAYS: 15,
   RETEST_INTERVAL_DAYS_DEFAULT: 7,
 
+  // SAFETY: Prevent impossible dates (Medical Audit Requirement)
+  isDatePlausible(dateStr) {
+    if (!dateStr) return true;
+    try {
+      const date = new Date(dateStr);
+      const year = date.getFullYear();
+      const currentYear = new Date().getFullYear();
+      // Reject dates > 10 years in the future or before 1940
+      return year >= 1940 && year <= currentYear + 10;
+    } catch (e) { return false; }
+  },
+
   // GENERAL DATE HELPERS
   formatDate(date) {
     const d = safeDate(date);
@@ -62,16 +74,20 @@ export const logic = {
 
   isDueSoon(nextExamDateStr) {
     const nextDate = safeDate(nextExamDateStr);
-    if (!nextDate) return true;
-    const diff = differenceInDays(nextDate, new Date());
+    if (!nextDate) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const diff = differenceInDays(nextDate, today);
     return diff <= this.DUE_WARNING_DAYS && diff >= 0;
   },
 
   isOverdue(nextExamDateStr) {
     const nextDate = safeDate(nextExamDateStr);
-    if (!nextDate) return true;
+    if (!nextDate) return false; // [FIX] Don't mark missing dates as overdue by default
     const today = new Date();
-    return isBefore(nextDate, today) && differenceInDays(today, nextDate) > 0;
+    today.setHours(0, 0, 0, 0);
+    // If nextDate is strictly before today, it's overdue
+    return isBefore(nextDate, today);
   },
 
   calculateRetestDate(treatmentStartDateStr, days = 7) {
@@ -207,18 +223,12 @@ export const logic = {
     // "Inapte" = Status INAPTE (Any kind)
     const inapte = holders.filter((h) => !h.archived && h.status?.startsWith('inapte'));
 
-    // "A Revoir" (Due Soon)
-    // 1. New Agents (Pending)
-    // 2. Inaptes Temporaires coming due
+    // "A Revoir" (Due Soon or Overdue)
     const dueSoon = holders.filter((h) => {
       if (h.archived) return false;
       if (h.status === 'pending') return true; // New agents
-      if (
-        h.status === 'inapte_temporaire' &&
-        (this.isWeaponDueSoon(h.next_review_date) || this.isOverdue(h.next_review_date))
-      )
-        return true;
-      return false;
+      // [FIX] Catch anyone with a date that is soon or past
+      return h.next_review_date && (this.isWeaponDueSoon(h.next_review_date) || this.isOverdue(h.next_review_date));
     });
 
     // Latest activity (last 10 exams) - SORTED CHRONOLOGICALLY (Newest first)
