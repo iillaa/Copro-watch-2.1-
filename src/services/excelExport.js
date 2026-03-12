@@ -48,7 +48,7 @@ export const exportWorkersToExcel = async (workers, departments) => {
     }
 
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Copro-Watch v2.1';
+    workbook.creator = 'Copro-Watch v3.1';
     workbook.created = new Date();
 
     // ==========================================
@@ -468,7 +468,7 @@ export const exportWorkersToExcel = async (workers, departments) => {
 export const exportWeaponsToExcel = async (agents, departments) => {
   try {
     const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'Copro-Watch v2.1';
+    workbook.creator = 'Copro-Watch v3.1';
     workbook.created = new Date();
 
     const sheet = workbook.addWorksheet('Détenteurs Armes', {

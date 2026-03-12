@@ -1456,7 +1456,7 @@ export default function Settings({
       >
         <div className="credit-title">Développé par</div>
         <div className="credit-author">Dr Kibeche Ali Dia Eddine</div>
-        <div className="credit-version">2.1</div>
+        <div className="credit-version">3.1</div>
       </div>
 
       <ToastContainer />

@@ -13,7 +13,7 @@ Here is the detailed `CODEMAP.md` file. Save this in your project root. It cover
 ```markdown
 # 🗺️ Copro-Watch Project Code Map
 
-> **Version:** 2.1.0
+> **Version:** 3.1.0
 > **Purpose:** Offline-first Medical Fleet Management (SPA)
 > **Stack:** React 19, Vite, Capacitor 8, Dexie (IndexedDB)
 

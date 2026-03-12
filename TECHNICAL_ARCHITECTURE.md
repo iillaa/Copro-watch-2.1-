@@ -14,9 +14,9 @@
 
 Copro-Watch implements a dual-layer cryptographic security model to ensure both rapid application access and robust data privacy.
 
-### 2.1 The Split-Key Security Model (v2.1.1+)
+### 2.1 The Split-Key Security Model (v3.1+)
 
-As of version 2.1.1, the application separates the **Access Key** from the **Encryption Key**. This architectural decision ensures that user interface interactions (like logging in) are completely decoupled from data persistence operations (backups).
+As of version 3.1, the application separates the **Access Key** from the **Encryption Key**. This architectural decision ensures that user interface interactions (like logging in) are completely decoupled from data persistence operations (backups).
 
 #### 2.1.1 Layer 1: Application Access (PIN)
 - **Purpose:** Quick unlocking of the UI.

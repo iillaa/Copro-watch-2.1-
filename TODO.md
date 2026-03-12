@@ -83,4 +83,5 @@
 
 - [x] **v1.0** : Core (Gestion Travailleurs, Examens, Eau), Sauvegarde Smart Backup.
 - [x] **v1.2** : Batch Workflows (Résultats, Planning), PDF Engine, Excel Engine, Global Sync.
-- [x] **v2.1** : Bulk Actions (Suppression massive, Impression groupée), Transfert inter-départements, Interface optimisée, Standalone HTML Build, **OCR Modal Improvements (Tesseract asset fix, robust error handling, Capacitor asset optimization).**
+- [x] **v2.1** : Bulk Actions (Suppression massive, Impression groupée), Transfert inter-départements, Interface optimisée, Standalone HTML Build.
+- [x] **v3.1** : OCR Modal Improvements (Tesseract asset fix, robust error handling, Capacitor asset optimization), Security hardening, and maintenance.

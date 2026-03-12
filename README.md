@@ -26,7 +26,7 @@ Une application web autonome (Single Page Application) conçue pour la gestion d
 - **Actions de Masse** : Planification, résultat et impression groupés pour plusieurs travailleurs.
 - **Analyses d'Eau** : Module dédié pour le suivi de la qualité de l'eau (Chlore, pH, Bactério) avec historique complet.
 
-### 🛡️ Sécurité & Sauvegarde "Hardened" (v2.1)
+### 🛡️ Sécurité & Sauvegarde "Hardened" (v3.1)
 
 L'application dispose d'un système de sauvegarde robuste et hautement sécurisé :
 
