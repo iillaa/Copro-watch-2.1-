@@ -66,10 +66,17 @@ async function prepareCapacitorAssets() {
 
     if (file.endsWith('.traineddata.gz')) {
       const decompressedPath = destinationPath.replace('.gz', '');
-      console.log(`  Decompressing: ${file}`);
+      console.log(`  Processing traineddata: ${file}`);
+      
+      // Copy the original .gz file
+      await fs.promises.copyFile(sourcePath, destinationPath);
+      console.log(`    Copied compressed: ${file}`);
+
+      // Also provide decompressed version for engines that don't support GZIP
       const compressedData = fs.readFileSync(sourcePath);
       const decompressedData = zlib.gunzipSync(compressedData);
       fs.writeFileSync(decompressedPath, decompressedData);
+      console.log(`    Created decompressed: ${path.basename(decompressedPath)}`);
     } else if (file.endsWith('.js')) {
       // AGGRESSIVE PATCHING: Remove all CDN links from ALL javascript files
       console.log(`  Patching JS file: ${file}`);

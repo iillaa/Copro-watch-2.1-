@@ -11,6 +11,8 @@ import BatchPrintModal from '../BatchPrintModal';
 import BatchResultModal from '../BatchResultModal';
 import { exportWeaponsToExcel } from '../../services/excelExport';
 import { pdfService } from '../../services/pdfGenerator';
+import React from 'react';
+
 // [FIX] REMOVED STATIC UniversalOCRModal IMPORT to prevent 11MB startup lag.
 
 import {
@@ -40,7 +42,8 @@ export default function WeaponList({
   compactMode, 
   appLanguage, 
   onToggleLanguage,
-  onShowFastInput // [NEW]
+  onShowFastInput, // [NEW]
+  onShowOCR // [NEW]
 }) {
   const { showToast, ToastContainer } = useToast();
   const [holders, setHolders] = useState([]);
@@ -69,7 +72,6 @@ export default function WeaponList({
   const [showResultModal, setShowResultModal] = useState(false);
   const [showPrintModal, setShowPrintModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false); // [NEW]
-  const [showOCRModal, setShowOCRModal] = useState(false); // [NEW]
 
   const loadData = async () => {
     try {
@@ -408,7 +410,7 @@ export default function WeaponList({
           {/* [NEW] SCAN BUTTON - PASTE HERE */}
           <button
             className="btn btn-outline"
-            onClick={() => setShowOCRModal(true)}
+            onClick={onShowOCR}
             title="Scanner une liste (OCR)"
             style={{ padding: '0.8rem 1rem' }}
           >
@@ -820,20 +822,6 @@ export default function WeaponList({
           onSave={() => {
             setShowForm(false);
             loadData();
-          }}
-        />
-      )}
-      {/* [NEW] OCR Modal for Weapons */}
-      {showOCRModal && (
-        <UniversalOCRModal
-          mode="weapon" // <--- Crucial: Sets the target database
-          departments={departments}
-          onClose={() => setShowOCRModal(false)}
-          onImportSuccess={(count, skipped) => {
-            loadData();
-            let msg = `${count} agents importés !`;
-            if (skipped > 0) msg += ` (${skipped} doublons ignorés)`;
-            showToast(msg, 'success');
           }}
         />
       )}

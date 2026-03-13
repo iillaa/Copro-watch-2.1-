@@ -1,4 +1,4 @@
-import React, { useState, useEffect, Suspense, lazy } from 'react';
+import React, { useState, useEffect, Suspense, lazy, useMemo, useCallback } from 'react';
 import { useToast } from './components/Toast';
 import { db } from './services/db';
 import { hashString } from './services/crypto';
@@ -29,7 +29,8 @@ import {
   FaBolt,
   FaImage,
   FaList,
-  FaCamera
+  FaCamera,
+  FaThLarge
 } from 'react-icons/fa';
 
 const UniversalOCRModal = lazy(() => import('./components/UniversalOCRModal'));
@@ -198,6 +199,28 @@ function App() {
     return inputHash === pin;
   };
 
+  // --- LAYOUT & OCR STABILIZATION (Moved before early returns) ---
+  const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768;
+  const showSlimSidebar = forceMobile || isMobileView;
+  const sidebarWidth = showSlimSidebar ? '60px' : (isSidebarOpen ? '240px' : '70px');
+  const effectiveIsSidebarOpen = showSlimSidebar ? false : isSidebarOpen;
+
+  const ocrDepartments = useMemo(() => {
+    return ocrTargetMode === 'worker' ? departments : weaponDepartments;
+  }, [ocrTargetMode, departments, weaponDepartments]);
+
+  const handleCloseOCR = useCallback(() => {
+    setShowOCRModal(false);
+  }, []);
+
+  const handleOCRSuccess = useCallback((count, skipped) => {
+    let msg = `${count} importés !`;
+    if (skipped > 0) msg += ` (${skipped} doublons ignorés)`;
+    showToast(msg, 'success');
+    setListRefreshKey((p) => p + 1);
+    setShowOCRModal(false); // [FIX] Ensure modal closes on success
+  }, [showToast]);
+
   if (loading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column' }}>
@@ -221,11 +244,6 @@ function App() {
     return <PinLock onCheckPin={checkPin} onUnlock={() => setIsLocked(false)} />;
   }
 
-  const isMobileView = typeof window !== 'undefined' && window.innerWidth < 768;
-  const showSlimSidebar = forceMobile || isMobileView;
-  const sidebarWidth = showSlimSidebar ? '60px' : (isSidebarOpen ? '260px' : '70px');
-  const effectiveIsSidebarOpen = showSlimSidebar ? false : isSidebarOpen;
-
   return (
     <ErrorBoundary>
       <div 
@@ -243,19 +261,22 @@ function App() {
           style={{ 
             width: sidebarWidth,
             transition: 'width 0.3s cubic-bezier(0.16, 1, 0.3, 1)',
-            display: 'flex', flexDirection: 'column', background: '#fff', borderRight: '1px solid #e2e8f0', height: '100vh', zIndex: 100, overflow: 'hidden'
+            display: 'flex', flexDirection: 'column', background: '#fff', borderRight: '1px solid #e2e8f0', height: '100vh', zIndex: 100, overflow: 'hidden',
+            padding: effectiveIsSidebarOpen ? '0' : '0' // Reset default padding
           }}
         >
           <div style={{ 
             padding: effectiveIsSidebarOpen ? '1.5rem 1.25rem' : '1.5rem 0', 
             borderBottom: '1px solid #e2e8f0', display: 'flex', 
             justifyContent: effectiveIsSidebarOpen ? 'flex-start' : 'center', 
-            alignItems: 'center', gap: '12px', height: '85px', boxSizing: 'border-box' 
+            alignItems: 'center', gap: '12px', height: '85px', boxSizing: 'border-box',
+            width: '100%', overflow: 'hidden'
           }}>
             <div style={{ 
               width: effectiveIsSidebarOpen ? '40px' : '36px', height: effectiveIsSidebarOpen ? '40px' : '36px', 
               borderRadius: '10px', background: 'linear-gradient(135deg, var(--primary) 0%, #0284c7 100%)', 
-              display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 4px 10px rgba(14, 165, 233, 0.3)' 
+              display: 'flex', justifyContent: 'center', alignItems: 'center', boxShadow: '0 4px 10px rgba(14, 165, 233, 0.3)',
+              flexShrink: 0
             }}>
               <svg width={effectiveIsSidebarOpen ? "22" : "18"} height={effectiveIsSidebarOpen ? "22" : "18"} viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path><path d="M12 8v8"></path><path d="M8 12h8"></path>
@@ -286,49 +307,51 @@ function App() {
                 display: 'flex', 
                 alignItems: 'center', 
                 justifyContent: effectiveIsSidebarOpen ? 'flex-start' : 'center',
-                padding: effectiveIsSidebarOpen ? '0.75rem 1rem' : '0', 
-                borderRadius: '12px',
+                padding: effectiveIsSidebarOpen ? '0.6rem 0.85rem' : '0', 
+                borderRadius: '10px',
                 background: isActive ? 'var(--primary-light)' : 'transparent',
                 color: isActive ? 'var(--primary)' : '#64748b',
                 border: 'none', 
                 cursor: 'pointer', 
-                width: effectiveIsSidebarOpen ? '100%' : '48px', 
-                height: effectiveIsSidebarOpen ? '48px' : 'auto',
-                minHeight: '48px',
-                transition: 'all 0.2s ease',
-                outline: 'none'
+                width: effectiveIsSidebarOpen ? '100%' : '42px', 
+                height: '42px',
+                minHeight: '42px',
+                transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                outline: 'none',
+                position: 'relative'
               });
+              const iconSize = 19;
               return (
                 <>
-                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '0.5rem 0 0.5rem 0.5rem' }}>Coproculture</div>}
+                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.62rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '0.5rem 0 0.4rem 0.5rem', letterSpacing: '0.5px' }}>Coproculture</div>}
                   <button className="nav-item" onClick={() => setView('dashboard')} style={getBtnStyle(view === 'dashboard')} title="Bilan Copro">
-                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaChartLine size={22} /></div>
-                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Bilan Copro</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%', transition: 'transform 0.2s' }}><FaThLarge size={iconSize} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '10px', fontWeight: 600, fontSize: '0.92rem' }}>Bilan Copro</span>}
                   </button>
                   <button className="nav-item" onClick={() => { setView('workers'); setSelectedWorkerId(null); }} style={getBtnStyle(view === 'workers' || view === 'worker-detail')} title="Registre Copro">
-                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaUsers size={22} /></div>
-                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Registre Copro</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%', transition: 'transform 0.2s' }}><FaUsers size={iconSize} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '10px', fontWeight: 600, fontSize: '0.92rem' }}>Registre Copro</span>}
                   </button>
 
-                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '1.5rem 0 0.5rem 0.5rem' }}>Sanitaire</div>}
-                  <button className="nav-item" onClick={() => { setView('water-analyses'); setWaterResetKey(p => p + 1); }} style={getBtnStyle(view === 'water-analyses')} title="Analyses d'Eau">
-                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaFlask size={22} /></div>
-                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Analyses d'Eau</span>}
+                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.62rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '1.2rem 0 0.4rem 0.5rem', letterSpacing: '0.5px' }}>Sanitaire</div>}
+                  <button className="nav-item" onClick={() => { setView('water-analyses'); setWaterResetKey(p => p + 1); }} style={getBtnStyle(view === 'water-analyses')} title="Analyses Eau">
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%', transition: 'transform 0.2s' }}><FaFlask size={iconSize} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '10px', fontWeight: 600, fontSize: '0.92rem' }}>Analyses Eau</span>}
                   </button>
 
-                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.65rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '1.5rem 0 0.5rem 0.5rem' }}>Port d'Arme</div>}
+                  {effectiveIsSidebarOpen && <div className="nav-text" style={{ fontSize: '0.62rem', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', margin: '1.2rem 0 0.4rem 0.5rem', letterSpacing: '0.5px' }}>Port d'Arme</div>}
                   <button className="nav-item" onClick={() => setView('weapons-dashboard')} style={getBtnStyle(view === 'weapons-dashboard')} title="Bilan Armes">
-                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaShieldAlt size={22} /></div>
-                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Bilan Armes</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%', transition: 'transform 0.2s' }}><FaShieldAlt size={iconSize} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '10px', fontWeight: 600, fontSize: '0.92rem' }}>Bilan Armes</span>}
                   </button>
-                  <button className="nav-item" onClick={() => { setView('weapons-list'); setSelectedWeaponHolderId(null); }} style={getBtnStyle(view === 'weapons-list' || view === 'weapon-detail')} title="Détenteurs d'Armes">
-                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaUserShield size={22} /></div>
-                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Détenteurs d'Armes</span>}
+                  <button className="nav-item" onClick={() => { setView('weapons-list'); setSelectedWeaponHolderId(null); }} style={getBtnStyle(view === 'weapons-list' || view === 'weapon-detail')} title="Registre Armes">
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%', transition: 'transform 0.2s' }}><FaUserShield size={iconSize} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '10px', fontWeight: 600, fontSize: '0.92rem' }}>Registre Armes</span>}
                   </button>
 
                   <button className="nav-item" onClick={() => setView('settings')} style={{...getBtnStyle(view === 'settings'), marginTop: 'auto'}} title="Paramètres">
-                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%' }}><FaCog size={22} /></div>
-                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '12px', fontWeight: 700 }}>Paramètres</span>}
+                    <div className="nav-icon" style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', width: effectiveIsSidebarOpen ? 'auto' : '100%', transition: 'transform 0.2s' }}><FaCog size={iconSize} /></div>
+                    {effectiveIsSidebarOpen && <span className="nav-text" style={{ marginLeft: '10px', fontWeight: 600, fontSize: '0.92rem' }}>Paramètres</span>}
                   </button>
                 </>
               );
@@ -340,7 +363,7 @@ function App() {
           <div className="container">
             {!showSlimSidebar && (
               <button className="btn btn-sm no-print toggle-sidebar" style={{ marginBottom: '2.5rem' }} onClick={() => setSidebarOpen(!isSidebarOpen)}>
-                {effectiveIsSidebarOpen ? 'Masquer Sidebar' : 'Afficher Sidebar'}
+                {effectiveIsSidebarOpen ? 'Masquer' : 'Afficher'}
               </button>
             )}
             
@@ -353,6 +376,7 @@ function App() {
                 appLanguage={appLanguage} 
                 onToggleLanguage={() => setAppLanguage(p => p === 'fr' ? 'ar' : 'fr')}
                 onShowFastInput={(m) => { setFastInputMode(m); setShowFastInput(true); }}
+                onShowOCR={() => { setOcrTargetMode('worker'); setShowOCRModal(true); }}
               />
             )}
             {view === 'worker-detail' && selectedWorkerId && <WorkerDetail workerId={selectedWorkerId} onBack={() => setView('workers')} compactMode={compactMode} appLanguage={appLanguage} />}
@@ -366,6 +390,7 @@ function App() {
                 appLanguage={appLanguage} 
                 onToggleLanguage={() => setAppLanguage(p => p === 'fr' ? 'ar' : 'fr')}
                 onShowFastInput={(m) => { setFastInputMode(m); setShowFastInput(true); }}
+                onShowOCR={() => { setOcrTargetMode('weapon'); setShowOCRModal(true); }}
               />
             )}
             {view === 'weapon-detail' && selectedWeaponHolderId && <WeaponDetail holderId={selectedWeaponHolderId} onBack={() => setView('weapons-list')} compactMode={compactMode} appLanguage={appLanguage} />}
@@ -377,12 +402,9 @@ function App() {
           <Suspense fallback={<div className="loading-overlay">Initialisation du moteur OCR...</div>}>
             <UniversalOCRModal 
               mode={ocrTargetMode} 
-              departments={ocrTargetMode === 'worker' ? departments : weaponDepartments} 
-              onClose={() => setShowOCRModal(false)} 
-              onImportSuccess={(count) => {
-                showToast(`${count} importés !`, 'success');
-                setListRefreshKey(p => p + 1);
-              }} 
+              departments={ocrDepartments} 
+              onClose={handleCloseOCR} 
+              onImportSuccess={handleOCRSuccess} 
             />
           </Suspense>
         )}

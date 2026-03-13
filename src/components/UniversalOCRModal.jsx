@@ -348,7 +348,11 @@ export default function UniversalOCRModal({
     );
 
     const useRawTrainedData = hasRawTrainedData.every(Boolean);
-    console.log(`[TESS_RESOLVE] Raw traineddata available: ${useRawTrainedData}`);
+    if (useRawTrainedData) {
+      console.log('[TESS_RESOLVE] Using raw traineddata (fast)');
+    } else {
+      console.log('[TESS_RESOLVE] Raw data not found, checking for compressed .gz fallback...');
+    }
 
     if (!useRawTrainedData) {
       const hasGzTrainedData = await Promise.all(

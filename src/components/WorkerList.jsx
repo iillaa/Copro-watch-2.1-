@@ -12,6 +12,8 @@ import BatchPrintModal from './BatchPrintModal'; // [NEW]
 import BatchResultModal from './BatchResultModal'; // [NEW]
 import { exportWorkersToExcel } from '../services/excelExport';
 import { useToast } from './Toast'; // [NEW] Import Toast Hook
+import React from 'react';
+
 // [FIX] REMOVED STATIC UniversalOCRModal IMPORT to prevent 11MB startup lag.
 import {
   FaPlus,
@@ -76,7 +78,8 @@ export default function WorkerList({
   compactMode, 
   appLanguage, 
   onToggleLanguage,
-  onShowFastInput // [NEW]
+  onShowFastInput, // [NEW]
+  onShowOCR // [NEW]
 }) {
   // [NEW] Toast Hook
   const { showToast, ToastContainer } = useToast();
@@ -158,7 +161,6 @@ export default function WorkerList({
   );
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showMoveModal, setShowMoveModal] = useState(false);
-  const [showOCRModal, setShowOCRModal] = useState(false); // [NEW]
 
   // ==================================================================================
   // 2. DATA LOADING & EFFECTS
@@ -704,7 +706,7 @@ export default function WorkerList({
           {/* [NEW] SCAN BUTTON */}
           <button
             className="btn btn-outline"
-            onClick={() => setShowOCRModal(true)}
+            onClick={onShowOCR}
             title="Scanner une liste papier (OCR)"
           >
             <FaCamera /> <span className="hide-mobile">Scan</span>
@@ -1137,20 +1139,6 @@ export default function WorkerList({
           count={selectedIds.size}
           onConfirm={handleBatchResultConfirm}
           onCancel={() => setShowResultModal(false)}
-        />
-      )}
-      {/* [NEW] OCR Modal for Workers */}
-      {showOCRModal && (
-        <UniversalOCRModal
-          mode="worker" // <--- Tells it to save to Worker DB
-          departments={departments}
-          onClose={() => setShowOCRModal(false)}
-          onImportSuccess={(count, skipped) => {
-            loadData();
-            let msg = `${count} travailleurs importés !`;
-            if (skipped > 0) msg += ` (${skipped} doublons ignorés)`;
-            showToast(msg, 'success');
-          }}
         />
       )}
 
